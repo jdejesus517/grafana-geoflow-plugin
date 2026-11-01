@@ -29,33 +29,36 @@ This document responds to the five pre-implementation items in [project_overview
 
 The plugin is a **frontend-only Grafana panel plugin**. It has no backend component and opens no database connection of its own. All data reaches it through Grafana's built-in PostgreSQL data source, as `DataFrame`s in `PanelProps.data`.
 
-```
-┌──────────────────────────── Grafana ─────────────────────────────┐
-│                                                                  │
-│  PostgreSQL data source ──(SQL with ST_AsGeoJSON)──► PostGIS DB   │
-│          │                                                       │
-│          ▼ DataFrame[] (one per query / refId)                   │
-│  ┌─────────────────── Panel plugin ───────────────────────────┐  │
-│  │                                                            │  │
-│  │  [Grafana layer]  src/panel/                               │  │
-│  │    module.ts ─ PanelPlugin + options builder               │  │
-│  │    MapPanel.tsx ─ React glue: props → engine calls         │  │
-│  │          │                                                 │  │
-│  │          ▼                                                 │  │
-│  │  [Adapter layer]  src/adapter/                             │  │
-│  │    frameToGeoJSON ─ DataFrame → FeatureCollection          │  │
-│  │    buildLayerSpecs ─ panel options + frames → LayerSpec[]  │  │
-│  │          │   (plain TS objects, no Grafana types beyond)   │  │
-│  │          ▼                                                 │  │
-│  │  [Engine layer]  src/engine/   ← no @grafana/* imports     │  │
-│  │    MapEngine interface + MapLibreEngine implementation     │  │
-│  │    style builders (LayerSpec → MapLibre layer specs)       │  │
-│  │    popup rendering                                         │  │
-│  │          │                                                 │  │
-│  │          ▼                                                 │  │
-│  │       MapLibre GL JS  ──►  basemap tiles (style URL)       │  │
-│  └────────────────────────────────────────────────────────────┘  │
-└──────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    subgraph Grafana
+        DS["PostgreSQL data source"]
+        subgraph Plugin["Panel plugin"]
+            subgraph PanelLayer["Grafana layer: src/panel/"]
+                MOD["module.ts<br/>PanelPlugin + options builder"]
+                MP["MapPanel.tsx<br/>React glue: props → engine calls"]
+            end
+            subgraph AdapterLayer["Adapter layer: src/adapter/"]
+                F2G["frameToGeoJSON<br/>DataFrame → FeatureCollection"]
+                BLS["buildLayerSpecs<br/>panel options + frames → LayerSpec[]"]
+            end
+            subgraph EngineLayer["Engine layer: src/engine/<br/>no @grafana/* imports"]
+                ENG["MapEngine interface + MapLibreEngine implementation<br/>style builders (LayerSpec → MapLibre layer specs)<br/>popup rendering"]
+            end
+            ML["MapLibre GL JS"]
+        end
+    end
+    PG[("PostGIS DB")]
+    TILES["Basemap tiles (style URL)"]
+
+    DS -->|"SQL with ST_AsGeoJSON"| PG
+    DS -->|"DataFrame[] (one per query / refId)"| MP
+    MOD --> MP
+    MP --> F2G
+    F2G --> BLS
+    BLS -->|"plain TS objects"| ENG
+    ENG --> ML
+    ML --> TILES
 ```
 
 ### Key decisions
