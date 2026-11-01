@@ -49,7 +49,16 @@ export default defineConfig([
               message: 'The engine layer must not depend on Grafana, React or Emotion.',
             },
             {
-              group: ['**/panel', '**/panel/*', '**/adapter', '**/adapter/*', 'panel', 'panel/*', 'adapter', 'adapter/*'],
+              group: [
+                '**/panel',
+                '**/panel/*',
+                '**/adapter',
+                '**/adapter/*',
+                'panel',
+                'panel/*',
+                'adapter',
+                'adapter/*',
+              ],
               message: 'The engine layer must not import from the panel or adapter layers.',
             },
           ],
