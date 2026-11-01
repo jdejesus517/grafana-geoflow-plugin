@@ -36,4 +36,25 @@ export default defineConfig([
     ],
   },
   ...baseConfig,
+  {
+    // The map engine must stay independent of Grafana (docs/architecture.md §1, requirement 7).
+    files: ['src/engine/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@grafana/*', 'react', 'react-dom', '@emotion/*'],
+              message: 'The engine layer must not depend on Grafana, React or Emotion.',
+            },
+            {
+              group: ['**/panel', '**/panel/*', '**/adapter', '**/adapter/*', 'panel', 'panel/*', 'adapter', 'adapter/*'],
+              message: 'The engine layer must not import from the panel or adapter layers.',
+            },
+          ],
+        },
+      ],
+    },
+  },
 ]);
