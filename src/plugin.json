@@ -1,19 +1,32 @@
 {
   "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
   "type": "panel",
-  "name": "Geoflow",
+  "name": "GeoFlow",
   "id": "jdejesusio-geoflow-panel",
   "info": {
-    "keywords": ["panel"],
-    "description": "",
+    "keywords": ["panel", "map", "geospatial", "postgis", "geojson", "maplibre"],
+    "description": "Render PostGIS geometries from the Grafana PostgreSQL data source on an interactive MapLibre map.",
     "author": {
-      "name": "Jdejesusio"
+      "name": "Jose DeJesus"
     },
     "logos": {
       "small": "img/logo.svg",
       "large": "img/logo.svg"
     },
-    "links": [],
+    "links": [
+      {
+        "name": "Source",
+        "url": "https://github.com/jdejesus517/grafana-geoflow-plugin"
+      },
+      {
+        "name": "Issues",
+        "url": "https://github.com/jdejesus517/grafana-geoflow-plugin/issues"
+      },
+      {
+        "name": "License",
+        "url": "https://github.com/jdejesus517/grafana-geoflow-plugin/blob/main/LICENSE"
+      }
+    ],
     "screenshots": [],
     "version": "%VERSION%",
     "updated": "%TODAY%"
