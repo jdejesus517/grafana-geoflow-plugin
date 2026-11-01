@@ -41,8 +41,11 @@ Work happens on a `phase-0` branch, with one commit per step. I'll stop for your
   - Docker Engine with Compose v2
   - git
 - Create the `phase-0` branch from `main`.
+- **Repository remote.** The project repository is `https://github.com/jdejesus517/grafana-geoflow-plugin`. The local `origin` currently points at `jdejesus517/grafana-map-plugin`.
+  - Once the GitHub repository is renamed or created, update the remote: `git remote set-url origin git@github.com:jdejesus517/grafana-geoflow-plugin.git`.
+  - Confirm with you before the first push.
 
-**Done when:** tool versions are confirmed and the branch exists.
+**Done when:** tool versions are confirmed, the branch exists, and `origin` points at `grafana-geoflow-plugin`.
 
 ### 0.2 Scaffold the plugin
 
@@ -75,7 +78,13 @@ Work happens on a `phase-0` branch, with one commit per step. I'll stop for your
 - `src/plugin.json`:
   - `id: jdejesusio-geoflow-panel`, `name: GeoFlow`, `type: panel`
   - `dependencies.grafanaDependency: ">=13.0.0"`
-  - `info`: description, author, keywords (`map`, `postgis`, `geojson`, `maplibre`), links to the repo, version from `package.json`
+  - `info`:
+    - description
+    - `author: { name: "Jose DeJesus" }`
+    - keywords (`map`, `postgis`, `geojson`, `maplibre`)
+    - links: "Source" and "Issues" pointing at `https://github.com/jdejesus517/grafana-geoflow-plugin`
+    - version from `package.json`
+- `package.json`: `author: "Jose DeJesus"` and `repository` / `bugs` / `homepage` set to the GitHub URL.
 - `package.json`:
   - `"license": "Apache-2.0"`
   - Set `@grafana/data`, `@grafana/ui`, `@grafana/runtime`, `@grafana/schema` and `@grafana/plugin-e2e` to versions that match Grafana 13.x, and confirm the matching tags at implementation time.
@@ -130,26 +139,36 @@ docker/postgres/
 ```
 
 - **Read-only role.** Grafana connects as `grafana_reader`, which has `USAGE` on schema `geoflow` and `SELECT` on its tables only. This follows Grafana's guidance for SQL data sources, since dashboard users can write arbitrary SQL. The password comes from the environment.
-- **Fixtures** (`03_seed_fixtures.sql`) are small and hand-written, with known ids so e2e tests can assert on them:
+- **Fixtures** (`03_seed_fixtures.sql`) model a small **fictional fiber optic network in Cary, NC**.
+  - The network centers on downtown Cary (about 35.788° N, 78.781° W) and stays inside a bounding box of roughly 2 × 2 km, so the whole network fits in one map view.
+  - Building footprints and cable routes are hand-drawn approximations. They are not traced from real buildings and don't depict any real operator's infrastructure.
+  - Ids are fixed so e2e tests can assert on exact features and counts.
 
-  | Table | Contents | Used in |
-  |---|---|---|
-  | `geoflow.points` | ~20 Points + 2 MultiPoints | Phases 3–5 |
-  | `geoflow.lines` | LineStrings + MultiLineStrings | Phases 3–5 |
-  | `geoflow.polygons` | Polygons (one with a hole) + MultiPolygons | Phases 3–5 |
-  | `geoflow.mixed` | All six types in one table | Phase 3 |
-  | `geoflow.projected` | Geometries stored in EPSG:3857 | `ST_Transform` docs, out-of-range warning |
-  | `geoflow.edge_cases` | NULL geometry, `POINT EMPTY`, a GeometryCollection, plus a `text` column with malformed GeoJSON | Phase 1 / 8 warnings |
+  The network topology is meant to look plausible:
+  - A central office feeds backbone cables to splice cases.
+  - Splice cases branch into distribution and drop cables.
+  - Cables terminate on patch panels inside buildings.
+  - Cable endpoints coincide exactly with the splice case or patch panel coordinates they connect to.
 
-  Every table has these columns:
+  | Table | Geometry types | Contents (approx.) | Key attributes |
+  |---|---|---|---|
+  | `geoflow.buildings` | Polygon, MultiPolygon | 8 buildings: 1 central office, 4 commercial, 2 multi-family residential, 1 data center (one Polygon with an interior courtyard hole); 1 MultiPolygon campus of 2 detached buildings | `building_type`, `address` (fictional), `floors` |
+  | `geoflow.fiber_cables` | LineString, MultiLineString | ~12 cables: backbone (144F), distribution (48F/24F), drops (12F). One MultiLineString cable whose route has an aerial span and an underground span that are recorded separately. | `fiber_count`, `cable_type` (backbone / distribution / drop), `placement` (aerial / underground), `length_m` (computed with `ST_Length(geom::geography)`), `from_asset`, `to_asset` |
+  | `geoflow.splice_cases` | Point | ~6 enclosures at branch points along the backbone | `enclosure_type` (dome / inline), `mount` (pole / handhole / vault), `splice_capacity`, `splices_used` |
+  | `geoflow.patch_panels` | Point, MultiPoint | ~10 panels, one or more per building. The data center's panel group spans several racks and is stored as one MultiPoint. | `building_id`, `rack`, `port_count`, `ports_used`, `utilization_pct` (computed) |
+  | `geoflow.network_assets` (view) | All six types | `UNION ALL` of the four tables above, with an `asset_type` column | Mixed-geometry test (Phase 3). `asset_type` / `status` are the natural split columns for `byColumn` mode (Phase 10). |
+  | `geoflow.fiber_cables_stateplane` | LineString | Copy of `fiber_cables` stored in **NAD83 / North Carolina (ftUS), EPSG:2264**, the coordinate system local NC GIS data commonly uses | `ST_Transform` documentation, out-of-range coordinate warning |
+  | `geoflow.edge_cases` | mixed | A NULL geometry, `POINT EMPTY`, a GeometryCollection, and a `geojson_text` column containing malformed GeoJSON | Phase 1 / 8 warnings |
+
+  Every table also has these columns:
   - `id`
   - `name`
-  - `category` (a low-cardinality text column, for Phase 10)
-  - `value` (numeric, for styling and units)
+  - `status` (`in_service` / `planned` / `retired`)
+  - `installed_on` (date)
   - `updated_at` (timestamptz, for `$__timeFilter`)
-  - `geom geometry(…, 4326)` (`3857` for `projected`)
+  - `geom` (SRID 4326, except the state plane table)
   - a GiST index on `geom`
-- **Large data** (`04_seed_large.sql`): `geoflow.points_large` with 100k Points generated by `generate_series` and `random()` within a fixed bounding box, using a fixed `setseed()` so it's reproducible. This is used for the Phase 8 benchmarks.
+- **Large data** (`04_seed_large.sql`): `geoflow.service_locations_large` holds 100k Point "customer premises" generated with `generate_series` and `random()` inside a bounding box covering Cary. A fixed `setseed()` makes it reproducible. Attributes are `service_tier` and `status`. This is used for the Phase 8 benchmarks.
 - **When scripts run:** init scripts run only on first start with an empty volume. `docker compose down -v` resets the database.
 
 **Done when:** the container starts healthy and `verify.sql` returns the expected row counts per table.
@@ -183,8 +202,8 @@ docker/grafana/
 - **Dashboard provisioning:**
   - `dashboards.yaml` points a file provider at the mounted `dashboards/` folder, in a "GeoFlow" folder.
   - `00-smoke.json` holds one GeoFlow panel with two Table-format queries:
-    - A: `SELECT id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM geoflow.points`
-    - B: the same against `geoflow.polygons`
+    - A: `SELECT id, name, building_type, ST_AsGeoJSON(geom, 6) AS geometry FROM geoflow.buildings`
+    - B: `SELECT id, name, fiber_count, placement, ST_AsGeoJSON(geom, 6) AS geometry FROM geoflow.fiber_cables`
   - The dashboard has a fixed `uid` so e2e tests can navigate to it directly.
 
 **Done when:** Grafana starts, the data source test passes, and the smoke dashboard shows two frames with non-zero rows.
@@ -212,7 +231,7 @@ The compose file stays at the repo root so the scaffold's `npm run server` keeps
 - **Unit** (`src/panel/MapPanel.test.tsx`, Jest + React Testing Library): given a fake `PanelData` with two frames, the placeholder renders both refIds and row counts. It also renders an empty-state message when there are no frames.
 - **E2E** (`tests/smoke.spec.ts`, `@grafana/plugin-e2e`):
   1. The data source health check passes (`readProvisionedDataSource` + `checkHealth`).
-  2. The smoke dashboard loads by uid, and the GeoFlow panel shows refIds A and B with row counts > 0.
+  2. The smoke dashboard loads by uid, and the GeoFlow panel shows refIds A and B with the exact fixture row counts for `buildings` and `fiber_cables`.
   3. The panel appears in the visualization picker when you add a new panel.
 
 **Done when:** `npm run test:ci` and `npm run e2e` pass against the running stack.
@@ -220,7 +239,7 @@ The compose file stays at the repo root so the scaffold's `npm run server` keeps
 ### 0.9 License and compliance
 
 - `LICENSE`: full Apache-2.0 text.
-- `NOTICE`: project copyright line, plus a placeholder section for third-party attributions. The OSM attribution gets added when the basemap lands in Phase 2.
+- `NOTICE`: `GeoFlow, Copyright 2026 Jose DeJesus`, plus a placeholder section for third-party attributions. The OSM attribution gets added when the basemap lands in Phase 2.
 - **License check:**
   - Add `license-checker-rseidelsohn` as a dev dependency.
   - Add an npm script `license:check` that checks production dependencies only, with `--onlyAllow "Apache-2.0;MIT;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0"`.
@@ -276,8 +295,12 @@ package.json  LICENSE  NOTICE  README.md  .nvmrc
 | Init SQL silently doesn't run (existing volume). | Documented in the README. `verify.sql` and the e2e row-count assertion catch it. |
 | Port 5432 or 3000 is already in use on the host. | Both ports can be overridden by environment variables in `docker-compose.yaml`. |
 
-## Decisions to confirm before starting
+## Decisions
 
-1. **Copyright holder** for `LICENSE` / `NOTICE` and `plugin.json` author. Should it be your name, "jdejesusio", or "The GeoFlow Authors"?
-2. **Repository URL** for `plugin.json` links and the README. Is there a GitHub remote yet?
-3. **Fixture location.** I'll place the hand-written fixtures in a small, recognizable area so the map is easy to sanity-check visually. Do you have a preferred city or region?
+| Topic | Decision |
+|---|---|
+| Author / copyright holder | Jose DeJesus |
+| Repository | https://github.com/jdejesus517/grafana-geoflow-plugin |
+| Fixture data | Small fictional fiber optic network (buildings, fiber cables, splice cases, patch panel terminations) in Cary, NC |
+
+No open decisions remain for Phase 0.
