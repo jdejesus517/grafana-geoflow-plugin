@@ -1,5 +1,6 @@
 import type { PluginOptions } from '@grafana/plugin-e2e';
 import { defineConfig } from '@playwright/test';
+import { join } from 'node:path';
 import baseConfig from './.config/playwright.config';
 
 /**
@@ -12,6 +13,9 @@ import baseConfig from './.config/playwright.config';
  * See https://playwright.dev/docs/test-configuration.
  */
 export default defineConfig<PluginOptions>(baseConfig, {
-  // Add your own configuration here.
   // See https://grafana.com/developers/plugin-tools/how-to-guides/extend-configurations#extend-the-playwright-config for further info.
+  use: {
+    // Provisioning lives with the Grafana deployment files (docker/grafana/), not the scaffold default.
+    provisioningRootDir: join(__dirname, 'docker/grafana/provisioning'),
+  },
 });
