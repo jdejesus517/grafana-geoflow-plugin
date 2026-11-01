@@ -4,9 +4,10 @@ import { test, expect } from '@grafana/plugin-e2e';
 const BUILDING_COUNT = 9;
 const FIBER_CABLE_COUNT = 15;
 
-test('provisioned PostGIS data source is healthy', async ({ readProvisionedDataSource, request }) => {
+test('provisioned PostGIS data source is healthy', async ({ readProvisionedDataSource, page }) => {
   const ds = await readProvisionedDataSource({ fileName: 'datasources.yml', name: 'GeoFlow PostGIS' });
-  const response = await request.get(`/api/datasources/uid/${ds.uid}/health`);
+  // page.request shares the authenticated browser session (anonymous auth is off in CI).
+  const response = await page.request.get(`/api/datasources/uid/${ds.uid}/health`);
 
   expect(response.ok()).toBeTruthy();
   expect(await response.json()).toMatchObject({ status: 'OK' });

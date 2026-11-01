@@ -1,117 +1,76 @@
-# Grafana panel plugin template
+# GeoFlow
 
-This template is a starting point for building a panel plugin for Grafana.
+GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-## What are Grafana panel plugins?
+> **Status: pre-MVP.** Phase 0 (scaffold and development environment) is complete. The panel currently shows a placeholder listing the data frames it receives; map rendering arrives in later phases. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
 
-Panel plugins allow you to add new types of visualizations to your dashboard, such as maps, clocks, pie charts, lists, and more.
+- Plugin id: `jdejesusio-geoflow-panel`
+- Requires Grafana 13.2 or later
+- Database: PostgreSQL 16+ with PostGIS 3.x
 
-Use panel plugins when you want to do things like visualize data returned by data source queries, navigate between dashboards, or control external systems (such as smart home devices).
+## Development
 
-## Getting started
+### Prerequisites
 
-### Frontend
+- Node.js 22 or later (`.nvmrc` pins the recommended version) and npm 10 or later
+- Docker Engine with Docker Compose v2.24 or later
 
-1. Install dependencies
+### Quick start
 
-   ```bash
-   npm install
-   ```
+```bash
+npm install
+npm run dev        # build the plugin and rebuild on change (terminal 1)
+npm run server     # start Grafana and PostGIS in Docker (terminal 2)
+```
 
-2. Build plugin in development mode and run in watch mode
+Open http://localhost:3000. The **GeoFlow / 00 Smoke** dashboard queries the fixture database through the provisioned **GeoFlow PostGIS** data source.
 
-   ```bash
-   npm run dev
-   ```
+### Docker environment
 
-3. Build plugin in production mode
+The stack is defined in [docker-compose.yaml](docker-compose.yaml), with each service's files in its own directory:
 
-   ```bash
-   npm run build
-   ```
+| Directory                            | Contents                                                                                                                                                                   |
+| ------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [docker/grafana/](docker/grafana/)   | Provisioned data sources and dashboards, and `.env.example` with the data source connection settings. The Grafana image itself comes from the scaffold-managed `.config/`. |
+| [docker/postgres/](docker/postgres/) | PostGIS image (`postgis/postgis:16-3.6`), init scripts that seed the fixtures, `verify.sql`, and `.env.example` with database credentials.                                 |
 
-4. Run the tests (using Jest)
+Defaults come from each directory's `.env.example`. To override them, copy it to `.env` in the same directory (git-ignored). The Grafana password `GEOFLOW_PG_PASSWORD` must match the Postgres `GEOFLOW_READER_PASSWORD`. All defaults are for local development only.
 
-   ```bash
-   # Runs the tests and watches for changes, requires git init first
-   npm run test
+PostgreSQL is published on `127.0.0.1:5432` (override with `GEOFLOW_PG_PORT`).
 
-   # Exits after running all the tests
-   npm run test:ci
-   ```
+**Fixture data** is a small, fictional fiber optic network in downtown Cary, NC (buildings, fiber cables, splice cases and patch panels), plus edge-case rows and 100k synthetic service locations for performance testing. Building footprints and cable routes are hand-drawn approximations and don't depict real infrastructure. Grafana connects as the read-only `grafana_reader` role.
 
-5. Spin up a Grafana instance and run the plugin inside it (using Docker)
+The init scripts run only when the data volume is empty. To reset the database to the seed state:
 
-   ```bash
-   npm run server
-   ```
+```bash
+docker compose down -v && npm run server
+```
 
-6. Run the E2E tests (using Playwright)
+To check the fixtures:
 
-   ```bash
-   # Spins up a Grafana instance first that we tests against
-   npm run server
+```bash
+docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -f /verify.sql'
+```
 
-   # If you wish to start a certain Grafana version. If not specified will use latest by default
-   GRAFANA_VERSION=11.3.0 npm run server
+### Checks and tests
 
-   # Starts the tests
-   npm run e2e
-   ```
+```bash
+npm run typecheck
+npm run lint
+npm run test:ci          # unit tests (Jest)
+npm run build
+npm run license:check    # production dependency license gate
+npm run e2e              # Playwright end-to-end tests; needs `npm run server` running
+```
 
-7. Run the linter
+Before the first e2e run, install the browser with `npx playwright install chromium`.
 
-   ```bash
-   npm run lint
+## Documentation
 
-   # or
+- [Project overview](docs/project_overview.md)
+- [Architecture](docs/architecture.md)
+- [Phase 0 plan](docs/phase_0.md)
 
-   npm run lint:fix
-   ```
+## License
 
-# Distributing your plugin
-
-When distributing a Grafana plugin either within the community or privately the plugin must be signed so the Grafana application can verify its authenticity. This can be done with the `@grafana/sign-plugin` package.
-
-_Note: It's not necessary to sign a plugin during development. The docker development environment that is scaffolded with `@grafana/create-plugin` caters for running the plugin without a signature._
-
-## Initial steps
-
-Before signing a plugin please read the Grafana [plugin publishing and signing criteria](https://grafana.com/legal/plugins/#plugin-publishing-and-signing-criteria) documentation carefully.
-
-`@grafana/create-plugin` has added the necessary commands and workflows to make signing and distributing a plugin via the grafana plugins catalog as straightforward as possible.
-
-Before signing a plugin for the first time please consult the Grafana [plugin signature levels](https://grafana.com/legal/plugins/#what-are-the-different-classifications-of-plugins) documentation to understand the differences between the types of signature level.
-
-1. Create a [Grafana Cloud account](https://grafana.com/signup).
-2. Make sure that the first part of the plugin ID matches the slug of your Grafana Cloud account.
-   - _You can find the plugin ID in the `plugin.json` file inside your plugin directory. For example, if your account slug is `acmecorp`, you need to prefix the plugin ID with `acmecorp-`._
-3. Create a Grafana Cloud API key with the `PluginPublisher` role.
-4. Keep a record of this API key as it will be required for signing a plugin
-
-## Signing a plugin
-
-### Using Github actions release workflow
-
-If the plugin is using the github actions supplied with `@grafana/create-plugin` signing a plugin is included out of the box. The [release workflow](./.github/workflows/release.yml) can prepare everything to make submitting your plugin to Grafana as easy as possible. Before being able to sign the plugin however a secret needs adding to the Github repository.
-
-1. Please navigate to "settings > secrets > actions" within your repo to create secrets.
-2. Click "New repository secret"
-3. Name the secret "GRAFANA_API_KEY"
-4. Paste your Grafana Cloud API key in the Secret field
-5. Click "Add secret"
-
-#### Push a version tag
-
-To trigger the workflow we need to push a version tag to github. This can be achieved with the following steps:
-
-1. Run `npm version <major|minor|patch>`
-2. Run `git push origin main --follow-tags`
-
-## Learn more
-
-Below you can find source code for existing app plugins and other related documentation.
-
-- [Basic panel plugin example](https://github.com/grafana/grafana-plugin-examples/tree/master/examples/panel-basic#readme)
-- [`plugin.json` documentation](https://grafana.com/developers/plugin-tools/reference/plugin-json)
-- [How to sign a plugin?](https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin)
+Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
