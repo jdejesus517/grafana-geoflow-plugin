@@ -1,6 +1,19 @@
-# Target Architecture: Grafana PostGIS Map Panel
+# Target Architecture: GeoFlow, a Grafana PostGIS Map Panel
 
 Status: **Proposal, awaiting approval.** Nothing here is implemented yet.
+
+### Project baseline
+
+| Item | Value |
+|---|---|
+| Plugin name | GeoFlow |
+| Plugin id | `jdejesusio-geoflow-panel` |
+| Layer binding | Selectable mode; MVP ships "one layer per data frame" only (§3.4) |
+| Target Grafana | 13.x (`grafanaDependency: ">=13.0.0"`) |
+| Database | PostgreSQL 16+ with PostGIS 3.x |
+| Default basemap | OpenStreetMap standard raster tiles |
+| License | Apache-2.0; dependency license compatibility check pending (§5.4) |
+| Dev environment | Docker Compose; deployment files under `docker/grafana/` and `docker/postgres/` |
 
 This document responds to the five pre-implementation items in [project_overview.md](project_overview.md):
 
@@ -53,7 +66,7 @@ The plugin is a **frontend-only Grafana panel plugin**. It has no backend compon
 | SQL returns GeoJSON text via `ST_AsGeoJSON(...)` | GeoJSON is what MapLibre consumes natively. Parsing WKB in the browser would add a dependency and CPU cost for no MVP benefit. |
 | Three layers: panel / adapter / engine | Requirement 7. The engine can be tested, reused or replaced (for example by OpenLayers or deck.gl) without touching Grafana code. |
 | Engine boundary enforced by lint, not convention | An ESLint `no-restricted-imports` rule on `src/engine/**` forbids `@grafana/*`, `react` and `../panel`/`../adapter` imports. |
-| One Grafana query (refId) = one spatial layer by default | This maps onto Grafana's existing query editor UX, where users already add queries A, B, C. Layer config can override which frame and fields it uses. |
+| Layer binding is a selectable mode, starting with "one layer per data frame" | Per-frame binding maps onto Grafana's existing query editor UX, where users already add queries A, B, C. "Layers by column value" is added in a later phase. Both modes live in the adapter and produce the same `LayerSpec[]`, so the engine never changes (§3.4). |
 | Map instance is created once and updated in place | Re-creating a WebGL context on every refresh is slow and leaks contexts. Data updates go through `GeoJSONSource.setData()`. |
 
 ---
@@ -62,9 +75,26 @@ The plugin is a **frontend-only Grafana panel plugin**. It has no backend compon
 
 ### 2.1 Directory layout
 
-Scaffolded with `npx @grafana/create-plugin@latest` (panel type). The repository then follows the standard layout plus three source subfolders:
+Scaffolded with `npx @grafana/create-plugin@latest` (panel type). The repository then follows the standard layout, with three source subfolders and a `docker/` directory holding one independent directory per service:
 
 ```
+docker-compose.yaml            # root compose file; wires the services below
+                               # (kept at root so create-plugin's `npm run server` works)
+docker/
+  grafana/                     # everything the Grafana container needs
+    Dockerfile                 # FROM grafana/grafana:13.x (or the scaffold's .config image)
+    grafana.ini                # dev settings: plugin unsigned allow-list, CSP, logging
+    provisioning/
+      datasources/postgis.yaml # Grafana PostgreSQL data source → postgres service
+      dashboards/              # dashboard provider + one JSON dashboard per feature
+  postgres/                    # everything the database container needs
+    Dockerfile                 # FROM postgis/postgis:16-3.x (or pinned image tag only)
+    .env.example               # POSTGRES_USER / PASSWORD / DB
+    init/                      # executed on first start via /docker-entrypoint-initdb.d
+      01_extensions.sql        # CREATE EXTENSION postgis
+      02_schema.sql
+      03_seed_fixtures.sql     # every geometry type, non-4326, invalid/empty rows
+      04_seed_large.sql        # generated rows for performance testing
 src/
   module.ts                    # PanelPlugin registration + options
   plugin.json
@@ -84,10 +114,12 @@ src/
     popup.ts
     __tests__/
   model/                       # shared plain types (GeoJSON helpers, errors)
-provisioning/                  # datasources + dashboards for local dev / e2e
-docker/postgis/init/*.sql      # seed data
 tests/                         # Playwright e2e (@grafana/plugin-e2e)
+LICENSE                        # Apache-2.0
+NOTICE                         # third-party attributions (see §5.4)
 ```
+
+The Grafana and Postgres directories don't depend on each other. Each one can be rebuilt, swapped (for example an external managed Postgres) or reused in another compose file. The only link between them is the data source provisioning file. It reads the host, user and password from environment variables, so nothing is hard-coded.
 
 ### 2.2 Panel layer (`src/panel`, Grafana-aware)
 
@@ -168,6 +200,7 @@ FROM assets
 WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
 ```
 
+- Everything in this section works on PostgreSQL 16+ with PostGIS 3.x. `ST_AsGeoJSON(record)` (Feature output) needs PostGIS 3.0 or later.
 - `ST_Transform(..., 4326)` is required unless the data is already in WGS84. GeoJSON (RFC 7946) and MapLibre assume lon/lat.
 - The precision argument (`6` ≈ 0.1 m) roughly halves payload size compared with the default of 9 decimals.
 
@@ -214,6 +247,33 @@ Notes:
   - Z/M coordinates: passed through; MapLibre ignores them.
   - Raw WKB / EWKB hex: left for a later phase if requested.
 
+### 3.4 Layer binding modes
+
+How data frames become map layers is a panel option, `layerBinding.mode`:
+
+| Mode | Behavior | Delivered in |
+|---|---|---|
+| `perFrame` (default) | Each data frame (one per query refId) becomes one layer. Layer id = `refId`. Layer config can override the geometry field, id field, style and popup fields. | MVP (Phases 3–6) |
+| `byColumn` | The user picks a source frame and a **split column**. Each distinct value of that column becomes its own layer with id `${refId}:${value}`. Layer names come from the values. | Phase 10 |
+
+Design rules that keep later modes cheap to add:
+
+- The option type is a discriminated union from day one:
+
+  ```ts
+  type LayerBinding =
+    | { mode: 'perFrame' }
+    | { mode: 'byColumn'; refId: string; splitField: string; maxLayers: number };
+  ```
+
+  Saved MVP dashboards stay valid when `byColumn` ships, because no migration is needed. Until then the editor offers only `perFrame`.
+- Binding is resolved in `buildLayerSpecs` (adapter) through a small strategy per mode: `bindPerFrame` and later `bindByColumn`. Each strategy returns the same `LayerSpec[]`. The engine is unaffected, which is the payoff of requirement 7.
+- `byColumn` specifics, scoped for Phase 10:
+  - **Stable ids across refresh.** Per-layer settings such as visibility and style overrides survive a refresh, and new values get defaults.
+  - **Layer cap.** `maxLayers`, default 50, guards against splitting on a high-cardinality column. Values beyond the cap are grouped into an "Other" layer and reported as a panel warning.
+  - **Per-value colors.** Values get colors from the Grafana theme's classic palette, overridable through standard Grafana value mappings.
+  - **Null or empty split values** go into a "(none)" layer.
+
 ---
 
 ## 4. Compatibility and performance risks
@@ -222,13 +282,14 @@ Notes:
 
 | Risk | Mitigation |
 |---|---|
-| **Grafana version range.** Plugin APIs and the data source id changed over time (`postgres` → `grafana-postgresql-datasource`). | Set `grafanaDependency` in `plugin.json` to a current supported range (to be confirmed against the latest docs at scaffold time). Do not depend on the data source id; read only `DataFrame`s. Run e2e tests against the minimum and latest supported versions. |
+| **Grafana version range.** Plugin APIs and the data source id changed over time (`postgres` → `grafana-postgresql-datasource`). | Target Grafana 13.x only: `grafanaDependency: ">=13.0.0"` in `plugin.json`, with `@grafana/*` packages pinned to 13.x. Do not depend on the data source id; read only `DataFrame`s. Run e2e tests against 13.0 and the latest 13.x release. |
+| **PostgreSQL / PostGIS versions.** | Support PostgreSQL 16+ with PostGIS 3.x. The dev image is pinned to `postgis/postgis:16-3.x`. An optional CI job runs the fixtures against the newest Postgres major to catch SQL differences in the documented queries. |
 | **Content Security Policy.** MapLibre spawns web workers from `blob:` URLs, and Grafana's optional CSP can block them. | Document the required `worker-src blob:` CSP directive. Evaluate `maplibregl.setWorkerUrl()` with a worker file shipped in the plugin bundle as a fallback. |
 | **WebGL availability.** MapLibre v5 requires WebGL2. Headless renderers, old GPUs and VDI environments may lack it. | Detect support on mount and show a clear message instead of a blank panel. Document the image renderer limitation. |
-| **Basemap tiles and air-gapped installs.** Public tile servers have usage policies and need internet access. | The basemap style URL is configurable. Default to a free, permissive style. Allow a "no basemap" (blank background) option. Document self-hosting. |
+| **Basemap tiles and air-gapped installs.** Public tile servers have usage policies and need internet access. | The default is OpenStreetMap's standard raster tiles (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). They're wrapped in a minimal inline MapLibre style, because OSM serves tiles, not a style JSON. Caveats: OSM's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy or bulk use and requires the attribution "© OpenStreetMap contributors". The panel always shows that attribution through MapLibre's attribution control. The basemap is configurable (raster tile URL template or a vector style URL) so production users can point at their own tile server. A "no basemap" (blank background) option covers air-gapped installs. |
 | **MapLibre CSS.** Without it, controls and popups render broken. | Import `maplibre-gl/dist/maplibre-gl.css` in the panel module, and scope overrides with Emotion (`useStyles2`) to avoid leaking into Grafana. |
 | **Panel lifecycle.** Grafana unmounts panels when they scroll out of view, open in panel edit, or appear in repeated rows. Browsers cap WebGL contexts at about 16. | Always call `map.remove()` on unmount. Avoid re-creating the map on option changes. Test dashboards with many map panels. |
-| **Theme switching** (light/dark). | Use an optional pair of light and dark basemap styles. Derive default layer colors from `theme.visualization`. |
+| **Theme switching** (light/dark). | OSM raster tiles have no dark variant. In dark theme the engine adjusts `raster-brightness-max` / `raster-saturation` paint properties to dim the basemap, which needs no second tile source. Users can also configure an explicit dark basemap. Default layer colors come from `theme.visualization`. |
 | **Coordinate systems.** Data not in EPSG:4326 renders in the wrong place or not at all. | Document `ST_Transform` usage. The adapter warns when coordinates fall outside ±180/±90. |
 | **Antimeridian-crossing geometries.** | These are known MapLibre/GeoJSON edge cases. Document the issue rather than solve it in the MVP. |
 
@@ -250,8 +311,10 @@ Notes:
 ### 5.1 Local environment
 
 - Scaffold with `@grafana/create-plugin`. It provides webpack, Jest, Playwright, ESLint, the Docker Compose Grafana dev image and GitHub Actions CI.
-- Extend `docker-compose.yaml` with a `postgis/postgis` service. Seed it from `docker/postgis/init/*.sql` with fixture tables covering every geometry type, a non-4326 table, invalid and empty rows, and a large table for performance tests.
-- Provision the PostgreSQL data source and a set of dashboards in `provisioning/`. Each dashboard exercises one feature: points only, mixed types, multi-layer, refresh. Every dashboard doubles as an e2e fixture.
+- Move the scaffold's Grafana container configuration into `docker/grafana/`. Pin it to Grafana 13.x and mount the built plugin (`dist/`) as `jdejesusio-geoflow-panel`.
+- Add a `postgres` service built from `docker/postgres/` (`postgis/postgis:16-3.x`). Seed it from `docker/postgres/init/*.sql` with fixture tables covering every geometry type, a non-4326 table, invalid and empty rows, and a large table for performance tests. Use a named volume for data. `docker compose down -v` resets it to the seed state.
+- Provision the PostgreSQL data source and a set of dashboards in `docker/grafana/provisioning/`. Each dashboard exercises one feature: points only, mixed types, multi-layer, refresh. Every dashboard doubles as an e2e fixture.
+- The root `docker-compose.yaml` adds a healthcheck on `postgres` (`pg_isready`). Grafana uses `depends_on: condition: service_healthy`, so provisioned dashboards never start against an unready database.
 
 ### 5.2 Test pyramid
 
@@ -259,10 +322,10 @@ Notes:
 |---|---|---|
 | Unit | Jest | Adapter: `frameToFeatureCollection` across all geometry types, Feature input, string vs object values, null/invalid/unsupported rows, id handling, field detection. Engine: `styleBuilders` output and the `setLayers` diff logic with `maplibre-gl` mocked. jsdom has no WebGL, so the real map is not exercised here. |
 | Component | Jest + React Testing Library | `MapPanel` calls the engine correctly on mount, data change, resize and unmount. Uses a fake `MapEngine`, which is another payoff of the interface. Covers the "no geometry field" hint. |
-| End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Clicking a known feature opens a popup with the expected attributes. Option changes take effect. Dashboard refresh updates features. Runs against minimum and latest Grafana versions. |
+| End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Clicking a known feature opens a popup with the expected attributes. Option changes take effect. Dashboard refresh updates features. Runs against Grafana 13.0 and the latest 13.x. |
 | Manual / perf | Provisioned "large" dashboard + browser profiler | Conversion and render timings at 1k, 10k and 100k features. |
 
-CI runs lint (including the engine import boundary), typecheck, unit tests, build, `@grafana/plugin-validator` and e2e on every PR.
+CI runs lint (including the engine import boundary), typecheck, unit tests, build, `@grafana/plugin-validator`, the license check (§5.4) and e2e on every PR.
 
 ### 5.3 Incremental delivery plan
 
@@ -270,22 +333,51 @@ Each phase ends with something demonstrable and its own tests. I will stop for r
 
 | Phase | Deliverable | Verified by |
 |---|---|---|
-| 0 | Scaffold, Docker stack with PostGIS + seed data, provisioned data source, placeholder panel | Panel appears in Grafana; CI green |
+| 0 | Scaffold, `docker/grafana` + `docker/postgres` stack with seed data, provisioned data source, placeholder panel, Apache-2.0 `LICENSE` | Panel appears in Grafana 13; CI green |
 | 1 | Adapter: `frameToFeatureCollection` + field detection (no UI) | Unit tests |
 | 2 | Engine skeleton: `MapEngine`, `MapLibreEngine` with basemap only, mount/resize/destroy; panel shows interactive basemap | Component test + e2e "map canvas visible" |
 | 3 | Single-layer rendering of all six geometry types with default style | Style-builder unit tests + e2e on mixed-geometry dashboard |
 | 4 | Popups with feature attributes (formatted via field config) | e2e click → popup content |
 | 5 | Basic styling options (color, opacity, point radius, line width, fill opacity) | Unit tests + e2e option change |
-| 6 | Multiple layers: layer list editor, refId binding, ordering, visibility | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
+| 6 | Multiple layers in `perFrame` mode: layer list editor, `LayerBinding` option (only `perFrame` exposed), ordering, visibility | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
 | 7 | Refresh behavior: in-place `setData`, viewport preservation, fit-to-data option, theme switching | Component tests + e2e refresh |
 | 8 | Hardening: warnings/notices, WebGL detection, CSP docs, performance benchmark and any resulting optimization | Perf dashboard results recorded in docs |
+| 9 | Dependency license compatibility review (§5.4) | `docs/licenses.md` report; CI license gate passing |
+
+Phases 0–9 make up the **MVP**. Post-MVP phases each add one capability:
+
+| Phase | Deliverable | Verified by |
+|---|---|---|
+| 10 | `byColumn` layer binding (§3.4): split column picker, layer cap + "Other", per-value colors, stable ids across refresh | Unit tests on `bindByColumn` (cardinality, nulls, id stability) + e2e dashboard split by a category column |
+
+### 5.4 License compliance
+
+The project is licensed under **Apache-2.0**. Every dependency that ends up in the shipped bundle (`dist/`) must have a license compatible with distributing it under Apache-2.0. Dev-only tooling matters less, because it isn't redistributed.
+
+- **Known so far (to be confirmed in the review):**
+  - `maplibre-gl` is BSD-3-Clause, which is compatible.
+  - `@grafana/*` runtime packages are Apache-2.0. They are provided by Grafana at runtime as externals, not bundled.
+  - React is MIT.
+- **Basemap data is not code.** OpenStreetMap data is under ODbL, which is not a dependency license. It obliges visible attribution ("© OpenStreetMap contributors"), which the panel always displays. This goes in `NOTICE` and the README.
+- **Process:**
+  1. From Phase 0, a license scanner (for example `license-checker-rseidelsohn` or `license-report`) runs in CI over production dependencies.
+  2. An allow-list (Apache-2.0, MIT, BSD-2/3-Clause, ISC, 0BSD, CC0-1.0) passes automatically.
+  3. Anything else, especially GPL/AGPL/LGPL, SSPL or unknown, fails the build until it's reviewed.
+  4. The Phase 9 review produces `docs/licenses.md` and a populated `NOTICE` file before the first public release.
 
 ---
 
-## 6. Decisions needed before implementation
+## 6. Decisions
 
-1. **Plugin id / organization.** Grafana requires the form `<org>-<name>-panel`, for example `yourorg-postgismap-panel`. Which org slug should be used?
-2. **Minimum Grafana version.** I propose the oldest version still under Grafana's support policy at scaffold time. Do you need to support anything older?
-3. **Default basemap.** Which public style should be the default, or should the default be a blank background with the URL left to the user?
-4. **Layer binding model.** I propose "one layer per query refId" with optional overrides. The alternative is splitting a single query's rows into layers by a column value.
-5. **License.** Apache-2.0 (matches Grafana's plugin ecosystem) or MIT?
+All open items are resolved.
+
+| Topic | Decision |
+|---|---|
+| Plugin name | GeoFlow |
+| Plugin id | `jdejesusio-geoflow-panel` (org slug `jdejesusio`) |
+| Layer binding | Selectable mode: `perFrame` in the MVP, `byColumn` in Phase 10 |
+| Grafana version | 13.x |
+| PostgreSQL version | 16+ (PostGIS 3.x) |
+| Default basemap | OpenStreetMap standard raster tiles, with attribution |
+| License | Apache-2.0, pending the dependency license review |
+| Dev environment | Docker; `docker/grafana/` and `docker/postgres/` kept independent |
