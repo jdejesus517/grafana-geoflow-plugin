@@ -21,14 +21,14 @@ function renderPanel(data: Partial<PanelData>) {
 }
 
 describe('MapPanel placeholder', () => {
-  it('lists each frame with its row count and fields', () => {
+  it('lists each frame with the adapter result and fields', () => {
     renderPanel({
       series: [
         toDataFrame({
           refId: 'A',
           fields: [
             { name: 'id', type: FieldType.number, values: [1, 2] },
-            { name: 'geometry', type: FieldType.string, values: ['{}', '{}'] },
+            { name: 'geometry', type: FieldType.string, values: ['{"type":"Point","coordinates":[1,2]}', null] },
           ],
         }),
         toDataFrame({
@@ -38,9 +38,16 @@ describe('MapPanel placeholder', () => {
       ],
     });
 
-    expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('A: 2 rows');
+    expect(screen.getByTestId('geoflow-summary-A')).toHaveTextContent('A: 2 rows → 1 feature (geometry) · empty 1');
+    expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('row 2: no value');
     expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('id (number), geometry (string)');
-    expect(screen.getByTestId('geoflow-frame-B')).toHaveTextContent('B: 3 rows');
+    expect(screen.getByTestId('geoflow-summary-B')).toHaveTextContent('B: 3 rows → no geometry:');
+  });
+
+  it('names frames without a refId by position', () => {
+    renderPanel({ series: [toDataFrame({ fields: [{ name: 'id', type: FieldType.number, values: [1] }] })] });
+
+    expect(screen.getByTestId('geoflow-summary-#0')).toHaveTextContent('#0: 1 row → no geometry:');
   });
 
   it('shows the no-data view when there are no frames', () => {
