@@ -1,6 +1,6 @@
 # Phase 1: Data Frame → GeoJSON Adapter
 
-Status: **Plan; decisions confirmed 2026-11-01.** Ready to start.
+Status: **Complete** (2026-11-01), pending review. See [Outcome](#outcome) for where the result differs from this plan.
 Architecture reference: [architecture.md](architecture.md) §2.3 (adapter layer), §3 (conversion), §5.3 (Phase 1 row).
 
 ## Goal
@@ -239,3 +239,47 @@ Confirmed 2026-11-01.
 | Projected and out-of-range geometries | Skipped and reported as `projected` / `outOfRange` warnings, not passed to the map. |
 | Placeholder panel | Shows the adapter's results per frame (step 1.8), with the `01-adapter` dashboard and e2e assertions. |
 | Feature `properties` vs. columns | Column values override Feature `properties` on a name clash. |
+
+---
+
+## Outcome
+
+All exit criteria were met locally:
+- 137 unit tests, with adapter coverage at 100% of statements and 99.3% of branches
+- 9 e2e tests against Grafana 13.2.4
+- typecheck, lint and the license check pass
+
+CI runs on the pull request.
+
+### Benchmark (step 1.7)
+
+`npm run bench:adapter`: 100k rows, half Points and half 5-vertex LineStrings, median of 5 runs after a warm-up. Measured on an AMD Ryzen 7 5700U with Node 26.13.0.
+
+| Input | Median | Target |
+|---|---|---|
+| GeoJSON text (`ST_AsGeoJSON`) | 294 ms | < 1 s |
+| Parsed objects (`jsonb`) | 144 ms | < 1 s |
+
+About half the time for text input is `JSON.parse`. Moving conversion into a web worker isn't needed at this size; Phase 8 revisits it with rendering included.
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| Detection reads each column's first non-null value | Reads up to the first ten non-null values | Found by a test: one malformed first row hid an entire geometry column. |
+| Duplicate ids fall back to the row index for the later duplicates | All-or-nothing: id column values are used only if all are unique finite numbers, otherwise every feature uses its row index | A per-row fallback index could collide with another row's real id. |
+| `noGeometryReason` field | `noGeometry: { reason, detail }` | The detail (e.g. the `ST_AsGeoJSON` hint) is shown to the user as-is. |
+| `scripts/bench-adapter.mjs` | `src/adapter/__bench__/*.bench.ts`, run with `npm run bench:adapter` | The TypeScript adapter runs through Jest's transform without a separate build; `test:ci` doesn't match `*.bench.ts`. |
+| Step order 1.3 then 1.4 | 1.4 (parsing) before 1.3 (detection) | Detection reuses the parser's GeoJSON check. |
+| Boundary rule covers `src/engine/` | Covers `src/engine/` and `src/model/` | Exit criterion 7: model types must not import Grafana. |
+
+### Findings for later phases
+
+- **Provisioning reload.** Grafana 13.2 didn't pick up a new provisioned dashboard file while running; `docker compose restart grafana` did. Now documented in the README.
+- **Frame types (captured fixtures).**
+  - `timestamptz` and `date` columns arrive as `time` fields (epoch ms).
+  - `numeric` columns arrive as `number`.
+  - PostgreSQL enums arrive as `string`.
+  - All of these pass through as properties unchanged, ready for display formatting in Phase 4.
+- **Structural validation only.** Degenerate shapes, such as a Polygon with an empty ring, pass the adapter. Phase 3 renders every fixture and adds adapter tests for anything MapLibre rejects.
+
