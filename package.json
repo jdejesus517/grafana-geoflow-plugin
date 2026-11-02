@@ -18,6 +18,7 @@
     "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
+    "bench:adapter": "jest --testMatch '<rootDir>/src/**/*.bench.ts' --runInBand",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --cache .",
     "lint:fix": "npm run lint -- --fix && prettier --write --list-different .",
