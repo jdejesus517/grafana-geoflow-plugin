@@ -1,6 +1,6 @@
 # Phase 0: Scaffold and Development Environment
 
-Status: **Plan, awaiting approval.**
+Status: **Complete** (2026-11-01), pending Checkpoint B review. See [Outcome](#outcome) for where the result differs from this plan.
 Architecture reference: [architecture.md](architecture.md) §2.1, §5.1, §5.4, §5.3 (Phase 0 row).
 
 ## Goal
@@ -304,3 +304,41 @@ package.json  LICENSE  NOTICE  README.md  .nvmrc
 | Fixture data | Small fictional fiber optic network (buildings, fiber cables, splice cases, patch panel terminations) in Cary, NC |
 
 No open decisions remain for Phase 0.
+
+---
+
+## Outcome
+
+All exit criteria were verified locally from a clean state (`docker compose down -v`, rebuild, then typecheck, lint, unit tests, build, license check and e2e). CI hasn't run yet: the workflow triggers on pull requests to `main`.
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| `grafanaDependency: ">=13.0.0"`, e2e on 13.0 and latest 13.x | `>=13.2.0`, `@grafana/*` 13.2.4; CI resolves the e2e matrix from `grafanaDependency` | Decided at Checkpoint A (scaffold default). |
+| `docker/grafana/Dockerfile` and `grafana.ini` | No Dockerfile or `grafana.ini`. The root compose file extends the scaffold's Grafana service; `docker/grafana/` holds `provisioning/` and `.env.example`. | Decided at Checkpoint A. The scaffold image already sets dev mode, anonymous admin, the unsigned-plugin allow-list and debug logging, and keeps live reload and CI modes. |
+| Dashboards in `docker/grafana/dashboards/` | `docker/grafana/provisioning/dashboards/` | `@grafana/plugin-e2e`'s `readProvisionedDashboard` reads from `<provisioningRootDir>/dashboards`. |
+| Postgres init scripts mounted by compose | Copied into the image by `docker/postgres/Dockerfile` | Keeps `docker/postgres/` self-contained. |
+| Reader role created in `02_schema.sql` | `05_reader_role.sh` | The role password comes from the environment, which SQL init files can't read. |
+| Grafana and Postgres both read `docker/postgres/.env` | Each directory has its own `.env.example` / `.env` | Keeps the two directories independent. The reader password must match in both. |
+| Fixture table shapes approximate | 9 buildings, 15 fiber cables, 7 splice cases (1 retired), 11 patch panels, 6 edge cases, 42 rows in `network_assets`, 100k service locations | Exact counts are asserted by `verify.sql` and e2e. |
+| License allow-list: Apache-2.0, MIT, BSD-2/3, ISC, 0BSD, CC0-1.0 | Added Unlicense, BlueOak-1.0.0, Python-2.0, Public Domain and Zlib, all permissive and Apache-2.0-compatible. `get-document@1.0.0` is excluded by exact version. | All of these come through `@grafana/ui`, which Grafana provides at runtime and which isn't bundled. `get-document` declares no license at all. |
+| Package version unspecified | `0.1.0`, `"private": true` | Pre-MVP; Grafana plugins aren't published to npm. |
+
+### Findings for later phases
+
+- **Field types on Grafana 13.2.4** (for Phase 1):
+  - `ST_AsGeoJSON(...)` arrives as a `string` field.
+  - `json`/`jsonb` columns arrive as type `other` with already-parsed object values.
+  - A raw `geom` column arrives as a hex EWKB string.
+- **Scaffold Jest hang.** create-plugin 7.17.0's Jest setup installs a global `MessageChannel` that React's scheduler leaves open, so Jest never exits. Worked around in the root `jest-setup.js`. Recheck after `create-plugin update`.
+- **Local npm.** The system npm 9.2.0 (Debian package) fails installs with socket timeouts. npm 10 works; `packageManager` records `npm@10.9.9`.
+- **Node version.** `.nvmrc` asks for Node 24, CI uses Node 22, and local Node is 22.22.1. One transitive dev dependency asks for Node ≥22.22.2 (warning only).
+- **npm audit.**
+  - 13 moderate findings in production dependencies, all inside `@grafana/*` runtime externals.
+  - The 5 high findings are all in the dev-only `@grafana/sign-plugin` chain.
+- **Plugin validator.** Errors: none. Warnings:
+  - Repository links return 404 while the GitHub repository is private.
+  - The plugin is unsigned.
+  - No screenshots yet.
+
