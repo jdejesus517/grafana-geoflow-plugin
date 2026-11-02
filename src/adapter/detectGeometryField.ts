@@ -9,6 +9,8 @@ export type GeometryFieldDetection =
 // Checked in this order, case-insensitively (docs/architecture.md §3.2).
 const CONVENTIONAL_NAMES = ['geometry', 'geom', 'geojson', 'the_geom', 'wkb_geometry', 'shape'];
 
+const SAMPLE_SIZE = 10;
+
 const EXAMPLE_QUERY = 'SELECT ST_AsGeoJSON(geom) AS geometry, ...';
 
 /**
@@ -28,9 +30,9 @@ export function detectGeometryField(frame: DataFrame, preferred?: string): Geome
   for (const name of CONVENTIONAL_NAMES) {
     const index = fields.findIndex((f) => f.name.toLowerCase() === name && isCandidate(f));
     if (index >= 0) {
-      const sample = firstValue(fields[index]);
+      const samples = sampleValues(fields[index]);
       // An all-null column with a geometry name is still the geometry column.
-      if (sample === undefined || looksLikeGeoJson(sample)) {
+      if (samples.length === 0 || samples.some(looksLikeGeoJson)) {
         return { found: true, field: fields[index], index };
       }
     }
@@ -38,12 +40,12 @@ export function detectGeometryField(frame: DataFrame, preferred?: string): Geome
 
   for (let index = 0; index < fields.length; index++) {
     const field = fields[index];
-    if (isCandidate(field) && looksLikeGeoJson(firstValue(field))) {
+    if (isCandidate(field) && sampleValues(field).some(looksLikeGeoJson)) {
       return { found: true, field, index };
     }
   }
 
-  const wkb = fields.find((f) => f.type === FieldType.string && looksLikeWkbHex(firstValue(f)));
+  const wkb = fields.find((f) => f.type === FieldType.string && looksLikeWkbHex(sampleValues(f, 1)[0]));
   if (wkb) {
     return {
       found: false,
@@ -58,11 +60,17 @@ function isCandidate(field: Field): boolean {
   return field.type === FieldType.string || field.type === FieldType.other;
 }
 
-function firstValue(field: Field): unknown {
+// The first few non-empty values: enough that one malformed leading row doesn't hide a
+// geometry column, without scanning large frames.
+function sampleValues(field: Field, limit = SAMPLE_SIZE): unknown[] {
+  const samples: unknown[] = [];
   for (const value of field.values) {
     if (value !== null && value !== undefined && value !== '') {
-      return value;
+      samples.push(value);
+      if (samples.length === limit) {
+        break;
+      }
     }
   }
-  return undefined;
+  return samples;
 }

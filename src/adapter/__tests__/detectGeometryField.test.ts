@@ -68,6 +68,22 @@ describe('detectGeometryField', () => {
       expect(detectGeometryField(frame)).toMatchObject({ found: true, field: { name: 'Geom' } });
     });
 
+    it('is not hidden by a malformed first row', () => {
+      const frame = toDataFrame({
+        fields: [{ name: 'geometry', type: FieldType.string, values: ['{"type":"Point","coord', point] }],
+      });
+
+      expect(detectGeometryField(frame)).toMatchObject({ found: true, index: 0 });
+    });
+
+    it('samples only the first ten values', () => {
+      const frame = toDataFrame({
+        fields: [{ name: 'geometry', type: FieldType.string, values: [...Array(10).fill('{bad'), point] }],
+      });
+
+      expect(detectGeometryField(frame)).toMatchObject({ found: false, reason: 'none' });
+    });
+
     it('accepts an all-null geometry column', () => {
       const frame = toDataFrame({ fields: [{ name: 'geometry', type: FieldType.string, values: [null, null] }] });
 
