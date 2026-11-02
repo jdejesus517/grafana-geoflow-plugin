@@ -65,6 +65,12 @@ npm run e2e              # Playwright end-to-end tests; needs `npm run server` r
 
 Before the first e2e run, install the browser with `npx playwright install chromium`.
 
+Adapter unit tests use real data frames captured from the dev stack in `src/adapter/__fixtures__/`. After changing the fixture data in `docker/postgres/` or the minimum Grafana version, recapture them with `npm run server` running:
+
+```bash
+node scripts/capture-frames.mjs
+```
+
 ## Documentation
 
 - [Project overview](docs/project_overview.md)

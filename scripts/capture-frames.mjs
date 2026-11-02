@@ -1,0 +1,77 @@
+#!/usr/bin/env node
+// Capture real data frames from the running dev stack as adapter test fixtures.
+//
+// Runs each query below through Grafana's /api/ds/query against the provisioned
+// "GeoFlow PostGIS" data source and writes the resulting frame (data plane JSON, loadable
+// with dataFrameFromJSON) to src/adapter/__fixtures__/<name>.json.
+//
+// Rerun when the fixture data in docker/postgres changes or the minimum Grafana version moves:
+//   npm run server            # in another terminal; needs anonymous access (the dev default)
+//   node scripts/capture-frames.mjs
+//
+// GRAFANA_URL overrides http://localhost:3000.
+
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const GRAFANA_URL = process.env.GRAFANA_URL ?? 'http://localhost:3000';
+const DATASOURCE_UID = 'geoflow-postgis';
+const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', 'src', 'adapter', '__fixtures__');
+
+const FIXTURES = {
+  // GeoJSON text; Polygon (one with a hole) and MultiPolygon; enum, integer and timestamptz columns.
+  buildings: `SELECT id, name, building_type, floors, status, updated_at, ST_AsGeoJSON(geom, 6) AS geometry
+    FROM geoflow.buildings ORDER BY id`,
+  // GeoJSON text; LineString and MultiLineString; numeric and date columns.
+  fiber_cables: `SELECT id, name, cable_type, fiber_count, placement, length_m, installed_on, ST_AsGeoJSON(geom, 6) AS geometry
+    FROM geoflow.fiber_cables ORDER BY id`,
+  // jsonb geometry (arrives as already-parsed objects); Point and MultiPoint.
+  patch_panels_jsonb: `SELECT id, name, rack, port_count, ports_used, utilization_pct, ST_AsGeoJSON(geom, 6)::jsonb AS geom
+    FROM geoflow.patch_panels ORDER BY id`,
+  // Whole rows as GeoJSON Feature text, in a column with no conventional geometry name.
+  splice_cases_feature: `SELECT id, ST_AsGeoJSON(t.*, 'geom', 6) AS feature
+    FROM (SELECT id, name, enclosure_type, mount, geom FROM geoflow.splice_cases) AS t ORDER BY id`,
+  // All six geometry types in one frame.
+  network_assets: `SELECT asset_id, asset_type, name, status, ST_AsGeoJSON(geom, 6) AS geometry
+    FROM geoflow.network_assets ORDER BY asset_id`,
+  // NULL / empty / GeometryCollection geometries, and malformed raw text in geojson_text.
+  edge_cases: `SELECT id, name, description, ST_AsGeoJSON(geom, 6) AS geom, geojson_text
+    FROM geoflow.edge_cases ORDER BY id`,
+  // NC State Plane (EPSG:2264) without ST_Transform: PostGIS adds a crs member.
+  stateplane: `SELECT id, name, ST_AsGeoJSON(geom, 1) AS geometry
+    FROM geoflow.fiber_cables_stateplane ORDER BY id`,
+  // Raw geometry column: hex EWKB, not GeoJSON.
+  raw_wkb: `SELECT id, name, geom FROM geoflow.splice_cases ORDER BY id`,
+  // No geometry at all.
+  no_geometry: `SELECT id, name FROM geoflow.buildings ORDER BY id`,
+};
+
+async function capture(name, rawSql) {
+  const response = await fetch(`${GRAFANA_URL}/api/ds/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from: 'now-1h',
+      to: 'now',
+      queries: [{ refId: 'A', datasource: { uid: DATASOURCE_UID }, format: 'table', rawQuery: true, rawSql }],
+    }),
+  });
+  if (!response.ok) {
+    throw new Error(`${name}: HTTP ${response.status} ${await response.text()}`);
+  }
+  const result = (await response.json()).results.A;
+  if (result.error) {
+    throw new Error(`${name}: ${result.error}`);
+  }
+  const [frame] = result.frames;
+  await writeFile(join(OUT_DIR, `${name}.json`), JSON.stringify(frame, null, 2) + '\n');
+  console.log(`${name}: ${frame.data.values[0]?.length ?? 0} rows`);
+}
+
+const health = await fetch(`${GRAFANA_URL}/api/health`).then((r) => r.json());
+console.log(`Grafana ${health.version} at ${GRAFANA_URL}`);
+await mkdir(OUT_DIR, { recursive: true });
+for (const [name, sql] of Object.entries(FIXTURES)) {
+  await capture(name, sql);
+}
