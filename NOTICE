@@ -1,0 +1,14 @@
+GeoFlow
+Copyright 2026 Jose DeJesus
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party notices
+-------------------
+
+No third-party code is bundled into the plugin at this time. Grafana packages
+(@grafana/*, React, Emotion) are provided by Grafana at runtime and are not
+redistributed with this plugin.
+
+Attributions for bundled dependencies and for map data (for example
+"© OpenStreetMap contributors") will be added here as they are introduced.

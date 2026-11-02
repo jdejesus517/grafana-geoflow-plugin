@@ -9,7 +9,7 @@ Status: **Proposal, awaiting approval.** Nothing here is implemented yet.
 | Plugin name | GeoFlow |
 | Plugin id | `jdejesusio-geoflow-panel` |
 | Layer binding | Selectable mode; MVP ships "one layer per data frame" only (§3.4) |
-| Target Grafana | 13.x (`grafanaDependency: ">=13.0.0"`) |
+| Target Grafana | 13.2+ (`grafanaDependency: ">=13.2.0"`) |
 | Database | PostgreSQL 16+ with PostGIS 3.x |
 | Default basemap | OpenStreetMap standard raster tiles |
 | License | Apache-2.0; dependency license compatibility check pending (§5.4) |
@@ -84,20 +84,22 @@ Scaffolded with `npx @grafana/create-plugin@latest` (panel type). The repository
 docker-compose.yaml            # root compose file; wires the services below
                                # (kept at root so create-plugin's `npm run server` works)
 docker/
-  grafana/                     # everything the Grafana container needs
-    Dockerfile                 # FROM grafana/grafana:13.x (or the scaffold's .config image)
-    grafana.ini                # dev settings: plugin unsigned allow-list, CSP, logging
+  grafana/                     # Grafana deployment files; the image itself is the
+                               # scaffold-managed .config/Dockerfile (live reload, CI modes)
+    .env.example               # data source connection settings (GEOFLOW_PG_*)
     provisioning/
-      datasources/postgis.yaml # Grafana PostgreSQL data source → postgres service
+      datasources/datasources.yml # GeoFlow PostGIS data source → postgres service
       dashboards/              # dashboard provider + one JSON dashboard per feature
   postgres/                    # everything the database container needs
-    Dockerfile                 # FROM postgis/postgis:16-3.x (or pinned image tag only)
-    .env.example               # POSTGRES_USER / PASSWORD / DB
+    Dockerfile                 # FROM postgis/postgis:16-3.6
+    .env.example               # POSTGRES_USER / PASSWORD / DB, reader password
+    verify.sql                 # fixture sanity checks
     init/                      # executed on first start via /docker-entrypoint-initdb.d
       01_extensions.sql        # CREATE EXTENSION postgis
       02_schema.sql
       03_seed_fixtures.sql     # every geometry type, non-4326, invalid/empty rows
       04_seed_large.sql        # generated rows for performance testing
+      05_reader_role.sh        # read-only grafana_reader role
 src/
   module.ts                    # PanelPlugin registration + options
   plugin.json
@@ -210,7 +212,7 @@ WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
 Also accepted:
 
 - A column containing a full **GeoJSON Feature**, e.g. `ST_AsGeoJSON(t.*)`. Its `properties` are merged with the other columns.
-- A `json` / `jsonb` geometry column. Depending on the Grafana version, this arrives as a string or as an already-parsed object; both are handled.
+- A `json` / `jsonb` geometry column. On Grafana 13.2 this arrives as a field of type `other` whose values are already-parsed objects (verified in Phase 0); string values are handled too.
 
 ### 3.2 Geometry field resolution
 
@@ -285,8 +287,8 @@ Design rules that keep later modes cheap to add:
 
 | Risk | Mitigation |
 |---|---|
-| **Grafana version range.** Plugin APIs and the data source id changed over time (`postgres` → `grafana-postgresql-datasource`). | Target Grafana 13.x only: `grafanaDependency: ">=13.0.0"` in `plugin.json`, with `@grafana/*` packages pinned to 13.x. Do not depend on the data source id; read only `DataFrame`s. Run e2e tests against 13.0 and the latest 13.x release. |
-| **PostgreSQL / PostGIS versions.** | Support PostgreSQL 16+ with PostGIS 3.x. The dev image is pinned to `postgis/postgis:16-3.x`. An optional CI job runs the fixtures against the newest Postgres major to catch SQL differences in the documented queries. |
+| **Grafana version range.** Plugin APIs and the data source id changed over time (`postgres` → `grafana-postgresql-datasource`). | Target Grafana 13.2 and later: `grafanaDependency: ">=13.2.0"` in `plugin.json`, with `@grafana/*` packages pinned to 13.2.x. Do not depend on the data source id; read only `DataFrame`s. Run e2e tests against the minimum and latest versions (resolved by CI from `grafanaDependency`). |
+| **PostgreSQL / PostGIS versions.** | Support PostgreSQL 16+ with PostGIS 3.x. The dev image is pinned to `postgis/postgis:16-3.6`. An optional CI job runs the fixtures against the newest Postgres major to catch SQL differences in the documented queries. |
 | **Content Security Policy.** MapLibre spawns web workers from `blob:` URLs, and Grafana's optional CSP can block them. | Document the required `worker-src blob:` CSP directive. Evaluate `maplibregl.setWorkerUrl()` with a worker file shipped in the plugin bundle as a fallback. |
 | **WebGL availability.** MapLibre v5 requires WebGL2. Headless renderers, old GPUs and VDI environments may lack it. | Detect support on mount and show a clear message instead of a blank panel. Document the image renderer limitation. |
 | **Basemap tiles and air-gapped installs.** Public tile servers have usage policies and need internet access. | The default is OpenStreetMap's standard raster tiles (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). They're wrapped in a minimal inline MapLibre style, because OSM serves tiles, not a style JSON. Caveats: OSM's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy or bulk use and requires the attribution "© OpenStreetMap contributors". The panel always shows that attribution through MapLibre's attribution control. The basemap is configurable (raster tile URL template or a vector style URL) so production users can point at their own tile server. A "no basemap" (blank background) option covers air-gapped installs. |
@@ -314,8 +316,8 @@ Design rules that keep later modes cheap to add:
 ### 5.1 Local environment
 
 - Scaffold with `@grafana/create-plugin`. It provides webpack, Jest, Playwright, ESLint, the Docker Compose Grafana dev image and GitHub Actions CI.
-- Move the scaffold's Grafana container configuration into `docker/grafana/`. Pin it to Grafana 13.x and mount the built plugin (`dist/`) as `jdejesusio-geoflow-panel`.
-- Add a `postgres` service built from `docker/postgres/` (`postgis/postgis:16-3.x`). Seed it from `docker/postgres/init/*.sql` with fixture tables covering every geometry type, a non-4326 table, invalid and empty rows, and a large table for performance tests. Use a named volume for data. `docker compose down -v` resets it to the seed state.
+- Keep the scaffold-managed Grafana image (`.config/`, Grafana 13.2.x) and put the Grafana deployment files (provisioning, env) in `docker/grafana/`. The built plugin (`dist/`) is mounted as `jdejesusio-geoflow-panel`.
+- Add a `postgres` service built from `docker/postgres/` (`postgis/postgis:16-3.6`). Seed it from `docker/postgres/init/` with fixture tables covering every geometry type, a non-4326 table, invalid and empty rows, and a large table for performance tests. Use a named volume for data. `docker compose down -v` resets it to the seed state.
 - Provision the PostgreSQL data source and a set of dashboards in `docker/grafana/provisioning/`. Each dashboard exercises one feature: points only, mixed types, multi-layer, refresh. Every dashboard doubles as an e2e fixture.
 - The root `docker-compose.yaml` adds a healthcheck on `postgres` (`pg_isready`). Grafana uses `depends_on: condition: service_healthy`, so provisioned dashboards never start against an unready database.
 
@@ -325,7 +327,7 @@ Design rules that keep later modes cheap to add:
 |---|---|---|
 | Unit | Jest | Adapter: `frameToFeatureCollection` across all geometry types, Feature input, string vs object values, null/invalid/unsupported rows, id handling, field detection. Engine: `styleBuilders` output and the `setLayers` diff logic with `maplibre-gl` mocked. jsdom has no WebGL, so the real map is not exercised here. |
 | Component | Jest + React Testing Library | `MapPanel` calls the engine correctly on mount, data change, resize and unmount. Uses a fake `MapEngine`, which is another payoff of the interface. Covers the "no geometry field" hint. |
-| End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Clicking a known feature opens a popup with the expected attributes. Option changes take effect. Dashboard refresh updates features. Runs against Grafana 13.0 and the latest 13.x. |
+| End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Clicking a known feature opens a popup with the expected attributes. Option changes take effect. Dashboard refresh updates features. Runs against the minimum supported Grafana (13.2) and the latest release. |
 | Manual / perf | Provisioned "large" dashboard + browser profiler | Conversion and render timings at 1k, 10k and 100k features. |
 
 CI runs lint (including the engine import boundary), typecheck, unit tests, build, `@grafana/plugin-validator`, the license check (§5.4) and e2e on every PR.
@@ -379,7 +381,7 @@ All open items are resolved.
 | Plugin name | GeoFlow |
 | Plugin id | `jdejesusio-geoflow-panel` (org slug `jdejesusio`) |
 | Layer binding | Selectable mode: `perFrame` in the MVP, `byColumn` in Phase 10 |
-| Grafana version | 13.x |
+| Grafana version | 13.2+ |
 | PostgreSQL version | 16+ (PostGIS 3.x) |
 | Default basemap | OpenStreetMap standard raster tiles, with attribution |
 | License | Apache-2.0, pending the dependency license review |

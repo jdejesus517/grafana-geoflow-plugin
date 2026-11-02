@@ -1,0 +1,22 @@
+apiVersion: 1
+
+datasources:
+  # PostGIS fixtures from docker/postgres. Connection settings come from the Grafana
+  # container's environment (see docker/grafana/.env.example).
+  - name: GeoFlow PostGIS
+    type: grafana-postgresql-datasource
+    uid: geoflow-postgis
+    isDefault: true
+    url: $GEOFLOW_PG_HOST
+    user: $GEOFLOW_PG_USER
+    jsonData:
+      database: $GEOFLOW_PG_DATABASE
+      sslmode: disable
+      postgresVersion: 1600
+      timescaledb: false
+    secureJsonData:
+      password: $GEOFLOW_PG_PASSWORD
+
+  - name: TestData DB
+    type: testdata
+    uid: trlxrdZVk

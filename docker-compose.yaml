@@ -1,0 +1,41 @@
+# Development / e2e stack. Each service's files live in its own directory under docker/.
+#   grafana:  scaffold-managed image (.config/), provisioning from docker/grafana/
+#   postgres: PostgreSQL 16 + PostGIS with fixtures, built from docker/postgres/
+# Env defaults come from each directory's .env.example; an optional .env next to it overrides them.
+services:
+  grafana:
+    extends:
+      file: .config/docker-compose-base.yaml
+      service: grafana
+    volumes:
+      - ./docker/grafana/provisioning:/etc/grafana/provisioning
+    env_file:
+      - path: ./docker/grafana/.env.example
+      - path: ./docker/grafana/.env
+        required: false
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    build:
+      context: ./docker/postgres
+    container_name: jdejesusio-geoflow-postgres
+    env_file:
+      - path: ./docker/postgres/.env.example
+      - path: ./docker/postgres/.env
+        required: false
+    ports:
+      - '127.0.0.1:${GEOFLOW_PG_PORT:-5432}:5432'
+    volumes:
+      - geoflow-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # TCP check on purpose: during first-start init the temporary server only listens on
+      # the Unix socket, so this stays unhealthy until the seed scripts have finished.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  geoflow-pgdata:
