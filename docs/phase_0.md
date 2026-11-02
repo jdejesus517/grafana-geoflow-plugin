@@ -333,7 +333,7 @@ All exit criteria were verified locally from a clean state (`docker compose down
   - A raw `geom` column arrives as a hex EWKB string.
 - **Scaffold Jest hang.** create-plugin 7.17.0's Jest setup installs a global `MessageChannel` that React's scheduler leaves open, so Jest never exits. Worked around in the root `jest-setup.js`. Recheck after `create-plugin update`.
 - **Local npm.** The system npm 9.2.0 (Debian package) fails installs with socket timeouts. npm 10 works; `packageManager` records `npm@10.9.9`.
-- **Node version.** `.nvmrc` asks for Node 24, CI uses Node 22, and local Node is 22.22.1. One transitive dev dependency asks for Node ≥22.22.2 (warning only).
+- **Node version.** The scaffold shipped `.nvmrc` 24 with CI on 22, and Grafana's `build-plugin` action defaults to Node 20. Standardized on Node 26 (current LTS): `.nvmrc` is 26, the setup-node workflows read it, and the `build-plugin` / `bundle-size` actions pass `node-version: '26'` explicitly. Check these after any `create-plugin update`.
 - **npm audit.**
   - 13 moderate findings in production dependencies, all inside `@grafana/*` runtime externals.
   - The 5 high findings are all in the dev-only `@grafana/sign-plugin` chain.
