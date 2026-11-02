@@ -14,6 +14,25 @@ updates:
     commit-message:
       prefix: 'chore'
       include: 'scope'
+    ignore:
+      # Grafana provides these packages at runtime, so their version sets the APIs the plugin
+      # compiles against. Keep them on the minimum supported Grafana (grafanaDependency in
+      # src/plugin.json, currently 13.2.x) and take patch updates only; raise them together with
+      # grafanaDependency.
+      - dependency-name: '@grafana/data'
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
+      - dependency-name: '@grafana/i18n'
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
+      - dependency-name: '@grafana/runtime'
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
+      - dependency-name: '@grafana/schema'
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
+      - dependency-name: '@grafana/ui'
+        update-types: ['version-update:semver-minor', 'version-update:semver-major']
+      # ESLint 10 is not supported by eslint-plugin-react yet (peer dependency conflict, see #8).
+      # Remove once the scaffold's ESLint config supports it.
+      - dependency-name: 'eslint'
+        update-types: ['version-update:semver-major']
     groups:
       unit-test:
         patterns:
