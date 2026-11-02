@@ -218,11 +218,13 @@ Also accepted:
 
 Resolution runs in this order:
 
-1. An explicit field name from the layer config.
-2. A field named `geometry`, `geom`, `geojson`, `the_geom` or `wkb_geometry` (case-insensitive).
-3. The first string or other field whose first non-null value parses as GeoJSON geometry or Feature.
+1. An explicit field name from the layer config. If no column has that name, this is reported rather than silently falling back to detection.
+2. A field named `geometry`, `geom`, `geojson`, `the_geom`, `wkb_geometry` or `shape` (case-insensitive), of type string or other, whose content looks like GeoJSON.
+3. The first string or other field whose content parses as GeoJSON geometry or Feature.
 
-If nothing matches, the panel shows a hint with an example query instead of failing silently.
+"Content" means the first ten non-null values: one malformed leading row doesn't hide a geometry column.
+
+If nothing matches, the panel shows a hint instead of failing silently. When a column holds hex WKB/EWKB (a raw `geom` column), the hint says to wrap it in `ST_AsGeoJSON(...)`.
 
 ### 3.3 Row conversion algorithm
 
@@ -234,17 +236,21 @@ for each row i in 0..frame.length:
   if obj.type === 'Feature'       → geometry = obj.geometry, baseProps = obj.properties
   else                            → geometry = obj, baseProps = {}
   validate geometry.type ∈ {Point, MultiPoint, LineString, MultiLineString,
-                            Polygon, MultiPolygon}           (else "unsupported")
-  properties = baseProps ∪ { other field name → field.values[i] }
-  id = idField ? idField.values[i] : i
+                            Polygon, MultiPolygon}           (GeometryCollection → "unsupported")
+  crs member other than EPSG:4326 / CRS84                    → skip ("projected", names the CRS)
+  empty coordinates (PostGIS POINT EMPTY → [])               → skip ("empty")
+  coordinates nested wrongly or not finite numbers           → skip ("invalid")
+  any position outside lon ±180 / lat ±90                    → skip ("outOfRange")
+  properties = baseProps, then { other field name → field.values[i] } (columns win)
+  id = ids from the id column if all are unique finite numbers, else i
   push { type:'Feature', id, geometry, properties }
-return { FeatureCollection, warnings: {empty, invalid, unsupported} }
+return { FeatureCollection, warnings: counts per kind + first five samples }
 ```
 
 Notes:
 
 - The adapter iterates `field.values` arrays directly instead of using `DataFrameView`. This avoids creating a proxy object per row on large frames.
-- **Feature ids**: MapLibre's feature-state (hover highlighting) needs numeric ids or `promoteId`. If the `id` column is non-numeric, the adapter assigns the row index as `id` and keeps the original value in `properties`.
+- **Feature ids**: MapLibre's feature-state (hover highlighting) needs numeric ids or `promoteId`. The `id` column's values are used only when every one is a unique finite number. Otherwise every feature gets its row index, so a fallback id can never collide with a real one. The column's values stay in `properties` either way.
 - **Nested property values** (objects or arrays) are JSON-stringified, because MapLibre flattens them anyway.
 - **Display values** for popups are computed with `field.display(value)` and stored in a separate map per layer keyed by feature id. This keeps feature properties raw for data-driven styling later.
 - **Not supported in MVP**:

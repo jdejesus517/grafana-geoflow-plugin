@@ -1,0 +1,41 @@
+{
+  "schema": {
+    "refId": "A",
+    "meta": {
+      "typeVersion": [0, 0],
+      "executedQueryString": "SELECT id, ST_AsGeoJSON(t.*, 'geom', 6) AS feature\n    FROM (SELECT id, name, enclosure_type, mount, geom FROM geoflow.splice_cases) AS t ORDER BY id"
+    },
+    "fields": [
+      {
+        "name": "id",
+        "type": "number",
+        "typeInfo": {
+          "frame": "int32",
+          "nullable": true
+        }
+      },
+      {
+        "name": "feature",
+        "type": "string",
+        "typeInfo": {
+          "frame": "string",
+          "nullable": true
+        }
+      }
+    ]
+  },
+  "data": {
+    "values": [
+      [1, 2, 3, 4, 5, 6, 7],
+      [
+        "{\"type\": \"Feature\", \"geometry\": {\"type\":\"Point\",\"coordinates\":[-78.786,35.788]}, \"properties\": {\"id\": 1, \"name\": \"SC-01\", \"enclosure_type\": \"dome\", \"mount\": \"handhole\"}}",
+        "{\"type\": \"Feature\", \"geometry\": {\"type\":\"Point\",\"coordinates\":[-78.783,35.788]}, \"properties\": {\"id\": 2, \"name\": \"SC-02\", \"enclosure_type\": \"dome\", \"mount\": \"pole\"}}",
+        "{\"type\": \"Feature\", \"geometry\": {\"type\":\"Point\",\"coordinates\":[-78.78,35.788]}, \"properties\": {\"id\": 3, \"name\": \"SC-03\", \"enclosure_type\": \"inline\", \"mount\": \"vault\"}}",
+        "{\"type\": \"Feature\", \"geometry\": {\"type\":\"Point\",\"coordinates\":[-78.777,35.788]}, \"properties\": {\"id\": 4, \"name\": \"SC-04\", \"enclosure_type\": \"dome\", \"mount\": \"handhole\"}}",
+        "{\"type\": \"Feature\", \"geometry\": {\"type\":\"Point\",\"coordinates\":[-78.788,35.791]}, \"properties\": {\"id\": 5, \"name\": \"SC-05\", \"enclosure_type\": \"dome\", \"mount\": \"pole\"}}",
+        "{\"type\": \"Feature\", \"geometry\": {\"type\":\"Point\",\"coordinates\":[-78.7845,35.7855]}, \"properties\": {\"id\": 6, \"name\": \"SC-06\", \"enclosure_type\": \"dome\", \"mount\": \"handhole\"}}",
+        "{\"type\": \"Feature\", \"geometry\": {\"type\":\"Point\",\"coordinates\":[-78.7815,35.786]}, \"properties\": {\"id\": 7, \"name\": \"SC-07\", \"enclosure_type\": \"inline\", \"mount\": \"handhole\"}}"
+      ]
+    ]
+  }
+}

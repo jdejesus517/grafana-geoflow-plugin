@@ -1,0 +1,74 @@
+{
+  "schema": {
+    "refId": "A",
+    "meta": {
+      "typeVersion": [0, 0],
+      "executedQueryString": "SELECT id, name, ST_AsGeoJSON(geom, 1) AS geometry\n    FROM geoflow.fiber_cables_stateplane ORDER BY id"
+    },
+    "fields": [
+      {
+        "name": "id",
+        "type": "number",
+        "typeInfo": {
+          "frame": "int32",
+          "nullable": true
+        }
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "typeInfo": {
+          "frame": "string",
+          "nullable": true
+        }
+      },
+      {
+        "name": "geometry",
+        "type": "string",
+        "typeInfo": {
+          "frame": "string",
+          "nullable": true
+        }
+      }
+    ]
+  },
+  "data": {
+    "values": [
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+      [
+        "BB-01",
+        "BB-02",
+        "BB-03",
+        "BB-04",
+        "DS-01",
+        "DS-02",
+        "DS-03",
+        "DR-01",
+        "DR-02",
+        "DR-03",
+        "DR-04",
+        "DR-05",
+        "DR-06",
+        "DR-07",
+        "DR-08"
+      ],
+      [
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2062844.6,741813.9],[2063022.5,741814.3],[2063467.4,741797]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2063467.4,741797],[2064357.1,741798.9]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2064357.1,741798.9],[2065246.9,741800.9]]}",
+        "{\"type\":\"MultiLineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[[2065246.9,741800.9],[2065691.7,741801.9]],[[2065691.7,741801.9],[2066136.6,741802.9]]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2062904,741777.6],[2062902.7,742341.8],[2062871.9,742887.7]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2063467.4,741797],[2063469.4,740887],[2063914.2,740888]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2066136.6,741802.9],[2066133,743404.5],[2066785.4,743405.9]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2064357.1,741798.9],[2064802,741799.9],[2064801.6,741963.7]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2065246.9,741800.9],[2065244.8,742710.9],[2065511.8,742711.5]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2066136.6,741802.9],[2066138.2,741074.9],[2066405.2,741075.5]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2063914.2,740888],[2063915.7,740196.4]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2062871.9,742887.7],[2062870.4,743615.7],[2062306.9,743614.5]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2063914.2,740888],[2063617.7,740887.3],[2063621.2,739249.4],[2063206,739248.5]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2065246.9,741800.9],[2065252.1,739434.9],[2065519,739435.5]]}",
+        "{\"type\":\"LineString\",\"crs\":{\"type\":\"name\",\"properties\":{\"name\":\"EPSG:2264\"}},\"coordinates\":[[2065519,739435.5],[2065726.7,739436],[2065727.4,739108.4],[2065905.4,739108.8]]}"
+      ]
+    ]
+  }
+}

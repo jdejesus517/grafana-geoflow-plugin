@@ -1,0 +1,177 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 1: what the GeoFlow adapter makes of each kind of geometry input, including rows it skips.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT asset_id, asset_type, name, status, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.network_assets\nORDER BY asset_id",
+          "refId": "A"
+        }
+      ],
+      "title": "Mixed geometry types",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, port_count, ports_used, ST_AsGeoJSON(geom, 6)::jsonb AS geom\nFROM geoflow.patch_panels\nORDER BY id",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, ST_AsGeoJSON(t.*, 'geom', 6) AS feature\nFROM (SELECT id, name, enclosure_type, mount, geom FROM geoflow.splice_cases) AS t\nORDER BY id",
+          "refId": "B"
+        }
+      ],
+      "title": "jsonb and Feature input",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 9
+      },
+      "id": 3,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, description, ST_AsGeoJSON(geom, 6) AS geom\nFROM geoflow.edge_cases\nORDER BY id",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, geom\nFROM geoflow.splice_cases\nORDER BY id",
+          "refId": "B"
+        }
+      ],
+      "title": "Edge cases",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 9
+      },
+      "id": 4,
+      "options": {},
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, ST_AsGeoJSON(geom, 1) AS geometry\nFROM geoflow.fiber_cables_stateplane\nORDER BY id",
+          "refId": "A"
+        }
+      ],
+      "title": "State Plane without ST_Transform",
+      "type": "jdejesusio-geoflow-panel"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["geoflow"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "01 Adapter",
+  "uid": "geoflow-01-adapter",
+  "version": 1
+}

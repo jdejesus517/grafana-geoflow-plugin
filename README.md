@@ -40,6 +40,8 @@ PostgreSQL is published on `127.0.0.1:5432` (override with `GEOFLOW_PG_PORT`).
 
 **Fixture data** is a small, fictional fiber optic network in downtown Cary, NC (buildings, fiber cables, splice cases and patch panels), plus edge-case rows and 100k synthetic service locations for performance testing. Building footprints and cable routes are hand-drawn approximations and don't depict real infrastructure. Grafana connects as the read-only `grafana_reader` role.
 
+New or renamed dashboard files under `docker/grafana/provisioning/dashboards/` are loaded when Grafana starts, so run `docker compose restart grafana` after adding one.
+
 The init scripts run only when the data volume is empty. To reset the database to the seed state:
 
 ```bash
@@ -61,9 +63,16 @@ npm run test:ci          # unit tests (Jest)
 npm run build
 npm run license:check    # production dependency license gate
 npm run e2e              # Playwright end-to-end tests; needs `npm run server` running
+npm run bench:adapter    # 100k-row conversion timing (not part of CI)
 ```
 
 Before the first e2e run, install the browser with `npx playwright install chromium`.
+
+Adapter unit tests use real data frames captured from the dev stack in `src/adapter/__fixtures__/`. After changing the fixture data in `docker/postgres/` or the minimum Grafana version, recapture them with `npm run server` running:
+
+```bash
+node scripts/capture-frames.mjs
+```
 
 ## Documentation
 
