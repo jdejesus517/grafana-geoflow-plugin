@@ -30,6 +30,10 @@ const ALLOWED = [
   /^locales\/[\w-]+\/[\w.-]+\.json$/,
 ];
 
+// Files the plugin must ship. THIRD_PARTY_NOTICES.txt carries the license notices that bundled
+// packages (MapLibre: BSD-3-Clause) require in binary distributions.
+const REQUIRED = ['module.js', 'plugin.json', 'LICENSE', 'THIRD_PARTY_NOTICES.txt'];
+
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
   return entries
@@ -51,6 +55,11 @@ if (unexpected.length > 0) {
   console.error(`check:dist: ${unexpected.length} unexpected file(s) in dist/:`);
   unexpected.forEach((file) => console.error(`  ${file}`));
   console.error('Remove them from src/, or add a pattern to scripts/check-dist.mjs if they belong in the plugin.');
+  process.exit(1);
+}
+const missing = REQUIRED.filter((file) => !files.includes(file));
+if (missing.length > 0) {
+  console.error(`check:dist: missing required file(s) in dist/: ${missing.join(', ')}`);
   process.exit(1);
 }
 console.log(`check:dist: ${files.length} files, all expected.`);

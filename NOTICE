@@ -6,9 +6,20 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party notices
 -------------------
 
-No third-party code is bundled into the plugin at this time. Grafana packages
-(@grafana/*, React, Emotion) are provided by Grafana at runtime and are not
-redistributed with this plugin.
+The plugin bundles MapLibre GL JS (BSD-3-Clause, https://maplibre.org) and the
+packages MapLibre depends on, plus small runtime helpers from webpack's
+style-loader and css-loader (MIT). The build generates the full list, with each
+package's license text, as THIRD_PARTY_NOTICES.txt in the packaged plugin
+(webpack/ThirdPartyNoticesPlugin.ts).
 
-Attributions for bundled dependencies and for map data (for example
-"© OpenStreetMap contributors") will be added here as they are introduced.
+Grafana packages (@grafana/*, React, Emotion) are provided by Grafana at runtime
+and are not redistributed with this plugin.
+
+Map data
+--------
+
+The default basemap shows OpenStreetMap tiles. Map data © OpenStreetMap
+contributors, available under the Open Database License
+(https://www.openstreetmap.org/copyright). The map shows this attribution in
+its corner. Tiles come from the OpenStreetMap Foundation's tile servers, whose
+usage policy applies: https://operations.osmfoundation.org/policies/tiles/
