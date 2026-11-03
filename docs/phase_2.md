@@ -1,6 +1,6 @@
 # Phase 2: Map Engine Skeleton and Basemap
 
-Status: **Approved** (2026-11-02).
+Status: **Implemented** (2026-11-03). See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §1 (key decisions), §2.4 (engine layer), §4.1 (compatibility risks), §5.3 (Phase 2 row).
 
 ## Goal
@@ -256,3 +256,54 @@ Confirmed 2026-11-02.
 | Phase 1 data summary | Kept as an optional overlay, off by default. The existing dashboards turn it on for e2e coverage. |
 | Basemap kinds | All four now: OSM, custom XYZ tiles, style URL, none. |
 | Rotation and pitch | Turned off; maps stay north-up. Can become options later. |
+
+## Outcome
+
+All exit criteria were met, locally against Grafana 13.2.4 and in CI:
+- 203 unit and component tests and 14 e2e tests pass
+- typecheck, lint, `check:dist` and the license check pass
+- CI passes on draft PR #20, with e2e tests on Grafana 13.2.5, 13.3.0 and nightly
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Interactive OSM basemap with zoom controls, attribution, resize and dark-theme dimming | Met. Dark theme also restyles MapLibre's controls to match Grafana. |
+| 2 | Basemap switchable between OSM, custom tiles, style URL and none, without recreating the map | Met. The e2e test tags the canvas before switching and checks it's still the same one afterwards. |
+| 3 | 20 GeoFlow panels load, scroll and close without WebGL context errors | Met after a design change: see Differences from the plan. |
+| 4 | Clear message without WebGL2 | Met: the WebGL2 probe rejects with `WebGLUnavailableError`, and the panel shows its message. |
+| 5 | `src/engine/` free of Grafana, React and Emotion; boundary rule passes | Met. |
+| 6 | MapLibre lazy-loaded, not in `module.js` | Met (sizes below). |
+| 7 | `dist/` holds only expected files, enforced by `check:dist` | Met. `check:dist` also requires `THIRD_PARTY_NOTICES.txt`. |
+| 8 | Third-party license notices in `dist/` | Met: `THIRD_PARTY_NOTICES.txt` lists 26 bundled packages with their license texts. |
+| 9 | Tests pass locally and in CI, with no requests to `tile.openstreetmap.org` | Met locally and in CI. Every e2e test stubs tile hosts through `tests/fixtures/`. |
+| 10 | Works with Grafana's CSP; directives documented | Met with one directive: the tile host in `connect-src`. Documented in the README. |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Loaded |
+|---|---|---|---|
+| `module.js` | 19.2 KiB | 7.2 KiB | With the plugin |
+| `maplibre.js` (engine and MapLibre CSS) | 34.3 KiB | 9.3 KiB | When the first map is created |
+| `36.js` (MapLibre) | 1131 KiB | 292 KiB | When the first map is created |
+| Worker (`*.mjs`) | 502 KiB | 142 KiB | When the first map is created |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| The map is created once per panel and destroyed on unmount | The map exists only while the panel is on screen or within 200 px of it. It's destroyed as soon as the panel leaves and created again, at the user's last view, when it returns. A lost context shows "Map paused" with a Reload button. | Grafana doesn't unmount panels that scroll away, so 20 maps meant 20 WebGL contexts, and Chromium drops the oldest beyond 16. A release delay was tried and dropped: fast scrolling kept maps alive behind the viewport while new ones started ahead of it. Approved during step 2.8. |
+| No CSP directive expected | The tile host must be added to `connect-src` | MapLibre fetches raster tiles with `fetch()`. The worker needs no change. |
+| `THIRD_PARTY_NOTICES.txt` generated with the license checker and copied into `dist/` | Generated at build time by a webpack plugin (`webpack/ThirdPartyNoticesPlugin.ts`) from the bundled modules | It can't drift from what ships. MapLibre's dist file inlines its dependencies, so the plugin also walks MapLibre's dependency tree. One package (`murmurhash-js`) keeps its license only in its README; the plugin falls back to the README's License section. |
+| Dark theme: brightness-max 0.75, saturation -0.4, contrast 0.1 | brightness-max 0.6, saturation -0.5, contrast 0.1 | Tuned by eye in Grafana: at 0.75 the tiles still glared against a dark dashboard. |
+| `NavigationControl` with zoom buttons and compass | Zoom buttons only | Rotation is turned off, so the compass would do nothing. |
+| Invalid basemap URLs show "a hint in the options pane" | A custom option editor (`UrlEditor.tsx`) validates the URL and shows the problem under the input. Basemap load errors also show a small notice in the panel. | Grafana's built-in text option has no dynamic validation. |
+| The data summary replaces the "No data" view for panels without queries | The map shows even without data | A basemap is useful on its own, and Phase 3 draws data on it. |
+| Custom tile attribution | Shown as plain text (HTML-escaped) | MapLibre renders attribution as HTML, and the text comes from a dashboard editor. |
+| `02-basemap` dashboard in step 2.8 | Added in step 2.6 | It was needed to tune dark theme by eye. |
+
+### Findings for later phases
+
+- **Raster tile zoom.** With 256-pixel raster tiles, MapLibre requests tiles one zoom level above the map's zoom: zoom 15 fetches `/16/` tiles.
+- **Attribution when hidden.** MapLibre keeps its attribution element when no source has an attribution, and hides it with `maplibregl-attrib-empty`. Tests should check that class rather than whether the element exists.
+- **Phase 3 and `setStyle`.** Changing the basemap calls `setStyle`, which drops user layers. Phase 3 carries them across with `transformStyle`, as the architecture planned.
+- **Dev stack only.** Grafana runs with `app_mode=development` in the scaffold's dev stack and injects a live-reload script into its own page. Under CSP that script is blocked. It doesn't come from the plugin and doesn't happen in production.
+- **Parallel e2e load.** Chromium renders WebGL in software in CI, so many maps at once slow the e2e run. CI runs tests one at a time; local parallel runs pass now that the 20-panel test keeps few maps alive.
