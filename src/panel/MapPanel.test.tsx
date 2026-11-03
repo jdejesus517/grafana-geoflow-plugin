@@ -18,19 +18,51 @@ class FakeEngine implements MapEngine {
   resize = jest.fn();
   destroy = jest.fn();
   errorListeners: Array<(error: EngineError) => void> = [];
-  on: MapEngine['on'] = (event, listener) => {
+  on = jest.fn((event: string, listener: (payload: never) => void) => {
     if (event === 'error') {
       this.errorListeners.push(listener as (error: EngineError) => void);
     }
     return () => undefined;
-  };
+  }) as jest.Mock & MapEngine['on'];
+}
+
+/** IntersectionObserver whose entries the tests control. */
+class FakeIntersectionObserver {
+  static instances: FakeIntersectionObserver[] = [];
+  /** Whether observed elements report as on screen straight away. */
+  static startOnScreen = true;
+  constructor(private readonly callback: IntersectionObserverCallback) {
+    FakeIntersectionObserver.instances.push(this);
+  }
+  observe() {
+    if (FakeIntersectionObserver.startOnScreen) {
+      queueMicrotask(() => this.report(true));
+    }
+  }
+  disconnect() {}
+  report(isIntersecting: boolean) {
+    this.callback([{ isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+  }
+}
+
+/** Moves every panel on or off screen. */
+function setOnScreen(onScreen: boolean) {
+  act(() => FakeIntersectionObserver.instances.forEach((observer) => observer.report(onScreen)));
 }
 
 let engine: FakeEngine;
+const realIntersectionObserver = global.IntersectionObserver;
 
 beforeEach(() => {
   engine = new FakeEngine();
   jest.mocked(createMapEngine).mockReset().mockResolvedValue(engine);
+  FakeIntersectionObserver.instances = [];
+  FakeIntersectionObserver.startOnScreen = true;
+  global.IntersectionObserver = FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+});
+
+afterEach(() => {
+  global.IntersectionObserver = realIntersectionObserver;
 });
 
 interface PanelOverrides {
@@ -131,6 +163,67 @@ describe('MapPanel', () => {
       unmount();
       await act(async () => finishLoad(engine));
       expect(engine.mount).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('off screen', () => {
+    it('waits until the panel is on screen before creating the map', async () => {
+      FakeIntersectionObserver.startOnScreen = false;
+      await renderPanel();
+      expect(createMapEngine).not.toHaveBeenCalled();
+
+      setOnScreen(true);
+      await act(async () => {});
+      expect(engine.mount).toHaveBeenCalledTimes(1);
+    });
+
+    it('releases the map off screen, and recreates it at the last view', async () => {
+      await renderPanel();
+      const viewListener = engine.on.mock.calls.find(([event]) => event === 'viewChange')![1];
+      act(() => viewListener({ center: [10, 20], zoom: 5 }));
+
+      setOnScreen(false);
+      expect(engine.destroy).toHaveBeenCalledTimes(1);
+
+      const second = new FakeEngine();
+      jest.mocked(createMapEngine).mockResolvedValue(second);
+      setOnScreen(true);
+      await act(async () => {});
+      expect(second.mount).toHaveBeenCalledWith(
+        screen.getByTestId('geoflow-map'),
+        expect.objectContaining({ view: { center: [10, 20], zoom: 5 } })
+      );
+      expect(second.setView).not.toHaveBeenCalled();
+    });
+
+    it('applies a view changed while off screen when the map comes back', async () => {
+      const { rerender } = await renderPanel();
+      setOnScreen(false);
+      rerender(<MapPanel {...props({ options: { view: { lat: 1, lon: 2, zoom: 3 } } })} />);
+
+      const second = new FakeEngine();
+      jest.mocked(createMapEngine).mockResolvedValue(second);
+      setOnScreen(true);
+      await act(async () => {});
+      expect(second.mount).toHaveBeenCalledWith(
+        screen.getByTestId('geoflow-map'),
+        expect.objectContaining({ view: { center: [2, 1], zoom: 3 } })
+      );
+    });
+
+    it('pauses a map whose WebGL context was lost, and reloads it on request', async () => {
+      await renderPanel();
+      const lostListener = engine.on.mock.calls.find(([event]) => event === 'contextLost')![1];
+      act(() => lostListener(undefined as never));
+
+      expect(engine.destroy).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('geoflow-map-paused')).toHaveTextContent('too many maps open');
+
+      const second = new FakeEngine();
+      jest.mocked(createMapEngine).mockResolvedValue(second);
+      await act(async () => screen.getByRole('button', { name: 'Reload map' }).click());
+      expect(second.mount).toHaveBeenCalledTimes(1);
+      expect(screen.queryByTestId('geoflow-map-paused')).not.toBeInTheDocument();
     });
   });
 

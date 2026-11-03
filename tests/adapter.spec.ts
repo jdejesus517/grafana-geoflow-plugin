@@ -1,4 +1,4 @@
-import { test, expect } from '@grafana/plugin-e2e';
+import { test, expect } from './fixtures';
 
 // Expected adapter results for the seeded fixtures (docker/postgres/init/03_seed_fixtures.sql).
 const PANELS = [

@@ -24,7 +24,7 @@ export class MapLibreEngine implements MapEngine {
   private basemapKey = '';
   private theme: EngineTheme = { dark: false, background: 'transparent' };
   private readonly lastErrorAt = new Map<string, number>();
-  private readonly listeners: Listeners = { viewChange: new Set(), error: new Set() };
+  private readonly listeners: Listeners = { viewChange: new Set(), error: new Set(), contextLost: new Set() };
 
   async mount(container: HTMLElement, { view, basemap, theme }: EngineOptions): Promise<void> {
     if (this.destroyed || this.map) {
@@ -62,6 +62,13 @@ export class MapLibreEngine implements MapEngine {
       this.emit('viewChange', { center: [lng, lat], zoom: map.getZoom() });
     });
     map.on('error', (event) => this.forwardError(event.error, (event as { sourceId?: string }).sourceId));
+    // MapLibre also fires a synthetic, immediately restored loss when it restarts its workers;
+    // only a loss reported by the browser is real.
+    map.on('webglcontextlost', (event) => {
+      if (event.originalEvent?.isTrusted) {
+        this.emit('contextLost', undefined);
+      }
+    });
     // A theme change while a new style is still loading has no layer to paint yet.
     map.on('style.load', () => this.applyTheme());
     this.map = map;
@@ -104,8 +111,9 @@ export class MapLibreEngine implements MapEngine {
     this.destroyed = true;
     this.map?.remove();
     this.map = undefined;
-    this.listeners.viewChange.clear();
-    this.listeners.error.clear();
+    for (const listeners of Object.values(this.listeners)) {
+      listeners.clear();
+    }
   }
 
   private applyTheme(): void {

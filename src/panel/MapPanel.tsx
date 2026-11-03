@@ -1,15 +1,21 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, PanelProps } from '@grafana/data';
-import { useStyles2, useTheme2 } from '@grafana/ui';
+import { Button, useStyles2, useTheme2 } from '@grafana/ui';
 import { framesToFeatureCollections } from '../adapter';
-import { BasemapSpec, EngineOptions, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
+import { BasemapSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { GeoFlowOptions, basemapFromOptions, viewFromOptions } from './options';
+import { useOnScreen } from './useOnScreen';
 
 interface Props extends PanelProps<GeoFlowOptions> {}
 
-type MapStatus = { state: 'loading' | 'ready' } | { state: 'failed'; message: string };
+/**
+ * A panel this close to the viewport counts as on screen, so its map is ready as it scrolls in.
+ * Further away, the map is destroyed straight away: with any delay, fast scrolling keeps maps alive
+ * behind the viewport while new ones start ahead of it, and the page runs out of WebGL contexts.
+ */
+const ON_SCREEN_MARGIN = '200px';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   // MapLibre's controls are styled for a light page; these overrides, scoped to the panel, match
@@ -69,6 +75,19 @@ const getStyles = (theme: GrafanaTheme2) => ({
     border-radius: ${theme.shape.radius.default};
     box-shadow: ${theme.shadows.z1};
   `,
+  paused: css`
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    gap: ${theme.spacing(1)};
+    align-items: center;
+    justify-content: center;
+    padding: ${theme.spacing(2)};
+    text-align: center;
+    color: ${theme.colors.text.secondary};
+    background: ${theme.colors.background.primary};
+  `,
   message: css`
     display: flex;
     align-items: center;
@@ -93,15 +112,19 @@ const getStyles = (theme: GrafanaTheme2) => ({
 });
 
 /**
- * GeoFlow panel: an interactive basemap (docs/phase_2.md, Design §5). The map is created once,
- * updated in place as options, theme and size change, and destroyed on unmount.
+ * GeoFlow panel: an interactive basemap (docs/phase_2.md, Design §5). The map is created when the
+ * panel comes on screen, updated in place as options, theme and size change, and destroyed when
+ * the panel goes off screen or unmounts.
  */
 export const MapPanel = ({ data, options, width, height }: Props) => {
   const styles = useStyles2(getStyles);
   const theme = useTheme2();
+  const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const engineRef = useRef<MapEngine | undefined>(undefined);
-  const [status, setStatus] = useState<MapStatus>({ state: 'loading' });
+  const onScreen = useOnScreen(wrapperRef, ON_SCREEN_MARGIN);
+  const [engine, setEngine] = useState<MapEngine>();
+  const [failure, setFailure] = useState<string>();
+  const [paused, setPaused] = useState(false);
   // Remembers the basemap it came from, so it disappears once the user picks another basemap.
   const [basemapError, setBasemapError] = useState<{ basemap: BasemapSpec; message: string }>();
 
@@ -113,46 +136,63 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   const { lat, lon, zoom } = options.view ?? {};
   const view = useMemo(() => viewFromOptions({ lat, lon, zoom }), [lat, lon, zoom]);
 
+  // Where the map is looking: the configured view until the user moves it. A map that is
+  // released off screen and created again picks up from here.
+  const currentView = useRef(view);
+  const appliedView = useRef(view);
   // The engine loads asynchronously; it mounts with whatever the options are by then.
-  const latest = useRef<EngineOptions>({ basemap, theme: engineTheme, view });
+  const latest = useRef({ basemap, theme: engineTheme });
   useEffect(() => {
-    latest.current = { basemap, theme: engineTheme, view };
+    latest.current = { basemap, theme: engineTheme };
   });
 
+  // A map holds a WebGL context, and browsers cap them per page (16 in Chromium), so the map
+  // exists only while the panel is on or near the screen.
+  const wanted = onScreen && !paused && !failure;
   useEffect(() => {
-    let engine: MapEngine | undefined;
+    if (!wanted) {
+      return;
+    }
+    let created: MapEngine | undefined;
     let cancelled = false;
     createMapEngine()
-      .then((created) => {
+      .then((loaded) => {
         if (cancelled) {
           return;
         }
-        engine = created;
-        engine.on('error', (error) => setBasemapError({ basemap: latest.current.basemap, message: error.message }));
-        return engine.mount(containerRef.current!, latest.current).then(() => {
+        created = loaded;
+        loaded.on('error', (error) => setBasemapError({ basemap: latest.current.basemap, message: error.message }));
+        loaded.on('viewChange', (next) => (currentView.current = next));
+        loaded.on('contextLost', () => setPaused(true));
+        return loaded.mount(containerRef.current!, { ...latest.current, view: currentView.current }).then(() => {
           if (!cancelled) {
-            engineRef.current = engine;
-            setStatus({ state: 'ready' });
+            setEngine(loaded);
           }
         });
       })
       .catch((error: unknown) => {
         if (!cancelled) {
-          setStatus({ state: 'failed', message: mapFailureMessage(error) });
+          setFailure(mapFailureMessage(error));
         }
       });
     return () => {
       cancelled = true;
-      engine?.destroy();
-      engineRef.current = undefined;
+      created?.destroy();
+      setEngine(undefined);
     };
-  }, []);
+  }, [wanted]);
 
-  const ready = status.state === 'ready';
-  useEffect(() => engineRef.current?.setBasemap(basemap), [basemap, ready]);
-  useEffect(() => engineRef.current?.setTheme(engineTheme), [engineTheme, ready]);
-  useEffect(() => engineRef.current?.setView(view), [view, ready]);
-  useEffect(() => engineRef.current?.resize(), [width, height, ready]);
+  useEffect(() => engine?.setBasemap(basemap), [engine, basemap]);
+  useEffect(() => engine?.setTheme(engineTheme), [engine, engineTheme]);
+  useEffect(() => {
+    // Only a change to the configured view moves the map; a recreated map keeps the user's view.
+    if (view !== appliedView.current) {
+      appliedView.current = view;
+      currentView.current = view;
+      engine?.setView(view);
+    }
+  }, [engine, view]);
+  useEffect(() => engine?.resize(), [engine, width, height]);
 
   const results = useMemo(
     () =>
@@ -163,15 +203,23 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   );
 
   return (
-    <div className={styles.wrapper} style={{ width, height }} data-testid="geoflow-panel">
-      {status.state === 'failed' ? (
+    <div ref={wrapperRef} className={styles.wrapper} style={{ width, height }} data-testid="geoflow-panel">
+      {failure ? (
         <div className={styles.message} data-testid="geoflow-map-error">
-          {status.message}
+          {failure}
         </div>
       ) : (
         <div ref={containerRef} className={styles.map} data-testid="geoflow-map" />
       )}
-      {basemapError?.basemap === basemap && status.state === 'ready' && (
+      {paused && (
+        <div className={styles.paused} data-testid="geoflow-map-paused">
+          <div>The map was paused because this browser tab has too many maps open.</div>
+          <Button size="sm" variant="secondary" onClick={() => setPaused(false)}>
+            Reload map
+          </Button>
+        </div>
+      )}
+      {basemapError?.basemap === basemap && engine && (
         <div className={styles.notice} data-testid="geoflow-basemap-error" title={basemapError.message}>
           Basemap: {basemapError.message}
         </div>

@@ -293,6 +293,18 @@ describe('MapLibreEngine', () => {
       map.fire('error', tileError);
       expect(listener).toHaveBeenCalledTimes(3);
     });
+
+    it("reports a context loss from the browser, not MapLibre's synthetic one", async () => {
+      const { engine, map } = await mounted();
+      const listener = jest.fn();
+      engine.on('contextLost', listener);
+
+      map.fire('webglcontextlost', { originalEvent: { isTrusted: false } });
+      expect(listener).not.toHaveBeenCalled();
+
+      map.fire('webglcontextlost', { originalEvent: { isTrusted: true } });
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('destroy', () => {

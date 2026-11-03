@@ -34,6 +34,11 @@ export interface EngineError {
 export interface EngineEvents {
   viewChange: ViewState;
   error: EngineError;
+  /**
+   * The browser took the map's WebGL context away, usually because the page has too many (Chromium
+   * allows 16). The map stays blank until it is destroyed and created again.
+   */
+  contextLost: undefined;
 }
 
 export interface MapEngine {
