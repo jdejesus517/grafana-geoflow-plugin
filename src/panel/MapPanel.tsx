@@ -6,14 +6,22 @@ import { useStyles2 } from '@grafana/ui';
 import { framesToFeatureCollections } from '../adapter';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { GeoFlowOptions } from './options';
+import { SpikeMap } from './SpikeMap';
 
 interface Props extends PanelProps<GeoFlowOptions> {}
 
 const getStyles = (theme: GrafanaTheme2) => ({
   wrapper: css`
+    position: relative;
     overflow: auto;
     padding: ${theme.spacing(1)};
     font-size: ${theme.typography.bodySmall.fontSize};
+  `,
+  overlay: css`
+    position: relative;
+    z-index: 1;
+    display: inline-block;
+    background: ${theme.colors.background.primary};
   `,
   frame: css`
     margin-top: ${theme.spacing(1)};
@@ -44,19 +52,22 @@ export const MapPanel = ({ data, width, height, fieldConfig, id }: Props) => {
 
   return (
     <div className={styles.wrapper} style={{ width, height }} data-testid="geoflow-placeholder">
-      <strong>GeoFlow</strong>
-      {results.map((result, i) => {
-        const warning = firstWarning(result);
-        return (
-          <div key={result.refId} className={styles.frame} data-testid={`geoflow-frame-${result.refId}`}>
-            <div data-testid={`geoflow-summary-${result.refId}`}>{conversionSummary(result)}</div>
-            {warning && <div className={styles.secondary}>{warning}</div>}
-            <div className={styles.fields}>
-              {data.series[i].fields.map((field) => `${field.name} (${field.type})`).join(', ')}
+      <SpikeMap />
+      <div className={styles.overlay}>
+        <strong>GeoFlow</strong>
+        {results.map((result, i) => {
+          const warning = firstWarning(result);
+          return (
+            <div key={result.refId} className={styles.frame} data-testid={`geoflow-frame-${result.refId}`}>
+              <div data-testid={`geoflow-summary-${result.refId}`}>{conversionSummary(result)}</div>
+              {warning && <div className={styles.secondary}>{warning}</div>}
+              <div className={styles.fields}>
+                {data.series[i].fields.map((field) => `${field.name} (${field.type})`).join(', ')}
+              </div>
             </div>
-          </div>
-        );
-      })}
+          );
+        })}
+      </div>
     </div>
   );
 };

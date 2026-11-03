@@ -89,6 +89,7 @@
     "@grafana/runtime": "13.2.5",
     "@grafana/schema": "13.2.5",
     "@grafana/ui": "13.2.5",
+    "maplibre-gl": "^6.16.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
