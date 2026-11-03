@@ -1,5 +1,92 @@
+import { BasemapSpec, ViewState } from '../engine';
+
+export type BasemapKind = BasemapSpec['kind'];
+
+/** Panel options for GeoFlow (docs/phase_2.md, Design §5). */
+export interface GeoFlowOptions {
+  basemap: {
+    kind: BasemapKind;
+    /** XYZ template for `raster`, e.g. https://tiles.example.com/{z}/{x}/{y}.png */
+    tileUrl?: string;
+    tileAttribution?: string;
+    /** MapLibre style JSON URL for `style`. */
+    styleUrl?: string;
+  };
+  view: { lat: number; lon: number; zoom: number };
+  showSummary: boolean;
+}
+
+export const DEFAULT_OPTIONS: GeoFlowOptions = {
+  basemap: { kind: 'osm' },
+  view: { lat: 20, lon: 0, zoom: 1 },
+  showSummary: false,
+};
+
+const HTTP_URL = /^(https?:\/\/|\/)/i;
+
+/** Why a tile URL template can't be used, or undefined when it can. */
+export function tileUrlProblem(url: string | undefined): string | undefined {
+  const value = url?.trim() ?? '';
+  if (!value) {
+    return 'Enter a tile URL template';
+  }
+  if (!HTTP_URL.test(value)) {
+    return 'The tile URL must start with http://, https:// or /';
+  }
+  const missing = ['{z}', '{x}', '{y}'].filter((placeholder) => !value.includes(placeholder));
+  if (missing.length > 0) {
+    return `The tile URL needs ${missing.join(', ')}, for example https://tiles.example.com/{z}/{x}/{y}.png`;
+  }
+  return undefined;
+}
+
+/** Why a style URL can't be used, or undefined when it can. */
+export function styleUrlProblem(url: string | undefined): string | undefined {
+  const value = url?.trim() ?? '';
+  if (!value) {
+    return 'Enter a style URL';
+  }
+  if (!HTTP_URL.test(value)) {
+    return 'The style URL must start with http://, https:// or /';
+  }
+  return undefined;
+}
+
 /**
- * Panel options for GeoFlow. Empty until basemap, view and layer options are added
- * (see docs/architecture.md §2.2).
+ * The engine basemap for the panel options. Incomplete or invalid settings fall back to `none`
+ * rather than a broken style; the options pane shows why (see UrlEditor.tsx).
  */
-export type GeoFlowOptions = Record<string, never>;
+export function basemapFromOptions(basemap: GeoFlowOptions['basemap'] | undefined): BasemapSpec {
+  switch (basemap?.kind ?? DEFAULT_OPTIONS.basemap.kind) {
+    case 'osm':
+      return { kind: 'osm' };
+    case 'raster':
+      return tileUrlProblem(basemap?.tileUrl)
+        ? { kind: 'none' }
+        : { kind: 'raster', tiles: [basemap!.tileUrl!.trim()], attribution: basemap?.tileAttribution?.trim() ?? '' };
+    case 'style':
+      return styleUrlProblem(basemap?.styleUrl) ? { kind: 'none' } : { kind: 'style', url: basemap!.styleUrl!.trim() };
+    default:
+      return { kind: 'none' };
+  }
+}
+
+/** The initial view, clamped to valid ranges. */
+export function viewFromOptions(view: Partial<GeoFlowOptions['view']> | undefined): ViewState {
+  const { lat, lon, zoom } = { ...DEFAULT_OPTIONS.view, ...view };
+  return {
+    center: [
+      clamp(finite(lon, DEFAULT_OPTIONS.view.lon), -180, 180),
+      clamp(finite(lat, DEFAULT_OPTIONS.view.lat), -85, 85),
+    ],
+    zoom: clamp(finite(zoom, DEFAULT_OPTIONS.view.zoom), 0, 22),
+  };
+}
+
+function finite(value: unknown, fallback: number): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, value));
+}

@@ -33,7 +33,7 @@
         "y": 0
       },
       "id": 1,
-      "options": {},
+      "options": { "showSummary": true },
       "targets": [
         {
           "datasource": {
@@ -62,7 +62,7 @@
         "y": 0
       },
       "id": 2,
-      "options": {},
+      "options": { "showSummary": true },
       "targets": [
         {
           "datasource": {
@@ -102,7 +102,7 @@
         "y": 9
       },
       "id": 3,
-      "options": {},
+      "options": { "showSummary": true },
       "targets": [
         {
           "datasource": {
@@ -142,7 +142,7 @@
         "y": 9
       },
       "id": 4,
-      "options": {},
+      "options": { "showSummary": true },
       "targets": [
         {
           "datasource": {

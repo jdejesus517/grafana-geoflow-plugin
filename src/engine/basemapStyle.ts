@@ -19,7 +19,7 @@ const OSM_MAX_ZOOM = 19;
  */
 export function rasterPaint(theme: EngineTheme) {
   return theme.dark
-    ? { 'raster-brightness-max': 0.75, 'raster-saturation': -0.4, 'raster-contrast': 0.1 }
+    ? { 'raster-brightness-max': 0.6, 'raster-saturation': -0.5, 'raster-contrast': 0.1 }
     : { 'raster-brightness-max': 1, 'raster-saturation': 0, 'raster-contrast': 0 };
 }
 

@@ -1,0 +1,79 @@
+import { basemapFromOptions, styleUrlProblem, tileUrlProblem, viewFromOptions } from './options';
+
+const TILES = 'https://tiles.example.com/{z}/{x}/{y}.png';
+
+describe('basemapFromOptions', () => {
+  it('defaults to OpenStreetMap', () => {
+    expect(basemapFromOptions(undefined)).toEqual({ kind: 'osm' });
+  });
+
+  it('maps OpenStreetMap and None', () => {
+    expect(basemapFromOptions({ kind: 'osm', tileUrl: TILES })).toEqual({ kind: 'osm' });
+    expect(basemapFromOptions({ kind: 'none' })).toEqual({ kind: 'none' });
+  });
+
+  it('maps custom tiles, trimming the URL and attribution', () => {
+    expect(basemapFromOptions({ kind: 'raster', tileUrl: ` ${TILES} `, tileAttribution: ' © Example ' })).toEqual({
+      kind: 'raster',
+      tiles: [TILES],
+      attribution: '© Example',
+    });
+    expect(basemapFromOptions({ kind: 'raster', tileUrl: TILES })).toMatchObject({ attribution: '' });
+  });
+
+  it('maps a style URL', () => {
+    expect(basemapFromOptions({ kind: 'style', styleUrl: 'https://s.example.com/style.json' })).toEqual({
+      kind: 'style',
+      url: 'https://s.example.com/style.json',
+    });
+  });
+
+  it.each([
+    ['empty tile URL', { kind: 'raster' as const, tileUrl: '' }],
+    ['tile URL without placeholders', { kind: 'raster' as const, tileUrl: 'https://tiles.example.com/tile.png' }],
+    ['missing style URL', { kind: 'style' as const }],
+    ['non-HTTP style URL', { kind: 'style' as const, styleUrl: 'javascript:alert(1)' }],
+    ['unknown kind from an old or hand-edited dashboard', { kind: 'wms' as never }],
+  ])('falls back to none for %s', (_, basemap) => {
+    expect(basemapFromOptions(basemap)).toEqual({ kind: 'none' });
+  });
+});
+
+describe('tileUrlProblem', () => {
+  it('accepts absolute and same-origin templates', () => {
+    expect(tileUrlProblem(TILES)).toBeUndefined();
+    expect(tileUrlProblem('/tiles/{z}/{x}/{y}.png')).toBeUndefined();
+  });
+
+  it('names the missing placeholders', () => {
+    expect(tileUrlProblem('https://t.example.com/{z}/tile.png')).toMatch(/^The tile URL needs \{x\}, \{y\}/);
+  });
+
+  it('rejects empty and non-HTTP URLs', () => {
+    expect(tileUrlProblem('  ')).toBe('Enter a tile URL template');
+    expect(tileUrlProblem('ftp://t/{z}/{x}/{y}.png')).toBe('The tile URL must start with http://, https:// or /');
+  });
+});
+
+describe('styleUrlProblem', () => {
+  it('accepts HTTP URLs only', () => {
+    expect(styleUrlProblem('https://s.example.com/style.json')).toBeUndefined();
+    expect(styleUrlProblem(undefined)).toBe('Enter a style URL');
+    expect(styleUrlProblem('data:application/json,{}')).toBe('The style URL must start with http://, https:// or /');
+  });
+});
+
+describe('viewFromOptions', () => {
+  it('defaults to the whole world', () => {
+    expect(viewFromOptions(undefined)).toEqual({ center: [0, 20], zoom: 1 });
+  });
+
+  it('converts lat/lon to a lon/lat center', () => {
+    expect(viewFromOptions({ lat: 35.79, lon: -78.78, zoom: 15 })).toEqual({ center: [-78.78, 35.79], zoom: 15 });
+  });
+
+  it('clamps out-of-range values and replaces non-numbers', () => {
+    expect(viewFromOptions({ lat: 95, lon: -200, zoom: 30 })).toEqual({ center: [-180, 85], zoom: 22 });
+    expect(viewFromOptions({ lat: NaN, lon: undefined, zoom: null as never })).toEqual({ center: [0, 20], zoom: 1 });
+  });
+});
