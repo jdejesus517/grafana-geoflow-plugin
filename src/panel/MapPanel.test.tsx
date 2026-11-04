@@ -1,7 +1,10 @@
 import React from 'react';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import {
+  DataFrame,
+  Field,
   FieldType,
+  LinkModel,
   LoadingState,
   PanelData,
   PanelProps,
@@ -15,6 +18,7 @@ import {
   EngineError,
   EngineOptions,
   LayerSpec,
+  PointerHit,
   MapEngine,
   WebGLUnavailableError,
   createMapEngine,
@@ -35,13 +39,26 @@ class FakeEngine implements MapEngine {
   setTheme = jest.fn();
   setView = jest.fn();
   setLayers = jest.fn();
+  /** Attaches the content, as MapLibre's popup does, so tests can query and click it. */
+  openTooltip = jest.fn((_lngLat: [number, number], content: HTMLElement, _options: { interactive: boolean }) => {
+    document.body.appendChild(content);
+  });
+  closeTooltip = jest.fn();
+  setHovered = jest.fn();
+  setSelected = jest.fn();
   resize = jest.fn();
   renderedFeatureCounts = jest.fn(() => Promise.resolve({}));
   destroy = jest.fn();
   errorListeners: Array<(error: EngineError) => void> = [];
+  pointerListeners: Record<'click' | 'hover', Set<(hit: PointerHit) => void>> = { click: new Set(), hover: new Set() };
   on = jest.fn((event: string, listener: (payload: never) => void) => {
     if (event === 'error') {
       this.errorListeners.push(listener as (error: EngineError) => void);
+    }
+    if (event === 'click' || event === 'hover') {
+      const listeners = this.pointerListeners[event];
+      listeners.add(listener as (hit: PointerHit) => void);
+      return () => listeners.delete(listener as (hit: PointerHit) => void);
     }
     return () => undefined;
   }) as jest.Mock & MapEngine['on'];
@@ -289,6 +306,254 @@ describe('MapPanel', () => {
 
       rerender(<MapPanel {...props({ data: { series: [toDataFrame({ ...series[0] })] } })} />);
       expect(screen.queryByTestId('geoflow-layer-error')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('tooltips', () => {
+    const point = (lon: number) => `{"type":"Point","coordinates":[${lon},35.78]}`;
+    /** Text ids, so MapLibre ids are row indexes and keys are the ids. */
+    const assets = (rows: Array<[string, string]>) =>
+      toDataFrame({
+        refId: 'A',
+        fields: [
+          { name: 'id', type: FieldType.string, values: rows.map(([id]) => id) },
+          { name: 'name', type: FieldType.string, values: rows.map(([, name]) => name) },
+          { name: 'geometry', type: FieldType.string, values: rows.map((_, i) => point(-78.78 + i / 1000)) },
+        ],
+      });
+    const noKeys = toDataFrame({
+      refId: 'B',
+      fields: [
+        { name: 'name', type: FieldType.string, values: ['Cable 1', 'Cable 2'] },
+        { name: 'geometry', type: FieldType.string, values: [point(-78.7), point(-78.71)] },
+      ],
+    });
+    const series = [
+      assets([
+        ['a', 'Office'],
+        ['b', 'Depot'],
+      ]),
+      noKeys,
+    ];
+    const at: [number, number] = [-78.78, 35.78];
+    const hit = (...features: Array<[string, number]>): PointerHit => ({
+      lngLat: at,
+      features: features.map(([layerId, featureId]) => ({ layerId, featureId })),
+    });
+
+    function fire(event: 'click' | 'hover', pointerHit: PointerHit) {
+      act(() => engine.pointerListeners[event].forEach((listener) => listener(pointerHit)));
+    }
+    /** The tooltip content the panel last handed to the engine. */
+    function tooltip() {
+      const [, element, options] = engine.openTooltip.mock.lastCall!;
+      return {
+        content: within(element as HTMLElement),
+        interactive: (options as { interactive: boolean }).interactive,
+      };
+    }
+    const lastOf = (mock: jest.Mock) => mock.mock.lastCall?.[0];
+
+    it('pins a tooltip on click, with the feature and its query, and selects it', async () => {
+      await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      const { content, interactive } = tooltip();
+
+      expect(engine.openTooltip).toHaveBeenLastCalledWith(at, expect.any(HTMLElement), { interactive: true });
+      expect(interactive).toBe(true);
+      expect(content.getByText('Query A')).toBeInTheDocument();
+      expect(content.getByText('Depot')).toBeInTheDocument();
+      expect(lastOf(engine.setSelected)).toEqual({ layerId: 'A', featureId: 1 });
+    });
+
+    it('pages through overlapping features, topmost first', async () => {
+      await renderPanel({ data: { series } });
+      fire('click', hit(['B', 0], ['A', 0]));
+      expect(tooltip().content.getByTestId('geoflow-tooltip-pager')).toHaveTextContent('1 of 2');
+      expect(tooltip().content.getByText('Cable 1')).toBeInTheDocument();
+
+      act(() => tooltip().content.getByRole('button', { name: 'Next feature' }).click());
+
+      expect(tooltip().content.getByTestId('geoflow-tooltip-pager')).toHaveTextContent('2 of 2');
+      expect(tooltip().content.getByText('Office')).toBeInTheDocument();
+      expect(lastOf(engine.setSelected)).toEqual({ layerId: 'A', featureId: 0 });
+    });
+
+    it.each([
+      ['a click on empty map', () => fire('click', hit())],
+      ['Escape', () => fireEvent.keyDown(document, { key: 'Escape' })],
+      ['the close button', () => act(() => tooltip().content.getByRole('button', { name: 'Close' }).click())],
+    ])('unpins on %s', async (_, close) => {
+      await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      engine.closeTooltip.mockClear();
+      close();
+
+      expect(engine.closeTooltip).toHaveBeenCalled();
+      expect(lastOf(engine.setSelected)).toBeUndefined();
+    });
+
+    it('shows a compact tooltip on hover that lets the pointer through, and highlights', async () => {
+      await renderPanel({ data: { series } });
+      fire('hover', hit(['A', 0], ['B', 1]));
+      const { content, interactive } = tooltip();
+
+      expect(interactive).toBe(false);
+      expect(content.getByText('Office')).toBeInTheDocument();
+      expect(content.getByTestId('geoflow-tooltip-more')).toHaveTextContent('+1 more');
+      expect(content.queryByRole('button', { name: 'Close' })).not.toBeInTheDocument();
+      expect(lastOf(engine.setHovered)).toEqual({ layerId: 'A', featureId: 0 });
+
+      fire('hover', hit());
+      expect(engine.closeTooltip).toHaveBeenCalled();
+      expect(lastOf(engine.setHovered)).toBeUndefined();
+    });
+
+    it('only moves the hover highlight while a tooltip is pinned', async () => {
+      await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      engine.openTooltip.mockClear();
+      fire('hover', { lngLat: [1, 2], features: [{ layerId: 'B', featureId: 0 }] });
+
+      expect(engine.openTooltip).not.toHaveBeenCalledWith([1, 2], expect.anything(), expect.anything());
+      expect(lastOf(engine.setHovered)).toEqual({ layerId: 'B', featureId: 0 });
+      expect(lastOf(engine.setSelected)).toEqual({ layerId: 'A', featureId: 1 });
+    });
+
+    it('in Click mode, highlights on hover without a tooltip, and pins on click', async () => {
+      await renderPanel({ data: { series }, options: { tooltip: 'click' } });
+      fire('hover', hit(['A', 0]));
+
+      expect(engine.openTooltip).not.toHaveBeenCalled();
+      expect(lastOf(engine.setHovered)).toEqual({ layerId: 'A', featureId: 0 });
+
+      fire('click', hit(['A', 0]));
+      expect(tooltip().interactive).toBe(true);
+    });
+
+    it('when Off, makes layers non-interactive and ignores clicks', async () => {
+      await renderPanel({ data: { series }, options: { tooltip: 'off' } });
+      fire('click', hit(['A', 0]));
+
+      expect((engine.setLayers.mock.lastCall![0] as LayerSpec[]).every((layer) => !layer.interactive)).toBe(true);
+      expect(engine.openTooltip).not.toHaveBeenCalled();
+    });
+
+    it('follows a pinned feature by its key when new data arrives', async () => {
+      const { rerender } = await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      // Depot moves to row 0, so its MapLibre id (the row index) changes from 1 to 0.
+      rerender(
+        <MapPanel
+          {...props({
+            data: {
+              series: [
+                assets([
+                  ['b', 'Depot'],
+                  ['c', 'Hub'],
+                ]),
+                noKeys,
+              ],
+            },
+          })}
+        />
+      );
+
+      expect(tooltip().content.getByText('Depot')).toBeInTheDocument();
+      expect(lastOf(engine.setSelected)).toEqual({ layerId: 'A', featureId: 0 });
+    });
+
+    it('closes when the pinned feature is gone from new data', async () => {
+      const { rerender } = await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      engine.closeTooltip.mockClear();
+      rerender(<MapPanel {...props({ data: { series: [assets([['c', 'Hub']]), noKeys] } })} />);
+
+      expect(engine.closeTooltip).toHaveBeenCalled();
+    });
+
+    it("closes when a pinned feature's layer has no keys and its data changed", async () => {
+      const { rerender } = await renderPanel({ data: { series } });
+      fire('click', hit(['B', 0]));
+      engine.closeTooltip.mockClear();
+      rerender(<MapPanel {...props({ data: { series: [series[0], toDataFrame({ ...noKeys })] } })} />);
+
+      expect(engine.closeTooltip).toHaveBeenCalled();
+    });
+
+    it('keeps a pinned feature when only another layer changed', async () => {
+      const { rerender } = await renderPanel({ data: { series } });
+      fire('click', hit(['B', 1]));
+      engine.closeTooltip.mockClear();
+      rerender(<MapPanel {...props({ data: { series: [assets([['z', 'Other']]), noKeys] } })} />);
+
+      expect(engine.closeTooltip).not.toHaveBeenCalled();
+      expect(tooltip().content.getByText('Cable 2')).toBeInTheDocument();
+    });
+
+    it('closes when the basemap changes', async () => {
+      const { rerender } = await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      engine.closeTooltip.mockClear();
+      rerender(<MapPanel {...props({ data: { series }, options: { basemap: { kind: 'none' } } })} />);
+
+      expect(engine.closeTooltip).toHaveBeenCalled();
+    });
+
+    describe('data links', () => {
+      /** Grafana gives fields with links a getLinks that fills in the row's values. */
+      function withLink(frame: DataFrame) {
+        const name = frame.fields.find((field) => field.name === 'name')!;
+        name.getLinks = ({ valueRowIndex }) => [
+          {
+            title: `Open ${name.values[valueRowIndex!]}`,
+            href: `/d/assets?var-name=${name.values[valueRowIndex!]}`,
+            target: '_self',
+            origin: name,
+          } as LinkModel<Field>,
+        ];
+        return frame;
+      }
+
+      it("shows the feature's links in the pinned tooltip", async () => {
+        await renderPanel({
+          data: {
+            series: [
+              withLink(
+                assets([
+                  ['a', 'Office'],
+                  ['b', 'Depot'],
+                ])
+              ),
+            ],
+          },
+        });
+        fire('click', hit(['A', 1]));
+        const link = tooltip().content.getByRole('link', { name: /Open Depot/ });
+
+        expect(link).toHaveAttribute('href', '/d/assets?var-name=Depot');
+      });
+
+      it('leaves links out of the hover tooltip, where the pointer could not reach them', async () => {
+        await renderPanel({ data: { series: [withLink(assets([['a', 'Office']]))] } });
+        fire('hover', hit(['A', 0]));
+
+        expect(tooltip().content.getByText('Office')).toBeInTheDocument();
+        expect(tooltip().content.queryByRole('link')).not.toBeInTheDocument();
+      });
+    });
+
+    it('starts without a tooltip on a map created after the panel comes back on screen', async () => {
+      await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      setOnScreen(false);
+      const second = new FakeEngine();
+      jest.mocked(createMapEngine).mockResolvedValue(second);
+      setOnScreen(true);
+      await act(async () => {});
+
+      expect(second.openTooltip).not.toHaveBeenCalled();
+      expect(engine.pointerListeners.click.size).toBe(0);
     });
   });
 

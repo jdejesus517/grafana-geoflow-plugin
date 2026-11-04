@@ -50,3 +50,32 @@ export async function renderedFeatures(panel: Locator): Promise<Record<string, n
 }
 
 export { expect };
+
+/** The center and zoom a panel's map opens at, as in the dashboard JSON (`options.view`). */
+export interface PanelView {
+  lat: number;
+  lon: number;
+  zoom: number;
+}
+
+/**
+ * Where a coordinate is on screen in a panel's map, for pointing at known features. Plain Web
+ * Mercator at MapLibre's 512 px tile scale, measured from the canvas center, which is the view's
+ * center whatever the panel's size. Scrolls the panel into view first, since the map only exists
+ * on screen. Only valid while the map is still at `view` (no panning or zooming).
+ */
+export async function mapPoint(panel: Locator, [lon, lat]: [number, number], view: PanelView) {
+  await panel.scrollIntoViewIfNeeded();
+  const box = await panel.locator('canvas.maplibregl-canvas').boundingBox();
+  if (!box) {
+    throw new Error('The panel has no map canvas');
+  }
+  const project = (lon: number, lat: number) => {
+    const size = 512 * 2 ** view.zoom;
+    const sin = Math.sin((lat * Math.PI) / 180);
+    return [((lon + 180) / 360) * size, (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * size];
+  };
+  const [x, y] = project(lon, lat);
+  const [cx, cy] = project(view.lon, view.lat);
+  return { x: box.x + box.width / 2 + x - cx, y: box.y + box.height / 2 + y - cy };
+}

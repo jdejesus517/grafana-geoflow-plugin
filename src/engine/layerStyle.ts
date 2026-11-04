@@ -16,6 +16,26 @@ const OUTLINE_WIDTH = 1;
 const POINT_STROKE_WIDTH = 1;
 
 /**
+ * How much a hovered or selected feature stands out (docs/phase_4.md, Design §4): wider lines
+ * and outlines, a larger point with a thicker stroke, and a stronger fill.
+ */
+export const HIGHLIGHT = { width: 2, radius: 2, strokeWidth: 2, fillOpacity: 0.25 } as const;
+
+/** Feature-state keys the engine sets for highlights. */
+export const HOVERED_STATE = 'hovered';
+export const SELECTED_STATE = 'selected';
+
+const highlighted: ExpressionSpecification = [
+  'any',
+  ['boolean', ['feature-state', SELECTED_STATE], false],
+  ['boolean', ['feature-state', HOVERED_STATE], false],
+];
+
+function whenHighlighted(value: number, normal: number): ExpressionSpecification {
+  return ['case', highlighted, value, normal];
+}
+
+/**
  * Prefix for every source and style layer drawn from data. It keeps them apart from the basemap's
  * ids and from any layer in a user's style URL. Layer ids come from refIds, which may contain any
  * character, so ids are only ever built from the prefix, never parsed back.
@@ -53,19 +73,28 @@ const FILTERS: Record<StyleLayerKind, ExpressionSpecification> = {
   circle: geometryFilter('Point', 'MultiPoint'),
 };
 
-type Paint = Record<string, string | number>;
+type Paint = Record<string, string | number | ExpressionSpecification>;
 
 /** Paint properties per style layer kind. Kept separate so the engine can diff them on a style change. */
 export function paintFor(style: LayerStyle): Record<StyleLayerKind, Paint> {
   return {
-    fill: { 'fill-color': style.color, 'fill-opacity': style.fillOpacity },
-    outline: { 'line-color': style.color, 'line-width': OUTLINE_WIDTH },
-    line: { 'line-color': style.color, 'line-width': style.lineWidth },
+    fill: {
+      'fill-color': style.color,
+      'fill-opacity': whenHighlighted(Math.min(1, style.fillOpacity + HIGHLIGHT.fillOpacity), style.fillOpacity),
+    },
+    outline: {
+      'line-color': style.color,
+      'line-width': whenHighlighted(OUTLINE_WIDTH + HIGHLIGHT.width, OUTLINE_WIDTH),
+    },
+    line: {
+      'line-color': style.color,
+      'line-width': whenHighlighted(style.lineWidth + HIGHLIGHT.width, style.lineWidth),
+    },
     circle: {
       'circle-color': style.color,
-      'circle-radius': style.pointRadius,
+      'circle-radius': whenHighlighted(style.pointRadius + HIGHLIGHT.radius, style.pointRadius),
       'circle-stroke-color': style.outlineColor,
-      'circle-stroke-width': POINT_STROKE_WIDTH,
+      'circle-stroke-width': whenHighlighted(HIGHLIGHT.strokeWidth, POINT_STROKE_WIDTH),
     },
   };
 }

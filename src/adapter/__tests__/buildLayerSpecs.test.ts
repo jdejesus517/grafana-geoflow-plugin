@@ -63,6 +63,11 @@ describe('buildLayerSpecs', () => {
     expect(layers.map((layer) => layer.style.color)).toEqual(['green', 'yellow', 'blue', 'green']);
   });
 
+  it('makes layers interactive unless told otherwise', () => {
+    expect(buildLayerSpecs([converted('A')], defaults)[0].interactive).toBe(true);
+    expect(buildLayerSpecs([converted('A')], defaults, { interactive: false })[0].interactive).toBe(false);
+  });
+
   it('returns no layers for no frames', () => {
     expect(buildLayerSpecs([], defaults)).toEqual([]);
   });

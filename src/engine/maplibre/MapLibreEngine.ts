@@ -5,28 +5,47 @@ import {
   GeoJSONSource,
   GeoJSONSourceSpecification,
   Map as MapLibreMap,
+  MapMouseEvent,
   NavigationControl,
+  Popup,
   StyleSpecification,
   setWorkerUrl,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint } from '../basemapStyle';
 import { WebGLUnavailableError } from '../errors';
-import { STYLE_LAYER_KINDS, dataSourceId, paintFor, styleLayerId, styleLayerIds, styleLayers } from '../layerStyle';
+import {
+  HOVERED_STATE,
+  SELECTED_STATE,
+  STYLE_LAYER_KINDS,
+  dataSourceId,
+  paintFor,
+  styleLayerId,
+  styleLayerIds,
+  styleLayers,
+} from '../layerStyle';
 import {
   BasemapSpec,
   EngineEvents,
   EngineOptions,
   EngineTheme,
+  FeatureRef,
   LayerSpec,
   LayerStyle,
   MapEngine,
+  PointerHit,
   ViewState,
 } from '../types';
 import { workerUrl } from './workerUrl';
 
 /** Errors from the same source are forwarded at most once per this interval. */
 export const ERROR_THROTTLE_MS = 10_000;
+
+/** Hover and click look this many pixels around the pointer, so 2 px lines can be hit. */
+export const HIT_TOLERANCE_PX = 4;
+
+/** Keeps the hover tooltip clear of the pointer. */
+const TOOLTIP_OFFSET_PX = 12;
 
 let workerUrlSet = false;
 
@@ -47,7 +66,25 @@ export class MapLibreEngine implements MapEngine {
   /** Sources and layers can only be added once the style has loaded. */
   private styleReady = false;
   private readonly lastErrorAt = new Map<string, number>();
-  private readonly listeners: Listeners = { viewChange: new Set(), error: new Set(), contextLost: new Set() };
+  private readonly listeners: Listeners = {
+    viewChange: new Set(),
+    error: new Set(),
+    contextLost: new Set(),
+    hover: new Set(),
+    click: new Set(),
+  };
+  private tooltip?: Popup;
+  private tooltipContent?: HTMLElement;
+  private readonly highlights: Record<typeof HOVERED_STATE | typeof SELECTED_STATE, FeatureRef | undefined> = {
+    hovered: undefined,
+    selected: undefined,
+  };
+  /** The latest pointer move, waiting for the next animation frame. */
+  private pendingMove?: MapMouseEvent;
+  private moveFrame?: number;
+  /** Whether the last hover event had features, so leaving them is reported once. */
+  private overFeatures = false;
+  private lastPointer: [number, number] = [0, 0];
 
   async mount(container: HTMLElement, { view, basemap, theme, layers }: EngineOptions): Promise<void> {
     if (this.destroyed || this.map) {
@@ -95,6 +132,13 @@ export class MapLibreEngine implements MapEngine {
         this.emit('contextLost', undefined);
       }
     });
+    map.on('click', (event) => {
+      if (this.fromCanvas(event)) {
+        this.emit('click', this.hitTest(event));
+      }
+    });
+    map.on('mousemove', (event) => this.queueMove(event));
+    map.on('mouseout', () => this.leave());
     // MapLibre fires styledataloading when it starts loading a new style from scratch, and
     // style.load both when that finishes and after a basemap change it applied in place. Theme
     // and layer changes made in between are applied on style.load.
@@ -134,6 +178,47 @@ export class MapLibreEngine implements MapEngine {
   setLayers(layers: LayerSpec[]): void {
     this.layers = layers;
     this.syncLayers();
+  }
+
+  openTooltip(lngLat: [number, number], content: HTMLElement, { interactive }: { interactive: boolean }): void {
+    const map = this.map;
+    if (!map) {
+      return;
+    }
+    // The panel renders the content and positions nothing; MapLibre keeps it anchored as the map
+    // moves (docs/phase_4.md, Design §4).
+    this.tooltip ??= new Popup({
+      closeButton: false,
+      closeOnClick: false,
+      closeOnMove: false,
+      maxWidth: 'none',
+      offset: TOOLTIP_OFFSET_PX,
+      className: 'geoflow-tooltip',
+    });
+    const tooltip = this.tooltip;
+    if (this.tooltipContent !== content) {
+      tooltip.setDOMContent(content);
+      this.tooltipContent = content;
+    }
+    tooltip.setLngLat(lngLat);
+    if (!tooltip.isOpen()) {
+      tooltip.addTo(map);
+    }
+    // A hover tooltip lets the pointer through to the map underneath.
+    tooltip.getElement().style.pointerEvents = interactive ? '' : 'none';
+  }
+
+  closeTooltip(): void {
+    this.tooltip?.remove();
+    this.tooltipContent = undefined;
+  }
+
+  setHovered(feature: FeatureRef | undefined): void {
+    this.highlight(HOVERED_STATE, feature);
+  }
+
+  setSelected(feature: FeatureRef | undefined): void {
+    this.highlight(SELECTED_STATE, feature);
   }
 
   resize(): void {
@@ -179,6 +264,10 @@ export class MapLibreEngine implements MapEngine {
 
   destroy(): void {
     this.destroyed = true;
+    if (this.moveFrame !== undefined) {
+      cancelAnimationFrame(this.moveFrame);
+    }
+    this.closeTooltip();
     this.map?.remove();
     this.map = undefined;
     this.applied.clear();
@@ -274,9 +363,103 @@ export class MapLibreEngine implements MapEngine {
     const after = paintFor(to);
     for (const kind of STYLE_LAYER_KINDS) {
       for (const [property, value] of Object.entries(after[kind])) {
-        if (before[kind][property] !== value) {
+        // Values can be expressions (highlights), so compare them as JSON.
+        if (JSON.stringify(before[kind][property]) !== JSON.stringify(value)) {
           map.setPaintProperty(styleLayerId(id, kind), property as PaintProperty, value);
         }
+      }
+    }
+  }
+
+  /** Interactive features under the pointer, topmost first, each once (docs/phase_4.md, Design §4). */
+  private hitTest({ point, lngLat }: MapMouseEvent): PointerHit {
+    const map = this.map!;
+    const hit: PointerHit = { lngLat: [lngLat.lng, lngLat.lat], features: [] };
+    const layers = this.layers
+      .filter((spec) => spec.interactive)
+      .flatMap(({ id }) => styleLayerIds(id))
+      .filter((id) => map.getLayer(id));
+    if (layers.length === 0) {
+      return hit;
+    }
+    const layerBySource = new Map(this.layers.map(({ id }) => [dataSourceId(id), id]));
+    const seen = new Set<string>();
+    const t = HIT_TOLERANCE_PX;
+    const box: [[number, number], [number, number]] = [
+      [point.x - t, point.y - t],
+      [point.x + t, point.y + t],
+    ];
+    // MapLibre returns features topmost first, once per tile and style layer.
+    for (const feature of map.queryRenderedFeatures(box, { layers })) {
+      const layerId = layerBySource.get(feature.source);
+      const key = `${feature.source}\n${feature.id}`;
+      if (layerId !== undefined && typeof feature.id === 'number' && !seen.has(key)) {
+        seen.add(key);
+        hit.features.push({ layerId, featureId: feature.id });
+      }
+    }
+    return hit;
+  }
+
+  /** One hit test per animation frame, with the latest pointer position. */
+  private queueMove(event: MapMouseEvent): void {
+    this.pendingMove = event;
+    this.moveFrame ??= requestAnimationFrame(() => {
+      this.moveFrame = undefined;
+      const move = this.pendingMove;
+      this.pendingMove = undefined;
+      if (!move || !this.map) {
+        return;
+      }
+      const hit = this.hitTest(move);
+      this.lastPointer = hit.lngLat;
+      this.map.getCanvas().style.cursor = hit.features.length > 0 ? 'pointer' : '';
+      // Over empty map, report leaving once rather than on every move.
+      if (hit.features.length > 0 || this.overFeatures) {
+        this.overFeatures = hit.features.length > 0;
+        this.emit('hover', hit);
+      }
+    });
+  }
+
+  private leave(): void {
+    if (this.moveFrame !== undefined) {
+      cancelAnimationFrame(this.moveFrame);
+      this.moveFrame = undefined;
+    }
+    this.pendingMove = undefined;
+    if (this.map) {
+      this.map.getCanvas().style.cursor = '';
+    }
+    if (this.overFeatures) {
+      this.overFeatures = false;
+      this.emit('hover', { lngLat: this.lastPointer, features: [] });
+    }
+  }
+
+  /** Clicks inside a pinned tooltip land on its DOM, not the canvas; they aren't map clicks. */
+  private fromCanvas(event: MapMouseEvent): boolean {
+    const target = event.originalEvent?.target;
+    return !(target instanceof Node) || this.map!.getCanvasContainer().contains(target);
+  }
+
+  private highlight(state: typeof HOVERED_STATE | typeof SELECTED_STATE, feature: FeatureRef | undefined): void {
+    const previous = this.highlights[state];
+    if (previous?.layerId === feature?.layerId && previous?.featureId === feature?.featureId) {
+      return;
+    }
+    this.highlights[state] = feature;
+    const map = this.map;
+    if (!map) {
+      return;
+    }
+    // A layer that's gone (or a style still loading) has no source to set state on.
+    for (const [ref, value] of [
+      [previous, false],
+      [feature, true],
+    ] as const) {
+      if (ref && map.getSource(dataSourceId(ref.layerId))) {
+        map.setFeatureState({ source: dataSourceId(ref.layerId), id: ref.featureId }, { [state]: value });
       }
     }
   }

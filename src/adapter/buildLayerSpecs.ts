@@ -15,7 +15,11 @@ export interface LayerDefaults {
  * whose rows were all skipped still gets a layer, so its id is stable when a refresh brings
  * valid rows. Colors go by position among the layers, so frames without geometry don't use one.
  */
-export function buildLayerSpecs(results: ConversionResult[], defaults: LayerDefaults): LayerSpec[] {
+export function buildLayerSpecs(
+  results: ConversionResult[],
+  defaults: LayerDefaults,
+  { interactive }: { interactive: boolean } = { interactive: true }
+): LayerSpec[] {
   return results
     .filter((result) => !result.noGeometry)
     .map((result, i) => ({
@@ -26,5 +30,6 @@ export function buildLayerSpecs(results: ConversionResult[], defaults: LayerDefa
         color: defaults.colors[i % defaults.colors.length],
         outlineColor: defaults.outlineColor,
       },
+      interactive,
     }));
 }

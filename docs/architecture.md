@@ -185,7 +185,7 @@ interface LayerSpec {
   - Add or remove: add or remove the source and its layers.
   - A basemap `setStyle()` would drop user layers, so a `transformStyle` given at mount appends them to every new style (as built in Phase 3, below).
 - **`styleBuilders.ts`** is pure: `LayerSpec → LayerSpecification[]`. Most styling logic can therefore be tested without WebGL.
-- **Tooltips** (planned in [phase_4.md](phase_4.md)), following Grafana's own pattern: hovering a feature highlights it and shows a compact tooltip, and clicking pins a full one with a pager for overlapping features and the feature's data links.
+- **Tooltips** (Phase 4, details below), following Grafana's own pattern: hovering a feature highlights it and shows a compact tooltip, and clicking pins a full one with a pager for overlapping features and the feature's data links.
   - The engine does the hit testing (rendered features of interactive layers, a few pixels around the pointer), emits `hover` and `click` events, sets the highlights with feature-state, and anchors one `maplibregl.Popup`.
   - The panel renders the tooltip's content with React and Grafana's tooltip components into a DOM element it hands to the engine. The engine stays Grafana-free, and React escapes every value, so attribute values never go through `innerHTML` (they're untrusted data).
 
@@ -206,6 +206,20 @@ How the engine draws `LayerSpec`s, as built:
 - **Basemap changes:** `transformStyle`, passed to the `Map` constructor, appends the data sources and layers to every style MapLibre loads afterwards, inline or from a URL. MapLibre fires `style.load` both after a full style load and after a style it applied in place. The engine tracks readiness with `styledataloading` and `style.load`, and applies any `setLayers` call made in between on `style.load`.
 - **Errors:** map errors from a data source carry the layer id (`EngineError.layerId`), so the panel shows them under the query rather than as basemap errors.
 - **Test hook:** `MapEngine.renderedFeatureCounts()` waits for the map to be idle and counts distinct drawn features per layer. Only e2e tests use it, through a DOM event on the panel's map container. All test-only code in `src/` is marked `// Test hook:`.
+
+#### Tooltips (Phase 4)
+
+How hover and click tooltips work, as built ([phase_4.md](phase_4.md)):
+- **Engine contract additions:**
+  - `LayerSpec.interactive`: whether the layer's features can be hovered and clicked
+  - `hover` and `click` events with a `PointerHit`: the pointer's `lngLat` and the `FeatureRef`s (`{ layerId, featureId }`) under it, topmost first
+  - `openTooltip(lngLat, content, { interactive })` and `closeTooltip()`
+  - `setHovered(ref)` and `setSelected(ref)`
+- **Hit testing:** the rendered features of interactive layers within 4 px of the pointer, de-duplicated (MapLibre returns a feature once per tile and style layer). Hover runs at most once per animation frame. It reports while the pointer is over features, so a tooltip can follow it, and once when it leaves them. Clicks inside a pinned tooltip aren't map clicks.
+- **Tooltip:** one MapLibre `Popup` the engine anchors, with content the panel owns. The panel renders `FeatureTooltip`, built from Grafana's `VizTooltip*` components, into that element through a React portal. A hover tooltip lets the pointer through (`pointer-events: none`); passing the same element again only moves the popup.
+- **Highlights:** MapLibre feature-state (`hovered`, `selected`), read by `case` expressions in the style layers' paint.
+- **Panel state:** `useFeatureTooltip` keeps the hover and pinned state. What's shown is derived from the current engine, basemap, data and Tooltip mode, so a basemap change or a recreated map closes the tooltip without effects that reset state.
+- **Values:** formatted when a feature is hovered or clicked, from its data frame row, with the field config Grafana applied (`useFieldConfig()` in `module.ts`).
 
 ---
 
@@ -270,7 +284,10 @@ return { FeatureCollection, warnings: counts per kind + first five samples }
 Notes:
 
 - The adapter iterates `field.values` arrays directly instead of using `DataFrameView`. This avoids creating a proxy object per row on large frames.
-- **Feature ids**: MapLibre's feature-state (hover highlighting) needs numeric ids or `promoteId`. The `id` column's values are used only when every one is a unique finite number. Otherwise every feature gets its row index, so a fallback id can never collide with a real one. The column's values stay in `properties` either way.
+- **Feature ids and keys** (Phase 4): two separate identities.
+  - **MapLibre's feature id** is used for hit testing and feature-state highlights. MapLibre keeps ids only as non-negative whole numbers: it reads a negative id back as an unsigned 64-bit number and cuts decimals, so 7.2 and 7.7 collide (checked in Phase 4, step 4.1). The `id` column's values are used only when every one is a unique whole number from 0 to `Number.MAX_SAFE_INTEGER`. Otherwise every feature gets its row index, so a fallback id can never collide with a real one.
+  - **The feature key** follows a feature through a refresh. It's the `id` column's value, a number or a string, when every feature has one and they're all unique; otherwise there are no keys.
+  - The column's values stay in `properties` either way. Each conversion also records every feature's row (`featureRows`), and `featureRow`, `featureKey` and `featureByKey` look features up with cached maps.
 - **Nested property values** (objects or arrays) are JSON-stringified, because MapLibre flattens them anyway.
 - **Display values** for tooltips are computed with `field.display(value)` and kept apart from the feature properties, which stay raw for data-driven styling later. Phase 4 formats them when a feature is hovered or clicked, rather than up front for every row ([phase_4.md](phase_4.md)).
 - **Not supported in MVP**:
@@ -330,6 +347,7 @@ Design rules that keep later modes cheap to add:
 |---|---|
 | **Payload size.** GeoJSON text is verbose. | Recommend `ST_AsGeoJSON(geom, 6)`. For detailed polygons, recommend `ST_SimplifyPreserveTopology`. Mention the data source row limit (`row_limit` in Grafana config). |
 | **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 8. If 100k blocks too long, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. A first measurement in Phase 3: 100k points draw about 2.5 s after the query returns, with main-thread tasks of up to about 0.5 s. |
+| **Hover on large data.** Hit testing runs on every pointer move, and a highlight changes feature-state on a large source. | Measured on 100k points in Phase 4 with the machine's GPU: hover is as fast as plain panning, with no main-thread task over 50 ms. Headless Chromium's default software rendering (SwiftShader) is far slower for anything that redraws a large layer, including panning, so performance has to be judged with the GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), not in the default e2e browser. |
 | **Redundant work on refresh.** | Conversion is cached per frame object (Phase 3), so a frame Grafana didn't replace keeps its data and the engine skips `setData`. Skipping frames that are new objects with the same content (structural hash) and keeping the viewport across refreshes unless "fit to data on refresh" is on come in Phase 7. |
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
 | **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` stays about 19 KiB. The Bundle Stats workflow reports size changes on every PR. |

@@ -1,0 +1,353 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 4: hover and click tooltips, formatted with field options, with data links, the Tooltip modes, and a tooltip followed through a refresh.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Buildings",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "lat": 35.7885,
+          "lon": -78.7815,
+          "zoom": 16
+        },
+        "tooltip": "hover"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "floors"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "suffix: floors"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "installed_on"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "time:YYYY-MM-DD"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "address"
+            },
+            "properties": [
+              {
+                "id": "custom.hideInTooltip",
+                "value": true
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "status"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "in_service": {
+                        "text": "In service"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "name"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Show ${__data.fields.name}",
+                    "url": "/d/geoflow-04-geometry?var-building=${__data.fields.id}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, floors, status, installed_on, address, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.buildings\nORDER BY id",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Patch panels (click only)",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "lat": 35.78805,
+          "lon": -78.7881,
+          "zoom": 16
+        },
+        "tooltip": "click"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization_pct"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percent"
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, port_count, utilization_pct, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.patch_panels\nORDER BY id",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 3,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Overlap",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "lat": 35.788,
+          "lon": -78.786,
+          "zoom": 16
+        },
+        "tooltip": "hover"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, cable_type, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.fiber_cables\nORDER BY id",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, mount, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.splice_cases\nORDER BY id",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 4,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Text keys",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "lat": 35.78845,
+          "lon": -78.7815,
+          "zoom": 16
+        },
+        "tooltip": "hover"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- Text ids, in a new order on every refresh: a pinned tooltip follows its feature by key.\nSELECT asset_id AS id, name, asset_type, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.network_assets\nORDER BY random()",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "id": 5,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Tooltip off",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "lat": 35.7885,
+          "lon": -78.7815,
+          "zoom": 16
+        },
+        "tooltip": "off"
+      },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, floors, status, installed_on, address, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.buildings\nORDER BY id",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["geoflow"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "05 Tooltips",
+  "uid": "geoflow-05-tooltips",
+  "version": 1
+}

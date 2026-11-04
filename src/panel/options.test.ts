@@ -1,6 +1,18 @@
-import { basemapFromOptions, styleUrlProblem, tileUrlProblem, viewFromOptions } from './options';
+import { basemapFromOptions, styleUrlProblem, tileUrlProblem, tooltipMode, viewFromOptions } from './options';
 
 const TILES = 'https://tiles.example.com/{z}/{x}/{y}.png';
+
+describe('tooltipMode', () => {
+  it.each(['hover', 'click', 'off'] as const)('keeps %s', (mode) => {
+    expect(tooltipMode({ tooltip: mode })).toBe(mode);
+  });
+
+  it('defaults to hover for dashboards saved before the option, and for unknown values', () => {
+    expect(tooltipMode(undefined)).toBe('hover');
+    expect(tooltipMode({} as never)).toBe('hover');
+    expect(tooltipMode({ tooltip: 'always' as never })).toBe('hover');
+  });
+});
 
 describe('basemapFromOptions', () => {
   it('defaults to OpenStreetMap', () => {

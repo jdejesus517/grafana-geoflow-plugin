@@ -39,6 +39,20 @@ export interface LayerSpec {
   id: string;
   data: FeatureCollection<SupportedGeometry>;
   style: LayerStyle;
+  /** Hover and click report this layer's features, and the pointer turns into a hand over them. */
+  interactive: boolean;
+}
+
+/** A drawn feature: its layer and its MapLibre feature id. */
+export interface FeatureRef {
+  layerId: string;
+  featureId: number;
+}
+
+/** Where the pointer is, and the features under it, topmost first. Empty over empty map. */
+export interface PointerHit {
+  lngLat: [lon: number, lat: number];
+  features: FeatureRef[];
 }
 
 export interface EngineOptions {
@@ -58,6 +72,12 @@ export interface EngineError {
 
 export interface EngineEvents {
   viewChange: ViewState;
+  /**
+   * The pointer moved: at most once per animation frame while it's over interactive features, and
+   * once with no features when it leaves them or the map.
+   */
+  hover: PointerHit;
+  click: PointerHit;
   error: EngineError;
   /**
    * The browser took the map's WebGL context away, usually because the page has too many (Chromium
@@ -79,6 +99,17 @@ export interface MapEngine {
    * order, last on top; layers always draw above the basemap.
    */
   setLayers(layers: LayerSpec[]): void;
+  /**
+   * Shows `content` in the tooltip anchored at lngLat, replacing what was there; the same content
+   * element only moves it. A tooltip that isn't interactive lets the pointer through, so it never
+   * blocks hovering the map. The caller owns `content`.
+   */
+  openTooltip(lngLat: [lon: number, lat: number], content: HTMLElement, options: { interactive: boolean }): void;
+  closeTooltip(): void;
+  /** Highlights the hovered feature; undefined clears it. */
+  setHovered(feature: FeatureRef | undefined): void;
+  /** Highlights the selected (pinned) feature; undefined clears it. Independent of the hovered one. */
+  setSelected(feature: FeatureRef | undefined): void;
   resize(): void;
   // Test hook: e2e tests can't see features on the WebGL canvas, so they read these counts
   // through MapPanel's inspect event (docs/phase_3.md, Design §5). Nothing else calls it.

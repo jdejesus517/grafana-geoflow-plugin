@@ -2,6 +2,9 @@ import { BasemapSpec, ViewState } from '../engine';
 
 export type BasemapKind = BasemapSpec['kind'];
 
+/** When tooltips show: on hover (and pinned on click), only on click, or never (docs/phase_4.md). */
+export type TooltipMode = 'hover' | 'click' | 'off';
+
 /** Panel options for GeoFlow (docs/phase_2.md, Design §5). */
 export interface GeoFlowOptions {
   basemap: {
@@ -13,14 +16,29 @@ export interface GeoFlowOptions {
     styleUrl?: string;
   };
   view: { lat: number; lon: number; zoom: number };
+  tooltip: TooltipMode;
   showSummary: boolean;
+}
+
+/** Per-field options GeoFlow adds to Grafana's standard ones, usable as defaults and in overrides. */
+export interface GeoFlowFieldConfig {
+  /** Leave the field out of tooltips. Its data links still show. */
+  hideInTooltip?: boolean;
 }
 
 export const DEFAULT_OPTIONS: GeoFlowOptions = {
   basemap: { kind: 'osm' },
   view: { lat: 20, lon: 0, zoom: 1 },
+  tooltip: 'hover',
   showSummary: false,
 };
+
+const TOOLTIP_MODES: readonly TooltipMode[] = ['hover', 'click', 'off'];
+
+/** The tooltip mode, with the default for dashboards saved before the option existed. */
+export function tooltipMode(options: Pick<GeoFlowOptions, 'tooltip'> | undefined): TooltipMode {
+  return TOOLTIP_MODES.includes(options?.tooltip as TooltipMode) ? options!.tooltip : DEFAULT_OPTIONS.tooltip;
+}
 
 const HTTP_URL = /^(https?:\/\/|\/)/i;
 

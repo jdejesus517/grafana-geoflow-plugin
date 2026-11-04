@@ -4,7 +4,7 @@ import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint
 import { WebGLUnavailableError } from '../../errors';
 import { styleLayerIds, styleLayers } from '../../layerStyle';
 import { EngineOptions, EngineTheme, LayerSpec, LayerStyle } from '../../types';
-import { ERROR_THROTTLE_MS, MapLibreEngine } from '../MapLibreEngine';
+import { ERROR_THROTTLE_MS, HIT_TOLERANCE_PX, MapLibreEngine } from '../MapLibreEngine';
 
 type Handler = (event?: unknown) => void;
 
@@ -43,9 +43,14 @@ class FakeMap {
     this.layers.delete(id);
     this.layers.add(id);
   });
-  queryRenderedFeatures = jest.fn(({ layers }: { layers: string[] }) =>
-    this.rendered.filter((feature) => layers.includes(feature.layer.id))
-  );
+  /** Called with options only (counting) or with a box and options (hit testing). */
+  queryRenderedFeatures = jest.fn((boxOrOptions: unknown, maybeOptions?: { layers: string[] }) => {
+    const { layers } = (maybeOptions ?? boxOrOptions) as { layers: string[] };
+    return this.rendered.filter((feature) => layers.includes(feature.layer.id));
+  });
+  setFeatureState = jest.fn();
+  canvas = { style: { cursor: '' } };
+  canvasContainer = document.createElement('div');
 
   constructor(public options: Record<string, unknown>) {
     FakeMap.instances.push(this);
@@ -83,11 +88,42 @@ class FakeMap {
   dataLayerIds() {
     return [...this.layers].filter((id) => id.startsWith('geoflow-layer:'));
   }
+  getCanvas() {
+    return this.canvas;
+  }
+  getCanvasContainer() {
+    return this.canvasContainer;
+  }
   getCenter() {
     return this.center;
   }
   getZoom() {
     return this.zoom;
+  }
+}
+
+class FakePopup {
+  static instances: FakePopup[] = [];
+  element = document.createElement('div');
+  open = false;
+  setDOMContent = jest.fn(() => this);
+  setLngLat = jest.fn(() => this);
+  addTo = jest.fn(() => {
+    this.open = true;
+    return this;
+  });
+  remove = jest.fn(() => {
+    this.open = false;
+    return this;
+  });
+  constructor(public options: Record<string, unknown>) {
+    FakePopup.instances.push(this);
+  }
+  isOpen() {
+    return this.open;
+  }
+  getElement() {
+    return this.element;
   }
 }
 
@@ -97,6 +133,7 @@ jest.mock(
   () => ({
     Map: jest.fn((options) => new FakeMap(options)),
     NavigationControl: jest.fn((options) => ({ navigation: options })),
+    Popup: jest.fn((options) => new FakePopup(options)),
     setWorkerUrl: jest.fn(),
   }),
   { virtual: true }
@@ -115,7 +152,7 @@ const options: EngineOptions = {
 const style: LayerStyle = { color: '#73bf69', fillOpacity: 0.35, lineWidth: 2, pointRadius: 5, outlineColor: '#fff' };
 
 function layer(id: string, overrides: Partial<LayerSpec> = {}): LayerSpec {
-  return { id, data: { type: 'FeatureCollection', features: [] }, style, ...overrides };
+  return { id, data: { type: 'FeatureCollection', features: [] }, style, interactive: true, ...overrides };
 }
 
 let getContext: jest.SpyInstance;
@@ -123,6 +160,7 @@ let loseContext: jest.Mock;
 
 beforeEach(() => {
   FakeMap.instances = [];
+  FakePopup.instances = [];
   loseContext = jest.fn();
   getContext = jest
     .spyOn(HTMLCanvasElement.prototype, 'getContext')
@@ -476,6 +514,245 @@ describe('MapLibreEngine', () => {
 
     it('returns nothing before mount', async () => {
       await expect(new MapLibreEngine().renderedFeatureCounts()).resolves.toEqual({});
+    });
+  });
+
+  describe('hover and click', () => {
+    /** A rendered feature as MapLibre returns it. */
+    const drawn = (layerId: string, id: number, kind = 'circle') => ({
+      id,
+      source: `geoflow-layer:${layerId}`,
+      layer: { id: `geoflow-layer:${layerId}:${kind}` },
+    });
+    const pointer = (x = 100, y = 50, target?: EventTarget) => ({
+      point: { x, y },
+      lngLat: { lng: -78.78, lat: 35.79 },
+      originalEvent: { target },
+    });
+
+    it('reports the interactive features under a click, topmost first, each once', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A'), layer('B')] });
+      const listener = jest.fn();
+      engine.on('click', listener);
+      map.rendered = [drawn('B', 4), drawn('A', 1, 'fill'), drawn('A', 1, 'outline'), drawn('B', 4), drawn('A', 2)];
+      map.fire('click', pointer());
+
+      expect(listener).toHaveBeenCalledWith({
+        lngLat: [-78.78, 35.79],
+        features: [
+          { layerId: 'B', featureId: 4 },
+          { layerId: 'A', featureId: 1 },
+          { layerId: 'A', featureId: 2 },
+        ],
+      });
+      const t = HIT_TOLERANCE_PX;
+      expect(map.queryRenderedFeatures).toHaveBeenCalledWith(
+        [
+          [100 - t, 50 - t],
+          [100 + t, 50 + t],
+        ],
+        { layers: [...styleLayerIds('A'), ...styleLayerIds('B')] }
+      );
+    });
+
+    it('leaves out layers that are not interactive', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A', { interactive: false }), layer('B')] });
+      const listener = jest.fn();
+      engine.on('click', listener);
+      map.rendered = [drawn('A', 1), drawn('B', 2)];
+      map.fire('click', pointer());
+
+      expect(listener.mock.calls[0][0].features).toEqual([{ layerId: 'B', featureId: 2 }]);
+    });
+
+    it('reports a click on empty map with no features, without querying when nothing is interactive', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A', { interactive: false })] });
+      const listener = jest.fn();
+      engine.on('click', listener);
+      map.fire('click', pointer());
+
+      expect(listener).toHaveBeenCalledWith({ lngLat: [-78.78, 35.79], features: [] });
+      expect(map.queryRenderedFeatures).not.toHaveBeenCalled();
+    });
+
+    it('ignores clicks inside a pinned tooltip', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A')] });
+      const listener = jest.fn();
+      engine.on('click', listener);
+      map.fire('click', pointer(100, 50, document.createElement('button')));
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    describe('hover', () => {
+      beforeEach(() => jest.useFakeTimers());
+      const frame = () => jest.advanceTimersByTime(20);
+
+      it('hit tests once per animation frame, with the latest pointer position', async () => {
+        const { engine, map } = await mounted({ ...options, layers: [layer('A')] });
+        const listener = jest.fn();
+        engine.on('hover', listener);
+        map.rendered = [drawn('A', 1)];
+        map.fire('mousemove', pointer(10, 10));
+        map.fire('mousemove', pointer(20, 20));
+        expect(listener).not.toHaveBeenCalled();
+        frame();
+
+        expect(map.queryRenderedFeatures).toHaveBeenCalledTimes(1);
+        expect(map.queryRenderedFeatures.mock.calls[0][0]).toEqual([
+          [20 - HIT_TOLERANCE_PX, 20 - HIT_TOLERANCE_PX],
+          [20 + HIT_TOLERANCE_PX, 20 + HIT_TOLERANCE_PX],
+        ]);
+        expect(listener).toHaveBeenCalledWith({ lngLat: [-78.78, 35.79], features: [{ layerId: 'A', featureId: 1 }] });
+        expect(map.canvas.style.cursor).toBe('pointer');
+      });
+
+      it('keeps reporting while over features, then reports leaving them once', async () => {
+        const { engine, map } = await mounted({ ...options, layers: [layer('A')] });
+        const listener = jest.fn();
+        engine.on('hover', listener);
+        map.rendered = [drawn('A', 1)];
+        map.fire('mousemove', pointer());
+        frame();
+        map.fire('mousemove', pointer(101, 50));
+        frame();
+        expect(listener).toHaveBeenCalledTimes(2);
+
+        map.rendered = [];
+        map.fire('mousemove', pointer(300, 50));
+        frame();
+        map.fire('mousemove', pointer(301, 50));
+        frame();
+
+        expect(listener).toHaveBeenCalledTimes(3);
+        expect(listener.mock.lastCall[0].features).toEqual([]);
+        expect(map.canvas.style.cursor).toBe('');
+      });
+
+      it('reports leaving the map once, and drops a pending move', async () => {
+        const { engine, map } = await mounted({ ...options, layers: [layer('A')] });
+        const listener = jest.fn();
+        engine.on('hover', listener);
+        map.rendered = [drawn('A', 1)];
+        map.fire('mousemove', pointer());
+        frame();
+        map.fire('mousemove', pointer());
+        map.fire('mouseout');
+        map.fire('mouseout');
+        frame();
+
+        expect(listener).toHaveBeenCalledTimes(2);
+        expect(listener.mock.lastCall[0].features).toEqual([]);
+        expect(map.canvas.style.cursor).toBe('');
+      });
+    });
+  });
+
+  describe('tooltip', () => {
+    it('opens one MapLibre popup anchored at the point, with the given content', async () => {
+      const { engine, map } = await mounted();
+      const content = document.createElement('div');
+      engine.openTooltip([-78.78, 35.79], content, { interactive: true });
+      const [popup] = FakePopup.instances;
+
+      expect(popup.options).toMatchObject({ closeButton: false, closeOnClick: false, closeOnMove: false });
+      expect(popup.setDOMContent).toHaveBeenCalledWith(content);
+      expect(popup.setLngLat).toHaveBeenCalledWith([-78.78, 35.79]);
+      expect(popup.addTo).toHaveBeenCalledWith(map);
+      expect(popup.element.style.pointerEvents).toBe('');
+    });
+
+    it('only moves the tooltip when the content element is the same', async () => {
+      const { engine } = await mounted();
+      const content = document.createElement('div');
+      engine.openTooltip([1, 2], content, { interactive: false });
+      engine.openTooltip([3, 4], content, { interactive: false });
+      const [popup] = FakePopup.instances;
+
+      expect(FakePopup.instances).toHaveLength(1);
+      expect(popup.setDOMContent).toHaveBeenCalledTimes(1);
+      expect(popup.setLngLat).toHaveBeenLastCalledWith([3, 4]);
+      expect(popup.addTo).toHaveBeenCalledTimes(1);
+    });
+
+    it('replaces the content, and lets the pointer through when not interactive', async () => {
+      const { engine } = await mounted();
+      engine.openTooltip([1, 2], document.createElement('div'), { interactive: true });
+      const next = document.createElement('div');
+      engine.openTooltip([1, 2], next, { interactive: false });
+      const [popup] = FakePopup.instances;
+
+      expect(popup.setDOMContent).toHaveBeenLastCalledWith(next);
+      expect(popup.element.style.pointerEvents).toBe('none');
+    });
+
+    it('closes, and opens again with the same content', async () => {
+      const { engine } = await mounted();
+      const content = document.createElement('div');
+      engine.openTooltip([1, 2], content, { interactive: true });
+      engine.closeTooltip();
+      const [popup] = FakePopup.instances;
+      expect(popup.isOpen()).toBe(false);
+
+      engine.openTooltip([1, 2], content, { interactive: true });
+      expect(popup.setDOMContent).toHaveBeenCalledTimes(2);
+      expect(popup.isOpen()).toBe(true);
+    });
+
+    it('is closed when the engine is destroyed', async () => {
+      const { engine } = await mounted();
+      engine.openTooltip([1, 2], document.createElement('div'), { interactive: true });
+      engine.destroy();
+
+      expect(FakePopup.instances[0].isOpen()).toBe(false);
+    });
+
+    it('is a no-op before mount', () => {
+      expect(() =>
+        new MapLibreEngine().openTooltip([1, 2], document.createElement('div'), { interactive: true })
+      ).not.toThrow();
+      expect(FakePopup.instances).toHaveLength(0);
+    });
+  });
+
+  describe('highlights', () => {
+    it('sets and moves the hovered feature-state', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A')] });
+      engine.setHovered({ layerId: 'A', featureId: 1 });
+      engine.setHovered({ layerId: 'A', featureId: 2 });
+      engine.setHovered(undefined);
+
+      expect(map.setFeatureState.mock.calls).toEqual([
+        [{ source: 'geoflow-layer:A', id: 1 }, { hovered: true }],
+        [{ source: 'geoflow-layer:A', id: 1 }, { hovered: false }],
+        [{ source: 'geoflow-layer:A', id: 2 }, { hovered: true }],
+        [{ source: 'geoflow-layer:A', id: 2 }, { hovered: false }],
+      ]);
+    });
+
+    it('keeps the selected highlight apart from the hovered one', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A')] });
+      engine.setSelected({ layerId: 'A', featureId: 1 });
+      engine.setHovered({ layerId: 'A', featureId: 1 });
+      engine.setHovered(undefined);
+
+      expect(map.setFeatureState.mock.calls).toEqual([
+        [{ source: 'geoflow-layer:A', id: 1 }, { selected: true }],
+        [{ source: 'geoflow-layer:A', id: 1 }, { hovered: true }],
+        [{ source: 'geoflow-layer:A', id: 1 }, { hovered: false }],
+      ]);
+    });
+
+    it('ignores the same feature again, and layers without a source', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A')] });
+      engine.setSelected({ layerId: 'A', featureId: 1 });
+      engine.setSelected({ layerId: 'A', featureId: 1 });
+      engine.setSelected({ layerId: 'gone', featureId: 1 });
+
+      expect(map.setFeatureState.mock.calls).toEqual([
+        [{ source: 'geoflow-layer:A', id: 1 }, { selected: true }],
+        [{ source: 'geoflow-layer:A', id: 1 }, { selected: false }],
+      ]);
     });
   });
 
