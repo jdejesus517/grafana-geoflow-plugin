@@ -62,7 +62,7 @@
     "jest": "^30.5.0",
     "jest-canvas-mock": "^2.5.2",
     "jest-environment-jsdom": "^30.5.0",
-    "license-checker-rseidelsohn": "^4.4.2",
+    "license-checker-rseidelsohn": "^5.0.1",
     "prettier": "^3.6.0",
     "replace-in-file-webpack-plugin": "^1.0.0",
     "sass": "^1.89.0",
