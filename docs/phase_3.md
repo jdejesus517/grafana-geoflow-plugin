@@ -1,6 +1,6 @@
 # Phase 3: Drawing Features
 
-Status: **Approved** (2026-11-03). Not implemented yet.
+Status: **Implemented** (2026-11-03). See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §2.4 (engine layer), §3 (data frames to GeoJSON), §3.4 (layer binding), §5.3 (Phase 3 row).
 
 ## Goal
@@ -306,3 +306,53 @@ Confirmed 2026-11-03, as proposed.
 | 3 | Where data is drawn | **On top of the whole basemap**, including a style URL's labels. | Below the first symbol layer of a style URL. This keeps labels readable but depends on how each style is built. |
 | 4 | Initial view | **Keep Phase 2's configured view.** Fit-to-data stays in Phase 7. | Bring a one-time fit-to-data forward. New panels start at the whole world (zoom 1), where Cary's features are a dot; the dev dashboards set their view, but new users have to set it themselves until Phase 7. |
 | 5 | How e2e tests prove drawing | **Drawn-feature counts from MapLibre for most tests, plus one screenshot comparison** for how it looks (Design §6). These are the established methods: MapLibre tests its own rendering against expected images, and Playwright recommends screenshot comparison for canvas content. | Screenshots only: every test would need a stored image to update whenever styles change. Or counting pixels of a color: no stored images and no test hook, but a weak check that no project uses as a standard method. |
+
+## Outcome
+
+All exit criteria were met locally against Grafana 13.2.4:
+- 243 unit and component tests and 26 e2e tests pass
+- typecheck, lint, `check:dist` and the license check pass
+- the step 3.6 CI run on draft PR #21 passed, with the e2e tests (count tests and the screenshot) on Grafana 13.2.5, 13.3.0 and nightly
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Polygons filled with an outline, lines, points as circles; Multi* like their single forms | Met. One e2e count test per geometry type, plus the screenshot of the mixed panel. |
+| 2 | One layer per frame with geometry, palette colors, query order | Met. The two-query e2e test reports both layers; `buildLayerSpecs` and `MapLibreEngine` unit tests cover colors and order. |
+| 3 | Features survive basemap and theme changes; theme recolors without recreating the map | Met. The e2e basemap-switch test was checked to fail when the data layers are dropped from the new style. |
+| 4 | New data replaces features in place, without recreating the map or moving the view | Met: `setData` for changed frames only (component and engine tests). |
+| 5 | A map recreated after an off-screen release draws the same features | Met: the current layers are passed to `mount` (component test). |
+| 6 | Problem rows don't break drawing; no-geometry data explains itself | Met. The edge-case e2e test feeds in degenerate shapes and checks for no errors; the no-geometry notice has an e2e test. |
+| 7 | Engine boundary intact; style builders and the `setLayers` diff unit-tested | Met. |
+| 8 | E2E tests: each geometry type drawn and still drawn after a basemap switch, by counts and one screenshot | Met locally and in CI. |
+| 9 | `module.js` under 25 KiB | Met: 23.5 KiB (sizes below). |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Change from Phase 2 |
+|---|---|---|---|
+| `module.js` | 23.5 KiB | 8.1 KiB | +4.3 KiB: frame conversion now always runs, plus the layer building and the style defaults |
+| `maplibre.js` (engine and MapLibre CSS) | 36.9 KiB | 10.1 KiB | +2.6 KiB: drawing and the layer diff |
+| `36.js` (MapLibre) | 1131 KiB | 293 KiB | none |
+| Worker (`*.mjs`) | 502 KiB | 142 KiB | none |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| `04-geometry` dashboard in step 3.7 | Built in step 3.6 | The real-browser check of problem shapes needed it. |
+| Dashboard view centered on Cary at the default zoom | Every `04-geometry` panel at zoom 13.5 | At zoom 14 the Cary fixtures span about 380 px, so smaller panels cut features off and the counts came up short. |
+| Screenshot of the mixed panel's canvas | A fixed 320 × 300 px area at the canvas's center | Grafana versions can size the panel differently, and a whole-canvas screenshot then fails on size alone. The map is anchored at its center, so the central area stays the same. |
+| Map errors shown as Phase 2's basemap notice | Errors from a data layer carry `EngineError.layerId` and show as "Query A: …" | Otherwise a data problem would be blamed on the basemap. |
+| Edge-case test checks that the valid rows are drawn | Checks query A exactly, and that query B (degenerate shapes) drew at least its valid point | MapLibre decides which degenerate shapes it draws; the test shouldn't pin that down. |
+| `renderedFeatures(panel)` sends the event and reads the result | It also scrolls the panel into view, and tests poll it with a 30 s timeout (`DRAWN`) | Grafana renders panels below the fold only when scrolled to, and the map only exists on screen. |
+| Not planned | The `01-adapter` dashboard opens on the Cary fixtures | It draws data now, and at zoom 1 its features were a dot. |
+| Not planned | Fixed the webpack cache's `webpack/` build dependency | Found in the CI log: without a trailing slash, webpack couldn't resolve the directory and skipped its build cache. |
+
+### Findings for later phases
+
+- **Degenerate shapes.** The adapter passes empty rings, two-point and unclosed rings, one-point lines and empty Multi* parts. MapLibre draws none of them except the unclosed ring, which it closes into a triangle, and reports no error. No adapter rule was needed.
+- **100k points** (`service_locations_large`, measured in the dev stack): about 2.5 s from the query response until the map reports all 100,000 points drawn, with main-thread tasks of up to about 0.5 s. Usable; Phase 8 measures it properly.
+- **Basemap switches copy the data.** MapLibre applies inline style changes in place, but it deep-copies the whole next style, including every GeoJSON source the `transformStyle` adds. On large data this makes a basemap switch slower. Worth measuring in Phase 8.
+- **Map scale.** MapLibre's zoom levels use 512 px: at zoom *z*, one degree of longitude is 512 · 2^*z* / 360 px. Plan dashboard views with that.
+- **Counting drawn features.** `queryRenderedFeatures` returns a feature once per tile it touches and once per style layer it's drawn in (a polygon's fill and outline), so counts use distinct feature ids.
+- **Test-only code** is limited to `src/panel/testHook.ts`, one effect in `MapPanel` and `renderedFeatureCounts` in the engine, all marked `// Test hook:`.

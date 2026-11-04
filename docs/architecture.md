@@ -183,7 +183,7 @@ interface LayerSpec {
   - Changed data: `setData()`.
   - Changed style: `setPaintProperty()`.
   - Add or remove: add or remove the source and its layers.
-  - Re-adds everything after a basemap `setStyle()`, which drops user layers. Alternatively, uses `setStyle(..., { transformStyle })` to carry the layers over.
+  - A basemap `setStyle()` would drop user layers, so a `transformStyle` given at mount appends them to every new style (as built in Phase 3, below).
 - **`styleBuilders.ts`** is pure: `LayerSpec → LayerSpecification[]`. Most styling logic can therefore be tested without WebGL.
 - **Popups**: on click, query rendered features across this plugin's layers, then show a `maplibregl.Popup` built from the pre-formatted properties. The popup is built as DOM text nodes, never `innerHTML` (attribute values are untrusted data).
 
@@ -194,6 +194,16 @@ MapLibre GL JS 6 shapes how the engine is built and shipped:
 - **Lazy loading.** `createMapEngine()` loads the engine, MapLibre and its CSS with a dynamic `import()`, so they stay out of the plugin's initial `module.js`.
 - **Worker.** MapLibre's worker is a separate file. MapLibre looks for it relative to its own `import.meta.url`, which webpack rewrites, so that lookup fails inside a plugin bundle. Instead, `src/engine/maplibre/workerUrl.ts` uses `new URL('maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url)`: webpack emits the worker as an asset and resolves its served URL, and the engine passes that to `setWorkerUrl()`. The worker is same-origin, so it starts as a module worker without a `blob:` URL.
 - **License notices.** The minified build only links to its license. A root `webpack.config.ts` (extending the scaffold config) adds a plugin that writes `THIRD_PARTY_NOTICES.txt` from the modules webpack bundled. MapLibre's dist file inlines its own dependencies, so their dependency trees are added too.
+
+#### Drawing data (Phase 3)
+
+How the engine draws `LayerSpec`s, as built:
+- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`. `name`, `visible` and `popup` arrive with Phases 4 and 6.
+- **Ids:** sources and style layers are prefixed `geoflow-layer:` (for example `geoflow-layer:A:fill`). The prefix keeps them apart from the basemap and from layers in a user's style URL. Layer ids come from refIds and are never parsed back out of these strings.
+- **Geometry filters:** in MapLibre 6, `['geometry-type']` reports Multi* features as their simple type (MultiPolygon as Polygon). The filters list both forms, which is correct in every version.
+- **Basemap changes:** `transformStyle`, passed to the `Map` constructor, appends the data sources and layers to every style MapLibre loads afterwards, inline or from a URL. MapLibre fires `style.load` both after a full style load and after a style it applied in place. The engine tracks readiness with `styledataloading` and `style.load`, and applies any `setLayers` call made in between on `style.load`.
+- **Errors:** map errors from a data source carry the layer id (`EngineError.layerId`), so the panel shows them under the query rather than as basemap errors.
+- **Test hook:** `MapEngine.renderedFeatureCounts()` waits for the map to be idle and counts distinct drawn features per layer. Only e2e tests use it, through a DOM event on the panel's map container. All test-only code in `src/` is marked `// Test hook:`.
 
 ---
 
@@ -317,8 +327,8 @@ Design rules that keep later modes cheap to add:
 | Concern | Approach |
 |---|---|
 | **Payload size.** GeoJSON text is verbose. | Recommend `ST_AsGeoJSON(geom, 6)`. For detailed polygons, recommend `ST_SimplifyPreserveTopology`. Mention the data source row limit (`row_limit` in Grafana config). |
-| **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 8. If 100k blocks too long, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. |
-| **Redundant work on refresh.** | Memoize conversion per frame and skip `setData` when the frame has not changed (same frame reference / structural hash). Keep the viewport across refreshes unless "fit to data on refresh" is on. |
+| **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 8. If 100k blocks too long, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. A first measurement in Phase 3: 100k points draw about 2.5 s after the query returns, with main-thread tasks of up to about 0.5 s. |
+| **Redundant work on refresh.** | Conversion is cached per frame object (Phase 3), so a frame Grafana didn't replace keeps its data and the engine skips `setData`. Skipping frames that are new objects with the same content (structural hash) and keeping the viewport across refreshes unless "fit to data on refresh" is on come in Phase 7. |
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
 | **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` stays about 19 KiB. The Bundle Stats workflow reports size changes on every PR. |
 | **Beyond about 100k features.** | Out of scope for the MVP. The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |
