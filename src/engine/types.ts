@@ -52,6 +52,8 @@ export interface EngineError {
   message: string;
   /** The style source that failed, when MapLibre reports one (for example a tile source). */
   sourceId?: string;
+  /** The data layer whose features failed to load, when the error came from one. */
+  layerId?: string;
 }
 
 export interface EngineEvents {

@@ -3,7 +3,7 @@ import { css } from '@emotion/css';
 import { GrafanaTheme2, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
 import { LayerDefaults, buildLayerSpecs } from '../adapter';
-import { BasemapSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
+import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { convertFrames } from './convertFrames';
 import { GeoFlowOptions, basemapFromOptions, viewFromOptions } from './options';
@@ -137,6 +137,8 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   const [paused, setPaused] = useState(false);
   // Remembers the basemap it came from, so it disappears once the user picks another basemap.
   const [basemapError, setBasemapError] = useState<{ basemap: BasemapSpec; message: string }>();
+  // Remembers the layers it came from, so it disappears when new data arrives.
+  const [layerError, setLayerError] = useState<{ layers: LayerSpec[]; layerId: string; message: string }>();
 
   const basemap = useMemo(() => basemapFromOptions(options.basemap), [options.basemap]);
   const engineTheme = useMemo(
@@ -183,7 +185,11 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
           return;
         }
         created = loaded;
-        loaded.on('error', (error) => setBasemapError({ basemap: latest.current.basemap, message: error.message }));
+        loaded.on('error', (error) =>
+          error.layerId !== undefined
+            ? setLayerError({ layers: latest.current.layers, layerId: error.layerId, message: error.message })
+            : setBasemapError({ basemap: latest.current.basemap, message: error.message })
+        );
         loaded.on('viewChange', (next) => (currentView.current = next));
         loaded.on('contextLost', () => setPaused(true));
         return loaded.mount(containerRef.current!, { ...latest.current, view: currentView.current }).then(() => {
@@ -260,6 +266,11 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         {noGeometry && (
           <div className={styles.notice} data-testid="geoflow-no-geometry">
             {noGeometry.detail}
+          </div>
+        )}
+        {layerError?.layers === layers && engine && (
+          <div className={styles.notice} data-testid="geoflow-layer-error" title={layerError.message}>
+            Query {layerError.layerId}: {layerError.message}
           </div>
         )}
         {basemapError?.basemap === basemap && engine && (

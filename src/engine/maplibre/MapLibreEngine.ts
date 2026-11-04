@@ -289,7 +289,13 @@ export class MapLibreEngine implements MapEngine {
       return;
     }
     this.lastErrorAt.set(key, now);
-    this.emit('error', { message: error?.message ?? 'Unknown map error', ...(sourceId && { sourceId }) });
+    // Data layer ids are never parsed out of source ids (see DATA_LAYER_PREFIX); look them up.
+    const layerId = this.layers.find(({ id }) => dataSourceId(id) === sourceId)?.id;
+    this.emit('error', {
+      message: error?.message ?? 'Unknown map error',
+      ...(sourceId && { sourceId }),
+      ...(layerId !== undefined && { layerId }),
+    });
   }
 
   private emit<E extends keyof EngineEvents>(event: E, payload: EngineEvents[E]): void {

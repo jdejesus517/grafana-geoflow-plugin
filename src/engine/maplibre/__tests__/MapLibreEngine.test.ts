@@ -520,6 +520,15 @@ describe('MapLibreEngine', () => {
       expect(listener).toHaveBeenCalledTimes(3);
     });
 
+    it('names the data layer an error came from', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A:1')] });
+      const listener = jest.fn();
+      engine.on('error', listener);
+      map.fire('error', { error: new Error('bad GeoJSON'), sourceId: 'geoflow-layer:A:1' });
+
+      expect(listener).toHaveBeenCalledWith({ message: 'bad GeoJSON', sourceId: 'geoflow-layer:A:1', layerId: 'A:1' });
+    });
+
     it("reports a context loss from the browser, not MapLibre's synthetic one", async () => {
       const { engine, map } = await mounted();
       const listener = jest.fn();

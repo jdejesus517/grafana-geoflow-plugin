@@ -278,6 +278,18 @@ describe('MapPanel', () => {
       rerender(<MapPanel {...props({ options: { basemap: { kind: 'none' } } })} />);
       expect(screen.queryByTestId('geoflow-basemap-error')).not.toBeInTheDocument();
     });
+
+    it('shows a data layer error under its query, not the basemap, until new data arrives', async () => {
+      const series = [toDataFrame({ refId: 'A', fields: [{ name: 'geometry', type: FieldType.string, values: [] }] })];
+      const { rerender } = await renderPanel({ data: { series } });
+      act(() => engine.errorListeners.forEach((listener) => listener({ message: 'bad GeoJSON', layerId: 'A' })));
+
+      expect(screen.getByTestId('geoflow-layer-error')).toHaveTextContent('Query A: bad GeoJSON');
+      expect(screen.queryByTestId('geoflow-basemap-error')).not.toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [toDataFrame({ ...series[0] })] } })} />);
+      expect(screen.queryByTestId('geoflow-layer-error')).not.toBeInTheDocument();
+    });
   });
 
   describe('data layers', () => {
