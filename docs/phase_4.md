@@ -383,7 +383,7 @@ Confirmed 2026-11-03, as proposed.
 All exit criteria were met locally against Grafana 13.2.4:
 - 305 unit and component tests and 37 e2e tests pass
 - typecheck, lint, `check:dist` and the license check pass
-- CI on draft PR #22 passes build, lint, unit tests and e2e tests on Grafana 13.2.5, 13.3.0 and nightly. The e2e runs also show Grafana's `@alpha` tooltip components behave the same across those versions. The **Latest Grafana API compatibility check** fails on a false positive; see Findings.
+- CI on draft PR #22 passes build, lint, unit tests and e2e tests on Grafana 13.2.5, 13.3.0 and nightly. The e2e runs also show Grafana's `@alpha` tooltip components behave the same across those versions. The **Latest Grafana API compatibility check** reported a false positive, and now reports instead of failing; see Findings.
 
 | # | Criterion | Result |
 |---|---|---|
@@ -426,7 +426,7 @@ All exit criteria were met locally against Grafana 13.2.4:
 
 ### Findings for later phases
 
-- **API compatibility check (Levitate).** It reports `PanelPlugin.useFieldConfig` as changed between `@grafana/data` 13.2.0 and 13.3.0. 13.3 adds a second type parameter, `SetFieldConfigOptionsArgs<TFieldConfigOptions, TContextOptions = unknown>`. With its default, code written for 13.2 compiles unchanged, nothing changes at runtime, and the e2e tests pass on 13.3.0 and nightly. Levitate flags any change to an API a plugin calls, so the check now fails on every PR. Whether to make it report-only is open.
+- **API compatibility check (Levitate).** It reports `PanelPlugin.useFieldConfig` as changed between `@grafana/data` 13.2.0 and 13.3.0. 13.3 adds a second type parameter, `SetFieldConfigOptionsArgs<TFieldConfigOptions, TContextOptions = unknown>`. With its default, code written for 13.2 compiles unchanged, nothing changes at runtime, and the e2e tests pass on 13.3.0 and nightly. Levitate flags any change to an API a plugin calls, between the minimum (`plugin.json`) and latest Grafana. Upgrading the Grafana packages wouldn't clear it, and they're pinned to the minimum on purpose. The check now reports instead of failing, as in Grafana's own examples and the action's defaults: it comments on the PR when it finds something (`fail-if-incompatible: 'no'`, `comment-pr: 'yes'`). The e2e tests on 13.2, 13.3 and nightly remain the gate. A `create-plugin update` may restore the scaffold's stricter setting; that would show in its PR.
 
 - **Software rendering in headless Chromium.** By default, Playwright's Chromium draws WebGL with SwiftShader on the CPU, where redrawing 100k points takes 100 ms or more. Panning that layer took about 340 ms per move. On this machine's GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), panning and hovering 100k points both ran with no main-thread task over 50 ms. Phase 8's performance work has to use the GPU; e2e timings in CI say nothing about real performance.
 - **Highlight method.** Because of the slow software rendering, hover at first looked slow with feature-state highlights. An overlay source for highlighted features was built and measured, then dropped: on the GPU, feature-state and the overlay performed the same, and feature-state is simpler and is what the plan specified.
