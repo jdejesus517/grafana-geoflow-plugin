@@ -105,6 +105,12 @@ export interface MapEngine {
    * blocks hovering the map. The caller owns `content`.
    */
   openTooltip(lngLat: [lon: number, lat: number], content: HTMLElement, options: { interactive: boolean }): void;
+  /**
+   * The largest tooltip, in pixels, that fits inside the map when anchored at lngLat in the
+   * current view. The tooltip opens on whichever side of the point has room for it, so content
+   * kept within this size is never cut off by the map's edges.
+   */
+  tooltipSpace(lngLat: [lon: number, lat: number]): { width: number; height: number };
   closeTooltip(): void;
   /** Highlights the hovered feature; undefined clears it. */
   setHovered(feature: FeatureRef | undefined): void;

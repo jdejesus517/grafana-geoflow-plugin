@@ -250,8 +250,6 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     frames: data.series,
     layers,
     basemap,
-    width,
-    height,
   });
 
   // Test hook: e2e tests send INSPECT_EVENT to read the drawn-feature counts; see testHook.ts.

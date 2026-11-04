@@ -194,7 +194,7 @@ interface MapEngine {
 - `VizTooltipFooter` (pinned only): the data links.
 - "+2 more" (hover only): shown when more features are under the pointer.
 
-It renders into a `div` that the panel owns, through a React portal, and the panel hands that `div` to `openTooltip`. The tooltip scrolls when long, up to the panel's height.
+It renders into a `div` that the panel owns, through a React portal, and the panel hands that `div` to `openTooltip`. The tooltip scrolls when long, up to the panel's height. (Changed after Phase 4: it is sized to the room beside its anchor; see [architecture.md §2.4](architecture.md#tooltips-phase-4).)
 
 If step 4.1 finds the `@alpha` tooltip components behave differently between Grafana 13.2 and nightly, the panel uses its own small components with the same layout instead (decision 8).
 
@@ -431,6 +431,7 @@ All exit criteria were met locally against Grafana 13.2.4:
 - **Software rendering in headless Chromium.** By default, Playwright's Chromium draws WebGL with SwiftShader on the CPU, where redrawing 100k points takes 100 ms or more. Panning that layer took about 340 ms per move. On this machine's GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), panning and hovering 100k points both ran with no main-thread task over 50 ms. Phase 8's performance work has to use the GPU; e2e timings in CI say nothing about real performance.
 - **Highlight method.** Because of the slow software rendering, hover at first looked slow with feature-state highlights. An overlay source for highlighted features was built and measured, then dropped: on the GPU, feature-state and the overlay performed the same, and feature-state is simpler and is what the plan specified.
 - **Tooltip placement.** MapLibre anchors a pinned tooltip below its feature when there's no room above, so the tooltip can cover the map just south of the feature. The e2e tests click empty map at the canvas's edge for that reason.
+- **Tooltips overflowing the map** (found after Phase 4). MapLibre only picks the side a popup opens on; a tooltip taller or wider than the room on either side was cut off by the panel. The follow-up sizes the tooltip to the room it has (`tooltipSpace`), and its field list scrolls.
 - **Unpinning while over a feature** brings back its hover tooltip straight away. That's intended, and the e2e tests check the pinned tooltip's close button rather than the absence of any tooltip.
 - **Grafana's `suffix:` units** keep the space after the colon, so `suffix: floors` formats as "4  floors". HTML collapses it on screen.
 - **`module.js` is 32.4 KiB.** The tooltip code is only needed once a map exists, so it could move into the lazily loaded chunk if size becomes a concern (Phase 8).

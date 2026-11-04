@@ -4,7 +4,7 @@ import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint
 import { WebGLUnavailableError } from '../../errors';
 import { styleLayerIds, styleLayers } from '../../layerStyle';
 import { EngineOptions, EngineTheme, LayerSpec, LayerStyle } from '../../types';
-import { ERROR_THROTTLE_MS, HIT_TOLERANCE_PX, MapLibreEngine } from '../MapLibreEngine';
+import { ERROR_THROTTLE_MS, HIT_TOLERANCE_PX, MapLibreEngine, TOOLTIP_MARGIN_PX } from '../MapLibreEngine';
 
 type Handler = (event?: unknown) => void;
 
@@ -51,6 +51,10 @@ class FakeMap {
   setFeatureState = jest.fn();
   canvas = { style: { cursor: '' } };
   canvasContainer = document.createElement('div');
+  container = { clientWidth: 800, clientHeight: 400 };
+  /** Where project() puts every point. */
+  projected = { x: 0, y: 0 };
+  project = jest.fn(() => this.projected);
 
   constructor(public options: Record<string, unknown>) {
     FakeMap.instances.push(this);
@@ -93,6 +97,9 @@ class FakeMap {
   }
   getCanvasContainer() {
     return this.canvasContainer;
+  }
+  getContainer() {
+    return this.container;
   }
   getCenter() {
     return this.center;
@@ -655,7 +662,17 @@ describe('MapLibreEngine', () => {
       engine.openTooltip([-78.78, 35.79], content, { interactive: true });
       const [popup] = FakePopup.instances;
 
-      expect(popup.options).toMatchObject({ closeButton: false, closeOnClick: false, closeOnMove: false });
+      expect(popup.options).toMatchObject({
+        closeButton: false,
+        closeOnClick: false,
+        closeOnMove: false,
+        padding: {
+          top: TOOLTIP_MARGIN_PX,
+          right: TOOLTIP_MARGIN_PX,
+          bottom: TOOLTIP_MARGIN_PX,
+          left: TOOLTIP_MARGIN_PX,
+        },
+      });
       expect(popup.setDOMContent).toHaveBeenCalledWith(content);
       expect(popup.setLngLat).toHaveBeenCalledWith([-78.78, 35.79]);
       expect(popup.addTo).toHaveBeenCalledWith(map);
@@ -705,6 +722,36 @@ describe('MapLibreEngine', () => {
       engine.destroy();
 
       expect(FakePopup.instances[0].isOpen()).toBe(false);
+    });
+
+    it('has room for a tooltip on the roomier side of the point, in each direction', async () => {
+      const { engine, map } = await mounted();
+      // An 800 × 400 map. The room leaves out the margin and the tooltip's 12 px offset.
+      const gap = TOOLTIP_MARGIN_PX + 12;
+      map.projected = { x: 100, y: 300 };
+
+      expect(engine.tooltipSpace([1, 2])).toEqual({ width: 700 - gap, height: 300 - gap });
+      expect(map.project).toHaveBeenCalledWith([1, 2]);
+
+      map.projected = { x: 790, y: 150.5 };
+      expect(engine.tooltipSpace([1, 2])).toEqual({ width: 790 - gap, height: 249 - gap });
+    });
+
+    it('has room across for a tooltip centered on a point near the middle', async () => {
+      const { engine, map } = await mounted();
+      map.projected = { x: 380, y: 200 };
+
+      // Centered, it can reach to within the margin of the nearer edge, 380 px away.
+      expect(engine.tooltipSpace([1, 2]).width).toBe(2 * (380 - TOOLTIP_MARGIN_PX));
+    });
+
+    it('has no room for a tooltip on a tiny map, or before mount', async () => {
+      const { engine, map } = await mounted();
+      Object.assign(map.container, { clientWidth: 12, clientHeight: 12 });
+      map.projected = { x: 6, y: 6 };
+
+      expect(engine.tooltipSpace([1, 2])).toEqual({ width: 0, height: 0 });
+      expect(new MapLibreEngine().tooltipSpace([1, 2])).toEqual({ width: 0, height: 0 });
     });
 
     it('is a no-op before mount', () => {

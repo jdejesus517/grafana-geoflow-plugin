@@ -46,6 +46,8 @@ export const HIT_TOLERANCE_PX = 4;
 
 /** Keeps the hover tooltip clear of the pointer. */
 const TOOLTIP_OFFSET_PX = 12;
+/** The least distance between the tooltip and the map's edges. */
+export const TOOLTIP_MARGIN_PX = 8;
 
 let workerUrlSet = false;
 
@@ -193,6 +195,9 @@ export class MapLibreEngine implements MapEngine {
       closeOnMove: false,
       maxWidth: 'none',
       offset: TOOLTIP_OFFSET_PX,
+      // MapLibre opens the tooltip on the side of the point that has room for it, keeping this
+      // far from the edges; tooltipSpace sizes it to fit there.
+      padding: { top: TOOLTIP_MARGIN_PX, right: TOOLTIP_MARGIN_PX, bottom: TOOLTIP_MARGIN_PX, left: TOOLTIP_MARGIN_PX },
       className: 'geoflow-tooltip',
     });
     const tooltip = this.tooltip;
@@ -206,6 +211,22 @@ export class MapLibreEngine implements MapEngine {
     }
     // A hover tooltip lets the pointer through to the map underneath.
     tooltip.getElement().style.pointerEvents = interactive ? '' : 'none';
+  }
+
+  tooltipSpace(lngLat: [number, number]): { width: number; height: number } {
+    const map = this.map;
+    if (!map) {
+      return { width: 0, height: 0 };
+    }
+    const { clientWidth: width, clientHeight: height } = map.getContainer();
+    const { x, y } = map.project(lngLat);
+    // MapLibre's anchoring puts the tooltip above the point when it fits there, otherwise below.
+    // Across, it centers the tooltip on the point when it fits that way, otherwise puts it beside
+    // the point, away from the nearer edge. A tooltip within this size fits wherever it goes.
+    const beside = (at: number, size: number) => Math.max(at, size - at) - TOOLTIP_MARGIN_PX - TOOLTIP_OFFSET_PX;
+    const centered = 2 * Math.min(x, width - x) - 2 * TOOLTIP_MARGIN_PX;
+    const room = (pixels: number) => Math.max(0, Math.floor(pixels));
+    return { width: room(Math.max(centered, beside(x, width))), height: room(beside(y, height)) };
   }
 
   closeTooltip(): void {
