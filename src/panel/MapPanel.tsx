@@ -6,8 +6,9 @@ import { LayerDefaults, buildLayerSpecs } from '../adapter';
 import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { convertFrames } from './convertFrames';
-import { GeoFlowOptions, basemapFromOptions, viewFromOptions } from './options';
+import { GeoFlowOptions, basemapFromOptions, tooltipMode, viewFromOptions } from './options';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
+import { useFeatureTooltip } from './useFeatureTooltip';
 import { useOnScreen } from './useOnScreen';
 
 interface Props extends PanelProps<GeoFlowOptions> {}
@@ -45,6 +46,20 @@ const getStyles = (theme: GrafanaTheme2) => ({
     .maplibregl-ctrl-icon,
     .maplibregl-ctrl-attrib-button {
       filter: ${theme.isDark ? 'invert(1)' : 'none'};
+    }
+
+    /* The tooltip renders Grafana's own tooltip box; MapLibre's popup frame and tip are dropped. */
+    .geoflow-tooltip {
+      z-index: 3;
+    }
+    .geoflow-tooltip .maplibregl-popup-content {
+      padding: 0;
+      background: none;
+      box-shadow: none;
+      border-radius: 0;
+    }
+    .geoflow-tooltip .maplibregl-popup-tip {
+      display: none;
     }
   `,
   // Sized, not positioned: MapLibre's lazily injected CSS sets .maplibregl-map to position: relative,
@@ -156,7 +171,12 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     }),
     [theme]
   );
-  const layers = useMemo(() => buildLayerSpecs(results, layerDefaults), [results, layerDefaults]);
+  const mode = tooltipMode(options);
+  const interactive = mode !== 'off';
+  const layers = useMemo(
+    () => buildLayerSpecs(results, layerDefaults, { interactive }),
+    [results, layerDefaults, interactive]
+  );
   // Data arrived, but no frame has a geometry column: say why instead of showing an empty map.
   const noGeometry = layers.length === 0 ? results.find((result) => result.noGeometry)?.noGeometry : undefined;
 
@@ -223,6 +243,17 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   }, [engine, view]);
   useEffect(() => engine?.resize(), [engine, width, height]);
 
+  const tooltip = useFeatureTooltip({
+    engine,
+    mode,
+    results,
+    frames: data.series,
+    layers,
+    basemap,
+    width,
+    height,
+  });
+
   // Test hook: e2e tests send INSPECT_EVENT to read the drawn-feature counts; see testHook.ts.
   useEffect(() => {
     const container = containerRef.current;
@@ -254,6 +285,7 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
       ) : (
         <div ref={containerRef} className={styles.map} data-testid="geoflow-map" />
       )}
+      {tooltip}
       {paused && (
         <div className={styles.paused} data-testid="geoflow-map-paused">
           <div>The map was paused because this browser tab has too many maps open.</div>
