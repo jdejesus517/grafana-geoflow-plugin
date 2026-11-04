@@ -1,7 +1,10 @@
 import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import {
+  DataFrame,
+  Field,
   FieldType,
+  LinkModel,
   LoadingState,
   PanelData,
   PanelProps,
@@ -495,6 +498,49 @@ describe('MapPanel', () => {
       rerender(<MapPanel {...props({ data: { series }, options: { basemap: { kind: 'none' } } })} />);
 
       expect(engine.closeTooltip).toHaveBeenCalled();
+    });
+
+    describe('data links', () => {
+      /** Grafana gives fields with links a getLinks that fills in the row's values. */
+      function withLink(frame: DataFrame) {
+        const name = frame.fields.find((field) => field.name === 'name')!;
+        name.getLinks = ({ valueRowIndex }) => [
+          {
+            title: `Open ${name.values[valueRowIndex!]}`,
+            href: `/d/assets?var-name=${name.values[valueRowIndex!]}`,
+            target: '_self',
+            origin: name,
+          } as LinkModel<Field>,
+        ];
+        return frame;
+      }
+
+      it("shows the feature's links in the pinned tooltip", async () => {
+        await renderPanel({
+          data: {
+            series: [
+              withLink(
+                assets([
+                  ['a', 'Office'],
+                  ['b', 'Depot'],
+                ])
+              ),
+            ],
+          },
+        });
+        fire('click', hit(['A', 1]));
+        const link = tooltip().content.getByRole('link', { name: /Open Depot/ });
+
+        expect(link).toHaveAttribute('href', '/d/assets?var-name=Depot');
+      });
+
+      it('leaves links out of the hover tooltip, where the pointer could not reach them', async () => {
+        await renderPanel({ data: { series: [withLink(assets([['a', 'Office']]))] } });
+        fire('hover', hit(['A', 0]));
+
+        expect(tooltip().content.getByText('Office')).toBeInTheDocument();
+        expect(tooltip().content.queryByRole('link')).not.toBeInTheDocument();
+      });
     });
 
     it('starts without a tooltip on a map created after the panel comes back on screen', async () => {
