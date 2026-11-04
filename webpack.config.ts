@@ -13,8 +13,9 @@ const config = async (env: Env): Promise<Configuration> => {
     cache: {
       type: 'filesystem',
       // The scaffold lists only its own config; changes to these must invalidate the cache too.
+      // Webpack treats a dependency as a directory only with a trailing slash.
       buildDependencies: {
-        config: [path.resolve(process.cwd(), 'webpack.config.ts'), path.resolve(process.cwd(), 'webpack')],
+        config: [path.resolve(process.cwd(), 'webpack.config.ts'), path.resolve(process.cwd(), 'webpack') + '/'],
       },
     },
     plugins: [
