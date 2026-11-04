@@ -39,5 +39,8 @@ jobs:
           # flags any change to an API the plugin uses between the minimum and latest Grafana, even
           # compatible ones. The e2e tests on the minimum, latest and nightly Grafana are the gate.
           comment-pr: 'yes'
-          skip-comment-if-compatible: 'yes'
+          # 'yes' would never comment: in is-compatible/v1.1.0 the comment steps read an output
+          # (steps.run-levitate.outputs.code) that the action doesn't set. With 'no', one comment
+          # per PR is kept up to date with the latest report.
+          skip-comment-if-compatible: 'no'
           fail-if-incompatible: 'no'
