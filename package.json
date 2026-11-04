@@ -14,10 +14,11 @@
     "url": "https://github.com/jdejesus517/grafana-geoflow-plugin/issues"
   },
   "scripts": {
-    "build": "webpack -c ./.config/webpack/webpack.config.ts --env production",
-    "dev": "webpack -w -c ./.config/webpack/webpack.config.ts --env development",
+    "build": "webpack -c ./webpack.config.ts --env production",
+    "dev": "webpack -w -c ./webpack.config.ts --env development",
     "test": "jest --watch --onlyChanged",
     "test:ci": "jest --passWithNoTests --maxWorkers 4",
+    "check:dist": "node scripts/check-dist.mjs",
     "bench:adapter": "jest --testMatch '<rootDir>/src/**/*.bench.ts' --runInBand",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --cache .",
@@ -88,6 +89,7 @@
     "@grafana/runtime": "13.2.5",
     "@grafana/schema": "13.2.5",
     "@grafana/ui": "13.2.5",
+    "maplibre-gl": "^6.16.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

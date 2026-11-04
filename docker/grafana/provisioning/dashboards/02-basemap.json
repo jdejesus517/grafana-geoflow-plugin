@@ -1,0 +1,91 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 2: basemaps. Open with ?theme=dark to check the dark-theme dimming.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 15
+        }
+      },
+      "targets": [],
+      "title": "OpenStreetMap",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 15
+        }
+      },
+      "targets": [],
+      "title": "No basemap",
+      "type": "jdejesusio-geoflow-panel"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["geoflow"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "02 Basemap",
+  "uid": "geoflow-02-basemap",
+  "version": 1
+}

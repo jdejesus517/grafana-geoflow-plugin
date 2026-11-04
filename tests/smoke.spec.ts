@@ -1,4 +1,4 @@
-import { test, expect } from '@grafana/plugin-e2e';
+import { test, expect } from './fixtures';
 
 // Row counts of the seeded fixtures in docker/postgres/init/03_seed_fixtures.sql.
 const BUILDING_COUNT = 9;

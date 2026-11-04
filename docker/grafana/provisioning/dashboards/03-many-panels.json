@@ -1,0 +1,559 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 2 lifecycle check: 20 GeoFlow maps on one dashboard. Browsers cap live WebGL contexts per page (16 in Chromium).",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 1",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 2",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 3",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 4",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 5",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 16
+      },
+      "id": 6,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 6",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 24
+      },
+      "id": 7,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 7",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 24
+      },
+      "id": 8,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 8",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "id": 9,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 9",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "id": 10,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 10",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 40
+      },
+      "id": 11,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 11",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 40
+      },
+      "id": 12,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 12",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 48
+      },
+      "id": 13,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 13",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 48
+      },
+      "id": 14,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 14",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 56
+      },
+      "id": 15,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 15",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 56
+      },
+      "id": 16,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 16",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 64
+      },
+      "id": 17,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 17",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 64
+      },
+      "id": 18,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 18",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 72
+      },
+      "id": 19,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 19",
+      "type": "jdejesusio-geoflow-panel"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 72
+      },
+      "id": 20,
+      "options": {
+        "basemap": {
+          "kind": "osm"
+        },
+        "view": {
+          "lat": 35.7882,
+          "lon": -78.7811,
+          "zoom": 14
+        }
+      },
+      "targets": [],
+      "title": "Map 20",
+      "type": "jdejesusio-geoflow-panel"
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["geoflow"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "",
+  "title": "03 Many panels",
+  "uid": "geoflow-03-many-panels",
+  "version": 1
+}

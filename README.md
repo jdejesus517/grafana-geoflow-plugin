@@ -2,11 +2,44 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** Phase 0 (scaffold and development environment) is complete. The panel currently shows a placeholder listing the data frames it receives; map rendering arrives in later phases. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: pre-MVP.** Phase 2 is complete: the panel shows an interactive basemap that you can pan and zoom. Query results aren't drawn on it yet; that arrives in Phase 3. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
 - Database: PostgreSQL 16+ with PostGIS 3.x
+
+## Basemap
+
+Pick the basemap in the panel options under **Basemap**:
+
+| Option                  | What it shows                                                                                                                                             |
+| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenStreetMap (default) | OpenStreetMap's standard raster tiles, with the "© OpenStreetMap contributors" attribution.                                                               |
+| Custom tiles            | Any XYZ raster tile server. Enter a URL template with `{z}`, `{x}` and `{y}`, and the attribution your provider requires (shown as plain text).           |
+| Style URL               | A [MapLibre style](https://maplibre.org/maplibre-style-spec/) JSON, for vector-tile basemaps. The style controls the whole look, including in dark theme. |
+| None                    | A plain background. Use it for air-gapped installs.                                                                                                       |
+
+**Initial view** sets the latitude, longitude and zoom the map opens at. In dark theme, raster basemaps are dimmed to match the dashboard.
+
+**OpenStreetMap's tile servers are for light use.** Their [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy use. For production dashboards with many viewers, use your own tile server or a commercial provider through **Custom tiles** or **Style URL**.
+
+**Requirements:**
+
+- The browser needs WebGL2. Without it, the panel shows a message instead of the map.
+- Grafana's image renderer may lack WebGL2, so map panels may not render in PNG exports and reports.
+- Browsers cap live WebGL contexts per page (16 in Chromium). GeoFlow keeps a map only while its panel is on or near the screen, so long dashboards are fine. If the browser still takes a map's context away, the panel shows **Reload map**.
+
+### Content Security Policy
+
+If Grafana's [Content Security Policy](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-security-hardening/#add-a-content-security-policy) is enabled (`content_security_policy = true`), add every tile server the basemap uses to `connect-src`. MapLibre fetches tiles with `fetch()`, and Grafana's default template allows only `'self' grafana.com *.cartocdn.com`.
+
+For the OpenStreetMap basemap, the `connect-src` part of `content_security_policy_template` becomes:
+
+```
+connect-src 'self' grafana.com *.cartocdn.com https://tile.openstreetmap.org ws://$ROOT_PATH wss://$ROOT_PATH;
+```
+
+For a **Style URL**, also add the hosts of the style JSON and of the tiles, glyphs and sprites it references. Nothing else needs to change: the map's web worker is a same-origin file in the plugin, so `worker-src` and `blob:` aren't needed. When a tile server is blocked, the panel shows a "Basemap: … Failed to fetch" notice.
 
 ## Development
 
@@ -23,7 +56,14 @@ npm run dev        # build the plugin and rebuild on change (terminal 1)
 npm run server     # start Grafana and PostGIS in Docker (terminal 2)
 ```
 
-Open http://localhost:3000. The **GeoFlow / 00 Smoke** dashboard queries the fixture database through the provisioned **GeoFlow PostGIS** data source.
+Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
+
+| Dashboard      | Shows                                                                                                                     |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 00 Smoke       | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on. |
+| 01 Adapter     | How each kind of query result converts to GeoJSON.                                                                        |
+| 02 Basemap     | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                    |
+| 03 Many panels | 20 maps on one dashboard, for checking the WebGL context limit.                                                           |
 
 ### Docker environment
 
@@ -61,12 +101,15 @@ npm run typecheck
 npm run lint
 npm run test:ci          # unit tests (Jest)
 npm run build
+npm run check:dist       # dist/ holds only expected files, including THIRD_PARTY_NOTICES.txt
 npm run license:check    # production dependency license gate
 npm run e2e              # Playwright end-to-end tests; needs `npm run server` running
 npm run bench:adapter    # 100k-row conversion timing (not part of CI)
 ```
 
 Before the first e2e run, install the browser with `npx playwright install chromium`.
+
+E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers every map tile request with a local PNG. Tests never contact `tile.openstreetmap.org`.
 
 Adapter unit tests use real data frames captured from the dev stack in `src/adapter/__fixtures__/`. After changing the fixture data in `docker/postgres/` or the minimum Grafana version, recapture them with `npm run server` running:
 
@@ -78,7 +121,7 @@ node scripts/capture-frames.mjs
 
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
-- [Phase 0 plan](docs/phase_0.md)
+- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md)
 
 ## License
 

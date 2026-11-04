@@ -33,7 +33,7 @@
         "y": 0
       },
       "id": 1,
-      "options": {},
+      "options": { "showSummary": true },
       "targets": [
         {
           "datasource": {

@@ -48,6 +48,8 @@ jobs:
         run: npm run test:ci
       - name: Build frontend
         run: npm run build
+      - name: Check dist contents
+        run: npm run check:dist
 
       - name: Check for backend
         id: check-for-backend
