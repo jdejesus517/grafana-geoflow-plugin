@@ -164,7 +164,7 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         loaded.on('error', (error) => setBasemapError({ basemap: latest.current.basemap, message: error.message }));
         loaded.on('viewChange', (next) => (currentView.current = next));
         loaded.on('contextLost', () => setPaused(true));
-        return loaded.mount(containerRef.current!, { ...latest.current, view: currentView.current }).then(() => {
+        return loaded.mount(containerRef.current!, { ...latest.current, view: currentView.current, layers: [] }).then(() => {
           if (!cancelled) {
             setEngine(loaded);
           }

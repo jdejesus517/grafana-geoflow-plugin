@@ -5,7 +5,7 @@ import { Map as MapLibreMap, NavigationControl, setWorkerUrl } from 'maplibre-gl
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint } from '../basemapStyle';
 import { WebGLUnavailableError } from '../errors';
-import { BasemapSpec, EngineEvents, EngineOptions, EngineTheme, MapEngine, ViewState } from '../types';
+import { BasemapSpec, EngineEvents, EngineOptions, EngineTheme, LayerSpec, MapEngine, ViewState } from '../types';
 import { workerUrl } from './workerUrl';
 
 /** Errors from the same source are forwarded at most once per this interval. */
@@ -97,8 +97,16 @@ export class MapLibreEngine implements MapEngine {
     this.map?.jumpTo({ center: view.center, zoom: view.zoom });
   }
 
+  // Implemented in step 3.3 (docs/phase_3.md).
+  setLayers(layers: LayerSpec[]): void {}
+
   resize(): void {
     this.map?.resize();
+  }
+
+  // Test hook: see MapEngine.renderedFeatureCounts.
+  async renderedFeatureCounts(): Promise<Record<string, number>> {
+    return {};
   }
 
   on<E extends keyof EngineEvents>(event: E, listener: (payload: EngineEvents[E]) => void): () => void {

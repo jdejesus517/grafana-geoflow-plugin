@@ -15,7 +15,9 @@ class FakeEngine implements MapEngine {
   setBasemap = jest.fn();
   setTheme = jest.fn();
   setView = jest.fn();
+  setLayers = jest.fn();
   resize = jest.fn();
+  renderedFeatureCounts = jest.fn(() => Promise.resolve({}));
   destroy = jest.fn();
   errorListeners: Array<(error: EngineError) => void> = [];
   on = jest.fn((event: string, listener: (payload: never) => void) => {
@@ -101,6 +103,7 @@ describe('MapPanel', () => {
         basemap: { kind: 'osm' },
         view: { center: [-78.78, 35.79], zoom: 15 },
         theme: { dark: expect.any(Boolean), background: expect.any(String) },
+        layers: [],
       });
     });
 

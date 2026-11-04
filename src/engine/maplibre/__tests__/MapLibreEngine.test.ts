@@ -61,7 +61,7 @@ jest.mock('../workerUrl', () => ({ workerUrl: 'http://grafana/public/plugins/geo
 
 const light: EngineTheme = { dark: false, background: '#ffffff' };
 const dark: EngineTheme = { dark: true, background: '#111217' };
-const options: EngineOptions = { view: { center: [-78.78, 35.79], zoom: 15 }, basemap: { kind: 'osm' }, theme: light };
+const options: EngineOptions = { view: { center: [-78.78, 35.79], zoom: 15 }, basemap: { kind: 'osm' }, theme: light, layers: [] };
 
 let getContext: jest.SpyInstance;
 let loseContext: jest.Mock;
