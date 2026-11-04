@@ -10,9 +10,11 @@ export type {
   EngineEvents,
   EngineOptions,
   EngineTheme,
+  FeatureRef,
   LayerSpec,
   LayerStyle,
   MapEngine,
+  PointerHit,
   ViewState,
 } from './types';
 

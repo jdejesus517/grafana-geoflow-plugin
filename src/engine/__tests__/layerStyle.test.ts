@@ -2,6 +2,14 @@ import { DATA_LAYER_PREFIX, dataSourceId, paintFor, styleLayerId, styleLayerIds,
 import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, BASEMAP_SOURCE_ID } from '../basemapStyle';
 import { LayerSpec, LayerStyle } from '../types';
 
+/** A paint value that changes for hovered or selected features. */
+const highlighted = (value: number, normal: number) => [
+  'case',
+  ['any', ['boolean', ['feature-state', 'selected'], false], ['boolean', ['feature-state', 'hovered'], false]],
+  value,
+  normal,
+];
+
 const style: LayerStyle = {
   color: '#73bf69',
   fillOpacity: 0.35,
@@ -9,7 +17,7 @@ const style: LayerStyle = {
   pointRadius: 5,
   outlineColor: '#ffffff',
 };
-const spec: LayerSpec = { id: 'A', data: { type: 'FeatureCollection', features: [] }, style };
+const spec: LayerSpec = { id: 'A', data: { type: 'FeatureCollection', features: [] }, style, interactive: true };
 
 describe('ids', () => {
   it('prefixes sources and style layers', () => {
@@ -63,10 +71,15 @@ describe('styleLayers', () => {
 
   it('paints every style layer from the LayerStyle', () => {
     expect(layers.map((layer) => layer.paint)).toEqual([
-      { 'fill-color': '#73bf69', 'fill-opacity': 0.35 },
-      { 'line-color': '#73bf69', 'line-width': 1 },
-      { 'line-color': '#73bf69', 'line-width': 2 },
-      { 'circle-color': '#73bf69', 'circle-radius': 5, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1 },
+      { 'fill-color': '#73bf69', 'fill-opacity': highlighted(0.6, 0.35) },
+      { 'line-color': '#73bf69', 'line-width': highlighted(3, 1) },
+      { 'line-color': '#73bf69', 'line-width': highlighted(4, 2) },
+      {
+        'circle-color': '#73bf69',
+        'circle-radius': highlighted(7, 5),
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': highlighted(2, 1),
+      },
     ]);
   });
 
@@ -87,9 +100,13 @@ describe('paintFor', () => {
       outlineColor: 'black',
     });
 
-    expect(paint.fill).toEqual({ 'fill-color': 'red', 'fill-opacity': 0.5 });
-    expect(paint.line).toEqual({ 'line-color': 'red', 'line-width': 4 });
-    expect(paint.circle).toMatchObject({ 'circle-radius': 8, 'circle-stroke-color': 'black' });
+    expect(paint.fill).toEqual({ 'fill-color': 'red', 'fill-opacity': highlighted(0.75, 0.5) });
+    expect(paint.line).toEqual({ 'line-color': 'red', 'line-width': highlighted(6, 4) });
+    expect(paint.circle).toMatchObject({ 'circle-radius': highlighted(10, 8), 'circle-stroke-color': 'black' });
+  });
+
+  it('caps the highlighted fill opacity at 1', () => {
+    expect(paintFor({ ...style, fillOpacity: 0.9 }).fill['fill-opacity']).toEqual(highlighted(1, 0.9));
   });
 
   it('matches what styleLayers paints', () => {

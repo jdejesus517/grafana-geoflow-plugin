@@ -35,6 +35,10 @@ class FakeEngine implements MapEngine {
   setTheme = jest.fn();
   setView = jest.fn();
   setLayers = jest.fn();
+  openTooltip = jest.fn();
+  closeTooltip = jest.fn();
+  setHovered = jest.fn();
+  setSelected = jest.fn();
   resize = jest.fn();
   renderedFeatureCounts = jest.fn(() => Promise.resolve({}));
   destroy = jest.fn();
