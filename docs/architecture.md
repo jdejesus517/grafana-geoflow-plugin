@@ -43,7 +43,7 @@ flowchart TD
                 BLS["buildLayerSpecs<br/>panel options + frames → LayerSpec[]"]
             end
             subgraph EngineLayer["Engine layer: src/engine/<br/>no @grafana/* imports"]
-                ENG["MapEngine interface + MapLibreEngine implementation<br/>style builders (LayerSpec → MapLibre layer specs)<br/>popup rendering"]
+                ENG["MapEngine interface + MapLibreEngine implementation<br/>style builders (LayerSpec → MapLibre layer specs)<br/>hit testing, highlights, tooltip anchor"]
             end
             ML["MapLibre GL JS"]
         end
@@ -105,6 +105,7 @@ src/
   plugin.json
   panel/                       # Grafana-aware layer
     MapPanel.tsx
+    FeatureTooltip.tsx         # tooltip content, with Grafana's tooltip components
     options.ts                 # PanelOptions types + builder
     editors/LayersEditor.tsx   # custom option editor for the layer list
   adapter/                     # Grafana DataFrame ⇄ neutral model
@@ -116,7 +117,6 @@ src/
     types.ts                   # LayerSpec, LayerStyle, ViewState, MapEngine
     MapLibreEngine.ts
     styleBuilders.ts           # pure: LayerSpec → maplibre LayerSpecification[]
-    popup.ts
     __tests__/
   model/                       # shared plain types (GeoJSON helpers, errors)
 tests/                         # Playwright e2e (@grafana/plugin-e2e)
@@ -128,7 +128,7 @@ The Grafana and Postgres directories don't depend on each other. Each one can be
 
 ### 2.2 Panel layer (`src/panel`, Grafana-aware)
 
-- **`module.ts`**: `new PanelPlugin<MapOptions>(MapPanel).setPanelOptions(...)`. It declares basemap, view and layer options. `useFieldConfig()` is enabled so per-field unit and decimals settings work in popups.
+- **`module.ts`**: `new PanelPlugin<MapOptions>(MapPanel).setPanelOptions(...)`. It declares basemap, view, tooltip and layer options. `useFieldConfig()` is enabled so per-field units, decimals, value mappings and data links work in tooltips (Phase 4).
 - **`MapPanel.tsx`**: A thin React component.
   - On mount: create a `div`, call `engine.mount(div, initialView, basemap)`.
   - On `data` / `options` change: call the adapter to build `LayerSpec[]`, then call `engine.setLayers(specs)`.
@@ -144,7 +144,7 @@ This is the only place that knows about both `DataFrame` and GeoJSON. Its functi
 
 - `detectGeometryField(frame)`: picks the geometry column (see §3).
 - `frameToFeatureCollection(frame, mapping) → { fc, warnings }`.
-- `buildLayerSpecs(frames, options, theme) → LayerSpec[]`: joins the layer configuration with frames by `refId` and resolves style defaults from the Grafana theme. Popup display values are pre-formatted with Grafana's field display processor, so the engine never needs Grafana formatting code.
+- `buildLayerSpecs(frames, options, theme) → LayerSpec[]`: joins the layer configuration with frames by `refId` and resolves style defaults from the Grafana theme. Tooltip values are formatted with Grafana's field display processor when a feature is hovered or clicked (Phase 4), so the engine never needs Grafana formatting code.
 
 ### 2.4 Engine layer (`src/engine`, Grafana-independent)
 
@@ -158,7 +158,7 @@ interface MapEngine {
   fitToData(padding?: number): void;
   setView(view: ViewState): void;
   resize(): void;
-  on(event: 'featureClick' | 'viewChange', cb: (...) => void): () => void;
+  on(event: 'hover' | 'click' | 'viewChange', cb: (...) => void): () => void;
   destroy(): void;
 }
 
@@ -168,7 +168,7 @@ interface LayerSpec {
   visible: boolean;
   data: FeatureCollection;
   style: LayerStyle;           // color, opacity, radius, lineWidth, fillOpacity…
-  popup: { enabled: boolean; fields: string[] | 'all' };
+  interactive: boolean;        // hover and click tooltips; per-layer tooltip fields in Phase 6
 }
 ```
 
@@ -185,7 +185,9 @@ interface LayerSpec {
   - Add or remove: add or remove the source and its layers.
   - A basemap `setStyle()` would drop user layers, so a `transformStyle` given at mount appends them to every new style (as built in Phase 3, below).
 - **`styleBuilders.ts`** is pure: `LayerSpec → LayerSpecification[]`. Most styling logic can therefore be tested without WebGL.
-- **Popups**: on click, query rendered features across this plugin's layers, then show a `maplibregl.Popup` built from the pre-formatted properties. The popup is built as DOM text nodes, never `innerHTML` (attribute values are untrusted data).
+- **Tooltips** (planned in [phase_4.md](phase_4.md)), following Grafana's own pattern: hovering a feature highlights it and shows a compact tooltip, and clicking pins a full one with a pager for overlapping features and the feature's data links.
+  - The engine does the hit testing (rendered features of interactive layers, a few pixels around the pointer), emits `hover` and `click` events, sets the highlights with feature-state, and anchors one `maplibregl.Popup`.
+  - The panel renders the tooltip's content with React and Grafana's tooltip components into a DOM element it hands to the engine. The engine stays Grafana-free, and React escapes every value, so attribute values never go through `innerHTML` (they're untrusted data).
 
 #### MapLibre packaging (Phase 2)
 
@@ -198,7 +200,7 @@ MapLibre GL JS 6 shapes how the engine is built and shipped:
 #### Drawing data (Phase 3)
 
 How the engine draws `LayerSpec`s, as built:
-- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`. `name`, `visible` and `popup` arrive with Phases 4 and 6.
+- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`. `interactive` arrives with Phase 4 (tooltips), and `name` and `visible` with Phase 6.
 - **Ids:** sources and style layers are prefixed `geoflow-layer:` (for example `geoflow-layer:A:fill`). The prefix keeps them apart from the basemap and from layers in a user's style URL. Layer ids come from refIds and are never parsed back out of these strings.
 - **Geometry filters:** in MapLibre 6, `['geometry-type']` reports Multi* features as their simple type (MultiPolygon as Polygon). The filters list both forms, which is correct in every version.
 - **Basemap changes:** `transformStyle`, passed to the `Map` constructor, appends the data sources and layers to every style MapLibre loads afterwards, inline or from a URL. MapLibre fires `style.load` both after a full style load and after a style it applied in place. The engine tracks readiness with `styledataloading` and `style.load`, and applies any `setLayers` call made in between on `style.load`.
@@ -270,7 +272,7 @@ Notes:
 - The adapter iterates `field.values` arrays directly instead of using `DataFrameView`. This avoids creating a proxy object per row on large frames.
 - **Feature ids**: MapLibre's feature-state (hover highlighting) needs numeric ids or `promoteId`. The `id` column's values are used only when every one is a unique finite number. Otherwise every feature gets its row index, so a fallback id can never collide with a real one. The column's values stay in `properties` either way.
 - **Nested property values** (objects or arrays) are JSON-stringified, because MapLibre flattens them anyway.
-- **Display values** for popups are computed with `field.display(value)` and stored in a separate map per layer keyed by feature id. This keeps feature properties raw for data-driven styling later.
+- **Display values** for tooltips are computed with `field.display(value)` and kept apart from the feature properties, which stay raw for data-driven styling later. Phase 4 formats them when a feature is hovered or clicked, rather than up front for every row ([phase_4.md](phase_4.md)).
 - **Not supported in MVP**:
   - `GeometryCollection`: counted as "unsupported" and reported.
   - Z/M coordinates: passed through; MapLibre ignores them.
@@ -282,7 +284,7 @@ How data frames become map layers is a panel option, `layerBinding.mode`:
 
 | Mode | Behavior | Delivered in |
 |---|---|---|
-| `perFrame` (default) | Each data frame (one per query refId) becomes one layer. Layer id = `refId`. Layer config can override the geometry field, id field, style and popup fields. | MVP (Phases 3–6) |
+| `perFrame` (default) | Each data frame (one per query refId) becomes one layer. Layer id = `refId`. Layer config can override the geometry field, id field, style and tooltip fields. | MVP (Phases 3–6) |
 | `byColumn` | The user picks a source frame and a **split column**. Each distinct value of that column becomes its own layer with id `${refId}:${value}`. Layer names come from the values. | Phase 10 |
 
 Design rules that keep later modes cheap to add:
@@ -316,7 +318,7 @@ Design rules that keep later modes cheap to add:
 | **Content Security Policy.** Grafana's optional CSP limits `connect-src` to `'self' grafana.com *.cartocdn.com`, and MapLibre fetches raster tiles with `fetch()`. | Checked in Phase 2 with Grafana's default template. The worker, chunks and CSS load without changes, because the worker is a same-origin file set with `setWorkerUrl()` (no `blob:`). Tile servers are blocked until they're added to `connect-src`. The README documents the directive. |
 | **WebGL availability.** MapLibre 6 requires WebGL2. Headless renderers, old GPUs and VDI environments may lack it. | Detect support on mount and show a clear message instead of a blank panel. Document the image renderer limitation. |
 | **Basemap tiles and air-gapped installs.** Public tile servers have usage policies and need internet access. | The default is OpenStreetMap's standard raster tiles (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). They're wrapped in a minimal inline MapLibre style, because OSM serves tiles, not a style JSON. Caveats: OSM's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy or bulk use and requires the attribution "© OpenStreetMap contributors". The panel always shows that attribution through MapLibre's attribution control. The basemap is configurable (raster tile URL template or a vector style URL) so production users can point at their own tile server. A "no basemap" (blank background) option covers air-gapped installs. |
-| **MapLibre CSS.** Without it, controls and popups render broken. | The lazily loaded engine module imports `maplibre-gl/dist/maplibre-gl.css`. It is injected after the panel's Emotion styles and wins ties: `.maplibregl-map { position: relative }` collapsed an absolutely positioned map container to zero height, so the container is sized with `width`/`height: 100%`. Overrides that match controls to the Grafana theme are scoped under the panel's class. |
+| **MapLibre CSS.** Without it, controls and tooltips render broken. | The lazily loaded engine module imports `maplibre-gl/dist/maplibre-gl.css`. It is injected after the panel's Emotion styles and wins ties: `.maplibregl-map { position: relative }` collapsed an absolutely positioned map container to zero height, so the container is sized with `width`/`height: 100%`. Overrides that match controls to the Grafana theme are scoped under the panel's class. |
 | **Panel lifecycle.** Grafana mounts panels lazily as they scroll into view but doesn't unmount them when they scroll away. Chromium allows 16 live WebGL contexts per page and drops the oldest beyond that. | Found in Phase 2 with a 20-panel dashboard. A panel creates its map only while it is on screen or within 200 px of it (`IntersectionObserver`), and destroys it straight away when it leaves. `map.remove()` releases the context, and a recreated map resumes the user's last view. If a context is still lost, the panel shows "Map paused" with a Reload button. Option changes never recreate the map. The `03-many-panels` e2e test covers this. |
 | **Theme switching** (light/dark). | OSM raster tiles have no dark variant. In dark theme the engine adjusts `raster-brightness-max` / `raster-saturation` paint properties to dim the basemap, which needs no second tile source. Users can also configure an explicit dark basemap. Default layer colors come from `theme.visualization`. |
 | **Coordinate systems.** Data not in EPSG:4326 renders in the wrong place or not at all. | Document `ST_Transform` usage. The adapter warns when coordinates fall outside ±180/±90. |
@@ -351,7 +353,7 @@ Design rules that keep later modes cheap to add:
 |---|---|---|
 | Unit | Jest | Adapter: `frameToFeatureCollection` across all geometry types, Feature input, string vs object values, null/invalid/unsupported rows, id handling, field detection. Engine: `styleBuilders` output and the `setLayers` diff logic with `maplibre-gl` mocked. jsdom has no WebGL, so the real map is not exercised here. |
 | Component | Jest + React Testing Library | `MapPanel` calls the engine correctly on mount, data change, resize and unmount. Uses a fake `MapEngine`, which is another payoff of the interface. Covers the "no geometry field" hint. |
-| End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Clicking a known feature opens a popup with the expected attributes. Option changes take effect. Dashboard refresh updates features. Runs against the minimum supported Grafana (13.2) and the latest release. |
+| End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Hovering and clicking known features shows tooltips with the expected attributes and data links. Option changes take effect. Dashboard refresh updates features. Runs against the minimum supported Grafana (13.2) and the latest release. |
 | Manual / perf | Provisioned "large" dashboard + browser profiler | Conversion and render timings at 1k, 10k and 100k features. |
 
 CI runs lint (including the engine import boundary), typecheck, unit tests, build, `@grafana/plugin-validator`, the license check (§5.4) and e2e on every PR.
@@ -366,7 +368,7 @@ Each phase ends with something demonstrable and its own tests. I will stop for r
 | 1 | Adapter: `frameToFeatureCollection` + field detection (no UI) | Unit tests |
 | 2 | Engine skeleton: `MapEngine`, `MapLibreEngine` with basemap only, mount/resize/destroy; panel shows interactive basemap | Component test + e2e "map canvas visible" |
 | 3 | Single-layer rendering of all six geometry types with default style | Style-builder unit tests + e2e on mixed-geometry dashboard |
-| 4 | Popups with feature attributes (formatted via field config) | e2e click → popup content |
+| 4 | Tooltips: hover highlight and tooltip, click to pin, feature attributes formatted via field config, data links | e2e hover and click → tooltip content and links |
 | 5 | Basic styling options (color, opacity, point radius, line width, fill opacity) | Unit tests + e2e option change |
 | 6 | Multiple layers in `perFrame` mode: layer list editor, `LayerBinding` option (only `perFrame` exposed), ordering, visibility | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
 | 7 | Refresh behavior: in-place `setData`, viewport preservation, fit-to-data option, theme switching | Component tests + e2e refresh |
@@ -410,3 +412,20 @@ All open items are resolved.
 | Default basemap | OpenStreetMap standard raster tiles, with attribution |
 | License | Apache-2.0, pending the dependency license review |
 | Dev environment | Docker; `docker/grafana/` and `docker/postgres/` kept independent |
+
+---
+
+## 7. Features considered for later
+
+Features that have come up but aren't in a phase yet. Each one would get its own plan and approval before any work starts. The context records why it was left out and what it would take, so the reasoning isn't lost.
+
+| Feature | Context | What it would take |
+|---|---|---|
+| **Actions in tooltips** | Grafana's actions are buttons, configured per field like data links, that send an HTTP request (for example to acknowledge an alarm or open a ticket). Requested alongside data links, which Phase 4 delivers. Grafana 13's `VizTooltipFooter` accepts ready-made actions, but the code that builds them from a field's action settings, with variable interpolation, confirmation and permission checks, is internal to Grafana and not exported to plugins. Fields carry only the raw `config.actions` settings. | First, check whether the Grafana version of the day exports a way to build actions for plugins. If it does, it's a small addition to the pinned tooltip's footer. If not, the plugin would have to rebuild Grafana's request handling, variable interpolation and confirmation itself, and keep it in step with Grafana. That needs a separate decision. |
+| **One-click data links** | Grafana's link editor has an **Open with one click** setting: in Grafana's own panels, a click then opens the link directly instead of showing the tooltip. Phase 4 always pins the tooltip on click, with the link in its footer. | On click, when the topmost feature has a one-click link, open it instead of pinning. Needs a decision on overlapping features, where several features may each have one. |
+| **Keyboard selection of features** | Mouse and touch only in Phase 4. MapLibre's keyboard support covers panning and zooming, not features. | A way to move a focus through the features in view (for example a hidden, focusable list in drawing order), with the tooltip following it, and screen-reader text. |
+| **Data drawn below a style URL's labels** | Phase 3 draws data on top of the whole basemap, labels included (Phase 3, decision 3). | An option that inserts the data layers before the first `symbol` layer of a style URL. It depends on how each style is built. |
+| **Raw WKB/EWKB geometry** | §3.3. Hex WKB from a raw `geom` column is detected, and the panel asks for `ST_AsGeoJSON(geom)` instead. | A WKB parser in the adapter, which is a new bundled dependency (license review, §5.4) and main-thread cost. |
+| **GeometryCollection** | §3.3. Rows are skipped and reported as `unsupported`. | Splitting a collection into its parts in the adapter, with a decision on how the parts share one feature's tooltip and id. |
+| **Vector tiles for very large data** | §4.2. Beyond about 100k features, GeoJSON through the data source gets slow. | Vector tiles from PostGIS (`ST_AsMVT` through Martin or pg_tileserv). This is a deliberate exception to "Grafana data source only" and needs separate approval. |
+| **Antimeridian-crossing geometries** | §4.1. Documented rather than solved. | Splitting or unwrapping geometries that cross ±180° in the adapter. |
