@@ -163,6 +163,8 @@ interface MapEngine {
    */
   openTooltip(lngLat: [number, number], content: HTMLElement, options: { interactive: boolean }): void;
   closeTooltip(): void;
+  /** The largest tooltip that fits inside the map when anchored at lngLat in the current view. */
+  tooltipSpace(lngLat: [number, number]): { width: number; height: number };
   /** Highlights; undefined clears them. Hovered and selected can both be set. */
   setHovered(feature: FeatureRef | undefined): void;
   setSelected(feature: FeatureRef | undefined): void;
@@ -174,10 +176,10 @@ interface MapEngine {
 - **Tooltip:** one `maplibregl.Popup` with:
   - `closeButton: false`, because the panel renders its own
   - `closeOnClick: false`, because the panel decides when it closes
-  - `maxWidth` limited to the panel
+  - `padding` of 8 px, so it stays clear of the map's edges
   - `setDOMContent(content)`
 
-  MapLibre moves it with the map. A non-interactive tooltip gets `pointer-events: none`. `setBasemap` closes it, and so does `destroy`.
+  MapLibre moves it with the map, and picks the side of the point it opens on: above the point if it fits there, otherwise below; centered across the point if it fits, otherwise beside it, away from the nearer edge. MapLibre doesn't shrink a tooltip that fits on no side, so `tooltipSpace` reports the room that rule leaves: the larger of the space above and below the point, and the larger of the space beside it or centered across it, less the margin and the 12 px offset. The panel sizes the tooltip to that. A non-interactive tooltip gets `pointer-events: none`. `setBasemap` closes it, and so does `destroy`.
 - **Highlights:** MapLibre feature-state `{ hovered }` and `{ selected }` on the feature's source. `paintFor` gains highlighted variants as `['case', ['any', selected, hovered], highlightedValue, normalValue]`:
   - wider outline and line
   - larger point with a thicker stroke
@@ -194,7 +196,9 @@ interface MapEngine {
 - `VizTooltipFooter` (pinned only): the data links.
 - "+2 more" (hover only): shown when more features are under the pointer.
 
-It renders into a `div` that the panel owns, through a React portal, and the panel hands that `div` to `openTooltip`. The tooltip scrolls when long, up to the panel's height. (Changed after Phase 4: it is sized to the room beside its anchor; see [architecture.md §2.4](architecture.md#tooltips-phase-4).)
+It renders into a `div` that the panel owns, through a React portal, and the panel hands that `div` to `openTooltip`.
+
+**Tooltip size.** When a tooltip opens, the panel asks the engine for `tooltipSpace` at its anchor and uses that as the tooltip's maximum height, and as its maximum width up to 400 px. Its minimum width is 180 px, or less on a map that has less room. The header and the data links keep their height, and the field list between them shrinks and scrolls. A pinned tooltip keeps the size it opened with while the map pans, so panning can carry it past an edge, as it carries the feature. A hover tooltip lets the pointer through, so it can't be scrolled; pinning it can.
 
 If step 4.1 finds the `@alpha` tooltip components behave differently between Grafana 13.2 and nightly, the panel uses its own small components with the same layout instead (decision 8).
 
@@ -261,6 +265,7 @@ It's plain math, so there's no new test hook. The dashboard uses zoom 16, where 
 - **Click:**
   - the tooltip pins, with the pager on the overlap ("1 of 2", Next shows the other feature)
   - the data link's URL has the building's id in it
+  - pinned in the middle of the short Buildings panel, the tooltip stays inside the map, its data link stays in view, and its fields scroll (added with the follow-up)
 - **While pinned:** hovering another feature doesn't replace the pinned tooltip.
 - **Closing:** Escape, an empty-map click and a basemap change each close the pinned tooltip.
 - **Modes:** on the Click only panel, hovering shows nothing and clicking pins; on the Tooltip off panel, neither does anything.
@@ -342,7 +347,7 @@ Add `05-tooltips.json`, the `mapPoint` helper and the e2e tests (Design §6). Ru
 - **Architecture doc:**
   - MapLibre ids versus feature keys, and the tightened id rule (replacing the "Feature ids" note in §3.3)
   - formatting on hover and click (replacing the "Display values" note in §3.3)
-  - `FeatureRef`, `hover`, `click`, `openTooltip`, `setHovered`, `setSelected` and `interactive` in the engine contract
+  - `FeatureRef`, `hover`, `click`, `openTooltip`, `tooltipSpace`, `setHovered`, `setSelected` and `interactive` in the engine contract
 - **This file:** fill in the outcome section.
 - **Test-only code check:** run `grep -rn "Test hook:" src/` and compare it with the diff. The plan adds no test-only code.
 
@@ -358,7 +363,7 @@ Add `05-tooltips.json`, the `mapPoint` helper and the e2e tests (Design §6). Ru
 | Hover tooltips get in the way on dense maps. | **Click only** mode. The hover tooltip doesn't take the pointer, so it never blocks the feature under it. |
 | Pointing at features by coordinates misses in CI, for example from a 1 px panel size difference or a different device pixel ratio. | Zoom 16 makes the targets tens of pixels wide, and the helper measures from the canvas center, which doesn't depend on panel size. If it still misses, the test hook can report a feature's screen position from MapLibre's `project()`, marked `// Test hook:`. |
 | React portal content inside a MapLibre popup gets out of step with React's tree, for example after the engine is destroyed. | The panel owns the content element and unmounts the portal before `closeTooltip` and on engine cleanup. Component tests cover recreate and unmount. |
-| Tooltips with many columns overflow small panels. | Maximum width and height tied to the panel size, with scrolling, and MapLibre's automatic anchoring to keep the tooltip inside the map. |
+| Tooltips with many columns overflow small panels. | The tooltip is sized to the room beside its anchor (`tooltipSpace`), the side MapLibre's automatic anchoring opens it on, and its field list scrolls. |
 | The id-column rule changes which ids a layer uses, and with them feature-state and query results. | Only layers whose ids MapLibre couldn't keep exactly change, and those were already wrong. Unit tests pin the rule. Keys are unaffected. |
 | Feature-state highlights are lost when `setData` replaces a source. | MapLibre keeps feature-state across `setData` for the same ids. If the pinned feature is gone after a refresh, the panel clears it anyway (Design §5). |
 
@@ -423,6 +428,7 @@ All exit criteria were met locally against Grafana 13.2.4:
 | The tooltip title | The frame's name, or "Query A" | Grafana's name for an unnamed frame is its field list ("id, name, geometry"). |
 | Steps 4.5 and 4.6 as separate commits | One commit | Hover and pinned tooltips share one tooltip element and one set of highlights. Step 4.7 then only added the data link tests, since `FeatureTooltip` renders the footer. |
 | The overlap e2e test shows "1 of 2" | "1 of 4" | SC-01 sits on three cables. |
+| Tooltip maximum size tied to the panel size (width − 32 px, height − 40 px), the field list `maxHeight − 80` | Sized to `tooltipSpace` at its anchor; the field list fills what the header and links leave (follow-up, PR #23) | MapLibre only picks the side the tooltip opens on. Sized to the panel, a tooltip near the middle of a short panel fit on neither side and was cut off. |
 
 ### Findings for later phases
 
@@ -431,7 +437,7 @@ All exit criteria were met locally against Grafana 13.2.4:
 - **Software rendering in headless Chromium.** By default, Playwright's Chromium draws WebGL with SwiftShader on the CPU, where redrawing 100k points takes 100 ms or more. Panning that layer took about 340 ms per move. On this machine's GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), panning and hovering 100k points both ran with no main-thread task over 50 ms. Phase 8's performance work has to use the GPU; e2e timings in CI say nothing about real performance.
 - **Highlight method.** Because of the slow software rendering, hover at first looked slow with feature-state highlights. An overlay source for highlighted features was built and measured, then dropped: on the GPU, feature-state and the overlay performed the same, and feature-state is simpler and is what the plan specified.
 - **Tooltip placement.** MapLibre anchors a pinned tooltip below its feature when there's no room above, so the tooltip can cover the map just south of the feature. The e2e tests click empty map at the canvas's edge for that reason.
-- **Tooltips overflowing the map** (found after Phase 4). MapLibre only picks the side a popup opens on; a tooltip taller or wider than the room on either side was cut off by the panel. The follow-up sizes the tooltip to the room it has (`tooltipSpace`), and its field list scrolls.
+- **Tooltips overflowing the map** (found after Phase 4). MapLibre only picks the side a popup opens on; a tooltip taller or wider than the room on either side was cut off by the panel. Fixed in the follow-up (see Differences from the plan, and Design §4 and §5).
 - **Unpinning while over a feature** brings back its hover tooltip straight away. That's intended, and the e2e tests check the pinned tooltip's close button rather than the absence of any tooltip.
 - **Grafana's `suffix:` units** keep the space after the colon, so `suffix: floors` formats as "4  floors". HTML collapses it on screen.
 - **`module.js` is 32.4 KiB.** The tooltip code is only needed once a map exists, so it could move into the lazily loaded chunk if size becomes a concern (Phase 8).
