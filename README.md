@@ -2,11 +2,35 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** Phase 2 is complete: the panel shows an interactive basemap that you can pan and zoom. Query results aren't drawn on it yet; that arrives in Phase 3. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: pre-MVP.** Phase 3 is complete: the panel draws query results on an interactive basemap, with a default style. Popups arrive in Phase 4 and style options in Phase 5. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
 - Database: PostgreSQL 16+ with PostGIS 3.x
+
+## Writing queries
+
+Use Grafana's PostgreSQL data source with the query **Format** set to **Table**, and return the geometry as GeoJSON in WGS84 (EPSG:4326):
+
+```sql
+SELECT
+  id,
+  name,
+  status,
+  ST_AsGeoJSON(ST_Transform(geom, 4326), 6) AS geometry
+FROM assets
+WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
+```
+
+- **Geometry types:** Point, MultiPoint, LineString, MultiLineString, Polygon and MultiPolygon. Points are drawn as circles, lines as lines, and polygons filled with an outline.
+- **Geometry column:** GeoFlow finds it by name (`geometry`, `geom`, `geojson`, `the_geom`, `wkb_geometry` or `shape`) or by content. It accepts GeoJSON text, `json`/`jsonb` values, and whole GeoJSON Features such as `ST_AsGeoJSON(t.*)`, whose properties are kept.
+- **`ST_Transform(geom, 4326)`:** needed unless the data is already in WGS84. Rows in another coordinate system are skipped.
+- **Precision `6`:** about 0.1 m, which roughly halves the size of the result compared with the default.
+- **Other columns:** become the feature's properties. Popups that show them arrive in Phase 4.
+
+**Each query is a layer.** Queries A, B, C… are drawn in that order, later ones on top, each in its own color from the Grafana theme. Queries without a geometry column are left out.
+
+**Rows that can't be drawn are skipped:** empty or invalid geometry, GeometryCollections, other coordinate systems, and coordinates outside ±180/±90. Turn on **Show data summary** in the panel options to see how many rows each query lost, and why. If no query has a geometry column, the panel says what to select instead. For example, a raw PostGIS `geom` column needs `ST_AsGeoJSON(geom)`.
 
 ## Basemap
 
@@ -58,12 +82,13 @@ npm run server     # start Grafana and PostGIS in Docker (terminal 2)
 
 Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 
-| Dashboard      | Shows                                                                                                                     |
-| -------------- | ------------------------------------------------------------------------------------------------------------------------- |
-| 00 Smoke       | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on. |
-| 01 Adapter     | How each kind of query result converts to GeoJSON.                                                                        |
-| 02 Basemap     | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                    |
-| 03 Many panels | 20 maps on one dashboard, for checking the WebGL context limit.                                                           |
+| Dashboard      | Shows                                                                                                                                           |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| 00 Smoke       | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                       |
+| 01 Adapter     | How each kind of query result converts to GeoJSON.                                                                                              |
+| 02 Basemap     | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                          |
+| 03 Many panels | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                 |
+| 04 Geometry    | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column. |
 
 ### Docker environment
 
@@ -111,6 +136,11 @@ Before the first e2e run, install the browser with `npx playwright install chrom
 
 E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers every map tile request with a local PNG. Tests never contact `tile.openstreetmap.org`.
 
+Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
+
+- **Drawn-feature counts.** `renderedFeatures(panel)` in `tests/fixtures/` asks the panel's map which features it drew. This goes through a small test hook in the plugin ([src/panel/testHook.ts](src/panel/testHook.ts)), which does nothing unless a test triggers it. All test-only code in `src/` is marked with a `// Test hook:` comment: `grep -rn "Test hook:" src/` lists it.
+- **One screenshot comparison** of the 04 Geometry dashboard's mixed panel, stored in `tests/geometry.spec.ts-snapshots/`. After an intended change to how features look, regenerate it with `npx playwright test tests/geometry.spec.ts --update-snapshots` and review the image diff.
+
 Adapter unit tests use real data frames captured from the dev stack in `src/adapter/__fixtures__/`. After changing the fixture data in `docker/postgres/` or the minimum Grafana version, recapture them with `npm run server` running:
 
 ```bash
@@ -121,7 +151,7 @@ node scripts/capture-frames.mjs
 
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
-- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md)
+- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md)
 
 ## License
 

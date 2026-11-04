@@ -1,5 +1,6 @@
-// Engine contract: the Phase 2 subset of docs/architecture.md §2.4 (docs/phase_2.md, Design §1).
-// setLayers, fitToData and featureClick arrive with the phases that need them.
+// Engine contract: the subset of docs/architecture.md §2.4 built so far (docs/phase_2.md and
+// docs/phase_3.md, Design §1). fitToData and featureClick arrive with the phases that need them.
+import type { FeatureCollection, SupportedGeometry } from '../model';
 
 export type BasemapSpec =
   | { kind: 'osm' }
@@ -19,16 +20,40 @@ export interface EngineTheme {
   background: string;
 }
 
+/** How a layer's features are drawn. Colors are resolved CSS colors, never theme names. */
+export interface LayerStyle {
+  color: string;
+  /** Polygon fill, 0–1. */
+  fillOpacity: number;
+  /** Lines, px. Polygon outlines are always 1 px. */
+  lineWidth: number;
+  /** Points, px. */
+  pointRadius: number;
+  /** Point stroke, for contrast with the basemap. */
+  outlineColor: string;
+}
+
+/** One set of features drawn together; Phase 3 makes one per data frame. */
+export interface LayerSpec {
+  /** Stable across refreshes, so the engine updates the layer instead of replacing it. */
+  id: string;
+  data: FeatureCollection<SupportedGeometry>;
+  style: LayerStyle;
+}
+
 export interface EngineOptions {
   view: ViewState;
   basemap: BasemapSpec;
   theme: EngineTheme;
+  layers: LayerSpec[];
 }
 
 export interface EngineError {
   message: string;
   /** The style source that failed, when MapLibre reports one (for example a tile source). */
   sourceId?: string;
+  /** The data layer whose features failed to load, when the error came from one. */
+  layerId?: string;
 }
 
 export interface EngineEvents {
@@ -48,7 +73,20 @@ export interface MapEngine {
   setBasemap(basemap: BasemapSpec): void;
   setTheme(theme: EngineTheme): void;
   setView(view: ViewState): void;
+  /**
+   * Replaces the drawn layers, updating the map in place: unchanged layers are left alone, and new
+   * data (compared by reference) or styles are applied to existing ones. Array order is drawing
+   * order, last on top; layers always draw above the basemap.
+   */
+  setLayers(layers: LayerSpec[]): void;
   resize(): void;
+  // Test hook: e2e tests can't see features on the WebGL canvas, so they read these counts
+  // through MapPanel's inspect event (docs/phase_3.md, Design §5). Nothing else calls it.
+  /**
+   * Waits until the map has finished drawing, then counts the distinct features drawn in the
+   * current view, per layer id.
+   */
+  renderedFeatureCounts(): Promise<Record<string, number>>;
   /** Returns a function that removes the listener. */
   on<E extends keyof EngineEvents>(event: E, listener: (payload: EngineEvents[E]) => void): () => void;
   destroy(): void;

@@ -33,7 +33,7 @@
         "y": 0
       },
       "id": 1,
-      "options": { "showSummary": true },
+      "options": { "showSummary": true, "view": { "lat": 35.7868, "lon": -78.7821, "zoom": 14 } },
       "targets": [
         {
           "datasource": {
@@ -62,7 +62,7 @@
         "y": 0
       },
       "id": 2,
-      "options": { "showSummary": true },
+      "options": { "showSummary": true, "view": { "lat": 35.7868, "lon": -78.7821, "zoom": 14 } },
       "targets": [
         {
           "datasource": {
@@ -102,7 +102,7 @@
         "y": 9
       },
       "id": 3,
-      "options": { "showSummary": true },
+      "options": { "showSummary": true, "view": { "lat": 35.7868, "lon": -78.7821, "zoom": 14 } },
       "targets": [
         {
           "datasource": {
@@ -142,7 +142,7 @@
         "y": 9
       },
       "id": 4,
-      "options": { "showSummary": true },
+      "options": { "showSummary": true, "view": { "lat": 35.7868, "lon": -78.7821, "zoom": 14 } },
       "targets": [
         {
           "datasource": {

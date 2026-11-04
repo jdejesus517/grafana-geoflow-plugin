@@ -1,21 +1,42 @@
 import React from 'react';
 import { act, render, screen } from '@testing-library/react';
-import { FieldType, LoadingState, PanelData, PanelProps, getDefaultTimeRange, toDataFrame } from '@grafana/data';
-import { EngineError, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
+import {
+  FieldType,
+  LoadingState,
+  PanelData,
+  PanelProps,
+  ThemeContext,
+  createTheme,
+  getDefaultTimeRange,
+  toDataFrame,
+} from '@grafana/data';
+import {
+  DEFAULT_LAYER_STYLE,
+  EngineError,
+  EngineOptions,
+  LayerSpec,
+  MapEngine,
+  WebGLUnavailableError,
+  createMapEngine,
+} from '../engine';
 import { MapPanel } from './MapPanel';
 import { DEFAULT_OPTIONS, GeoFlowOptions } from './options';
+import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 
 jest.mock('../engine', () => ({
   ...jest.requireActual('../engine/errors'),
+  ...jest.requireActual('../engine/layerStyle'),
   createMapEngine: jest.fn(),
 }));
 
 class FakeEngine implements MapEngine {
-  mount = jest.fn(() => Promise.resolve());
+  mount = jest.fn<Promise<void>, [HTMLElement, EngineOptions]>(() => Promise.resolve());
   setBasemap = jest.fn();
   setTheme = jest.fn();
   setView = jest.fn();
+  setLayers = jest.fn();
   resize = jest.fn();
+  renderedFeatureCounts = jest.fn(() => Promise.resolve({}));
   destroy = jest.fn();
   errorListeners: Array<(error: EngineError) => void> = [];
   on = jest.fn((event: string, listener: (payload: never) => void) => {
@@ -101,6 +122,7 @@ describe('MapPanel', () => {
         basemap: { kind: 'osm' },
         view: { center: [-78.78, 35.79], zoom: 15 },
         theme: { dark: expect.any(Boolean), background: expect.any(String) },
+        layers: [],
       });
     });
 
@@ -255,6 +277,132 @@ describe('MapPanel', () => {
 
       rerender(<MapPanel {...props({ options: { basemap: { kind: 'none' } } })} />);
       expect(screen.queryByTestId('geoflow-basemap-error')).not.toBeInTheDocument();
+    });
+
+    it('shows a data layer error under its query, not the basemap, until new data arrives', async () => {
+      const series = [toDataFrame({ refId: 'A', fields: [{ name: 'geometry', type: FieldType.string, values: [] }] })];
+      const { rerender } = await renderPanel({ data: { series } });
+      act(() => engine.errorListeners.forEach((listener) => listener({ message: 'bad GeoJSON', layerId: 'A' })));
+
+      expect(screen.getByTestId('geoflow-layer-error')).toHaveTextContent('Query A: bad GeoJSON');
+      expect(screen.queryByTestId('geoflow-basemap-error')).not.toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [toDataFrame({ ...series[0] })] } })} />);
+      expect(screen.queryByTestId('geoflow-layer-error')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('data layers', () => {
+    const points = toDataFrame({
+      refId: 'A',
+      fields: [
+        { name: 'id', type: FieldType.number, values: [1, 2] },
+        {
+          name: 'geometry',
+          type: FieldType.string,
+          values: ['{"type":"Point","coordinates":[1,2]}', '{"type":"Point","coordinates":[3,4]}'],
+        },
+      ],
+    });
+    const lines = toDataFrame({
+      refId: 'B',
+      fields: [
+        { name: 'geometry', type: FieldType.string, values: ['{"type":"LineString","coordinates":[[1,2],[3,4]]}'] },
+      ],
+    });
+    const noGeometry = toDataFrame({ refId: 'C', fields: [{ name: 'name', type: FieldType.string, values: ['a'] }] });
+
+    const lastLayers = (fake: FakeEngine = engine): LayerSpec[] => fake.setLayers.mock.lastCall![0];
+
+    it('draws one layer per frame with geometry, in query order', async () => {
+      await renderPanel({ data: { series: [points, noGeometry, lines] } });
+      const layers = lastLayers();
+
+      expect(layers.map((layer) => [layer.id, layer.data.features.length])).toEqual([
+        ['A', 2],
+        ['B', 1],
+      ]);
+      expect(layers[0].style).toMatchObject(DEFAULT_LAYER_STYLE);
+      expect(layers[0].style.color).not.toBe(layers[1].style.color);
+    });
+
+    it('passes the layers to a map created after the panel comes back on screen', async () => {
+      const { rerender } = await renderPanel({ data: { series: [points] } });
+      setOnScreen(false);
+      rerender(<MapPanel {...props({ data: { series: [points, lines] } })} />);
+
+      const second = new FakeEngine();
+      jest.mocked(createMapEngine).mockResolvedValue(second);
+      setOnScreen(true);
+      await act(async () => {});
+      const mounted: LayerSpec[] = second.mount.mock.calls[0][1].layers;
+
+      expect(mounted.map((layer) => layer.id)).toEqual(['A', 'B']);
+    });
+
+    it('reuses the data of frames that did not change', async () => {
+      const { rerender } = await renderPanel({ data: { series: [points, lines] } });
+      const before = lastLayers();
+      const newLines = toDataFrame({ ...lines });
+      rerender(<MapPanel {...props({ data: { series: [points, newLines] } })} />);
+      const after = lastLayers();
+
+      expect(after[0].data).toBe(before[0].data);
+      expect(after[1].data).not.toBe(before[1].data);
+    });
+
+    it('does not touch the layers when something else changes', async () => {
+      const series = [points];
+      const { rerender } = await renderPanel({ data: { series } });
+      engine.setLayers.mockClear();
+      rerender(<MapPanel {...props({ data: { series }, options: { basemap: { kind: 'none' } } })} />);
+
+      expect(engine.setLayers).not.toHaveBeenCalled();
+    });
+
+    it('recolors the layers, keeping their data, when the theme changes', async () => {
+      const series = [points];
+      const panel = (mode: 'light' | 'dark') => (
+        <ThemeContext.Provider value={createTheme({ colors: { mode } })}>
+          <MapPanel {...props({ data: { series } })} />
+        </ThemeContext.Provider>
+      );
+      const { rerender } = render(panel('dark'));
+      await act(async () => {});
+      const dark = lastLayers();
+      rerender(panel('light'));
+      const light = lastLayers();
+
+      expect(light[0].style.color).not.toBe(dark[0].style.color);
+      expect(light[0].style.outlineColor).not.toBe(dark[0].style.outlineColor);
+      expect(light[0].data).toBe(dark[0].data);
+    });
+
+    it('explains when no frame has a geometry column', async () => {
+      await renderPanel({ data: { series: [noGeometry] } });
+
+      expect(screen.getByTestId('geoflow-no-geometry')).toHaveTextContent('No GeoJSON geometry column');
+      expect(screen.getByTestId('geoflow-map')).toBeInTheDocument();
+    });
+
+    it('shows no notice when a frame has geometry, or when there is no data', async () => {
+      const { rerender } = await renderPanel({ data: { series: [noGeometry, points] } });
+      expect(screen.queryByTestId('geoflow-no-geometry')).not.toBeInTheDocument();
+
+      rerender(<MapPanel {...props()} />);
+      expect(screen.queryByTestId('geoflow-no-geometry')).not.toBeInTheDocument();
+    });
+
+    // Test hook: the e2e tests read drawn features this way (docs/phase_3.md, Design §5).
+    it('writes the drawn-feature counts to the map container when inspected', async () => {
+      await renderPanel({ data: { series: [points] } });
+      engine.renderedFeatureCounts.mockResolvedValue({ A: 2 });
+      const container = screen.getByTestId('geoflow-map');
+      container.setAttribute(RENDERED_FEATURES_ATTRIBUTE, 'stale');
+
+      await act(async () => container.dispatchEvent(new Event(INSPECT_EVENT)));
+
+      expect(container).toHaveAttribute(RENDERED_FEATURES_ATTRIBUTE, '{"A":2}');
     });
   });
 

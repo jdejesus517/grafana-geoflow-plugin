@@ -3,7 +3,18 @@
 import { MapEngine } from './types';
 
 export { WebGLUnavailableError } from './errors';
-export type { BasemapSpec, EngineError, EngineEvents, EngineOptions, EngineTheme, MapEngine, ViewState } from './types';
+export { DEFAULT_LAYER_STYLE } from './layerStyle';
+export type {
+  BasemapSpec,
+  EngineError,
+  EngineEvents,
+  EngineOptions,
+  EngineTheme,
+  LayerSpec,
+  LayerStyle,
+  MapEngine,
+  ViewState,
+} from './types';
 
 /**
  * Loads MapLibre on first use. Webpack puts MapLibre, its CSS and the engine in a separate chunk,
