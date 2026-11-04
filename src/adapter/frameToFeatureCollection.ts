@@ -22,10 +22,22 @@ export interface ConversionWarnings {
   samples: WarningSample[];
 }
 
+/** A feature's identity across refreshes: the id column's value, a number or a string. */
+export type FeatureKey = string | number;
+
 export interface ConversionResult {
   refId: string;
   rowCount: number;
   featureCollection: FeatureCollection<SupportedGeometry>;
+  /** The data frame row of each feature, in feature order. Skipped rows make these differ. */
+  featureRows: number[];
+  /**
+   * The column the feature keys come from, set when every feature has a key and they're all
+   * unique. Without it, features can't be followed through a refresh (docs/phase_4.md, Design §2).
+   */
+  keyField?: string;
+  /** Each feature's key, in feature order; set with keyField. */
+  featureKeys?: FeatureKey[];
   /** Name of the geometry column used, when one was found. */
   geometryField?: string;
   noGeometry?: { reason: NoGeometryReason; detail: string };
@@ -44,6 +56,7 @@ export function frameToFeatureCollection(frame: DataFrame, mapping: GeometryMapp
     refId: frame.refId ?? '',
     rowCount: frame.length,
     featureCollection: { type: 'FeatureCollection', features: [] },
+    featureRows: [],
     warnings: { counts: { empty: 0, invalid: 0, unsupported: 0, projected: 0, outOfRange: 0 }, samples: [] },
   };
 
@@ -56,7 +69,8 @@ export function frameToFeatureCollection(frame: DataFrame, mapping: GeometryMapp
 
   const geometryValues = detection.field.values;
   const propertyFields = frame.fields.filter((_, i) => i !== detection.index);
-  const ids = featureIds(frame, mapping.idField);
+  const idField = findIdField(frame, mapping.idField);
+  const ids = idField && featureIds(idField, frame.length);
   const { features } = result.featureCollection;
   const { counts, samples } = result.warnings;
 
@@ -88,8 +102,16 @@ export function frameToFeatureCollection(frame: DataFrame, mapping: GeometryMapp
       properties,
     };
     features.push(feature);
+    result.featureRows.push(row);
   }
 
+  if (idField) {
+    const keys = featureKeys(idField, result.featureRows);
+    if (keys) {
+      result.keyField = idField.name;
+      result.featureKeys = keys;
+    }
+  }
   return result;
 }
 
@@ -98,29 +120,47 @@ export function framesToFeatureCollections(frames: DataFrame[], mapping?: Geomet
   return frames.map((frame) => frameToFeatureCollection(frame, mapping));
 }
 
-/**
- * Ids from the id column, but only when every value is a unique finite number (MapLibre
- * feature-state needs numeric ids). Otherwise undefined, and row indexes are used for all
- * features so a fallback id can never collide with a real one.
- */
-function featureIds(frame: DataFrame, idField?: string): number[] | undefined {
-  const field: Field | undefined = idField
+function findIdField(frame: DataFrame, idField?: string): Field | undefined {
+  return idField
     ? frame.fields.find((f) => f.name === idField)
     : frame.fields.find((f) => f.name.toLowerCase() === 'id');
-  if (!field) {
-    return undefined;
-  }
+}
+
+/**
+ * Ids from the id column, but only when every value is a unique whole number from 0 to
+ * Number.MAX_SAFE_INTEGER. MapLibre keeps no other ids exactly: it reads negative ids back as
+ * unsigned 64-bit numbers and cuts decimals, so 7.2 and 7.7 collide (docs/phase_4.md, step 4.1
+ * findings). Otherwise undefined, and row indexes are used for all features so a fallback id
+ * can never collide with a real one.
+ */
+function featureIds(field: Field, length: number): number[] | undefined {
   const ids: number[] = [];
   const seen = new Set<number>();
-  for (let row = 0; row < frame.length; row++) {
+  for (let row = 0; row < length; row++) {
     const value = field.values[row];
-    if (typeof value !== 'number' || !Number.isFinite(value) || seen.has(value)) {
+    if (!Number.isSafeInteger(value) || value < 0 || seen.has(value)) {
       return undefined;
     }
     seen.add(value);
     ids.push(value);
   }
   return ids;
+}
+
+/** The id column's values for the given rows, when every one is a number or non-empty string and unique. */
+function featureKeys(field: Field, rows: number[]): FeatureKey[] | undefined {
+  const keys: FeatureKey[] = [];
+  const seen = new Set<FeatureKey>();
+  for (const row of rows) {
+    const value = field.values[row];
+    const usable = (typeof value === 'number' && Number.isFinite(value)) || (typeof value === 'string' && value !== '');
+    if (!usable || seen.has(value)) {
+      return undefined;
+    }
+    seen.add(value);
+    keys.push(value);
+  }
+  return keys;
 }
 
 // MapLibre flattens nested values to strings anyway; doing it here keeps properties predictable.
