@@ -29,23 +29,40 @@ interface Props {
   index: number;
   /** Pinned by a click: adds the pager, the close button and data links. */
   pinned: boolean;
+  /** The room it has on the map; the field list scrolls when the tooltip would be taller. */
   maxWidth: number;
   maxHeight: number;
   onIndexChange?: (index: number) => void;
   onClose?: () => void;
 }
 
+/** Narrower tooltips wrap most values; used unless the map has less room than this. */
+const MIN_WIDTH = 180;
+
 // The look of Grafana's own tooltip container (getTooltipContainerStyles in @grafana/ui), which
-// isn't exported to plugins.
+// isn't exported to plugins. The header and footer keep their height, and the field list between
+// them shrinks and scrolls to keep the whole tooltip within its maximum height.
 const getStyles = (theme: GrafanaTheme2) => ({
   container: css({
+    display: 'flex',
+    flexDirection: 'column',
     overflow: 'hidden',
     background: theme.colors.background.elevated,
     boxShadow: theme.shadows.z2,
     padding: theme.spacing(1),
     borderRadius: theme.shape.radius.lg,
     color: theme.colors.text.primary,
-    minWidth: 180,
+  }),
+  wrapper: css({
+    minHeight: 0,
+    '& > *': { flexShrink: 0 },
+  }),
+  body: css({
+    display: 'flex',
+    flexDirection: 'column',
+    flexShrink: 1,
+    minHeight: 0,
+    '& > *': { minHeight: 0 },
   }),
   top: css({
     display: 'flex',
@@ -81,8 +98,12 @@ export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, o
   const others = count - 1;
 
   return (
-    <div className={styles.container} style={{ maxWidth, maxHeight }} data-testid="geoflow-tooltip">
-      <VizTooltipWrapper>
+    <div
+      className={styles.container}
+      style={{ maxWidth, maxHeight, minWidth: Math.min(MIN_WIDTH, maxWidth) }}
+      data-testid="geoflow-tooltip"
+    >
+      <VizTooltipWrapper className={styles.wrapper}>
         <div className={styles.top}>
           <VizTooltipHeader
             item={{
@@ -114,13 +135,15 @@ export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, o
           )}
           {pinned && <IconButton name="times" size="sm" aria-label="Close" onClick={onClose} />}
         </div>
-        <VizTooltipContent items={feature.details.items} isPinned={pinned} scrollable maxHeight={maxHeight - 80}>
-          {!pinned && others > 0 && (
-            <div className={styles.more} data-testid="geoflow-tooltip-more">
-              +{others} more
-            </div>
-          )}
-        </VizTooltipContent>
+        <div className={styles.body}>
+          <VizTooltipContent items={feature.details.items} isPinned={pinned} scrollable>
+            {!pinned && others > 0 && (
+              <div className={styles.more} data-testid="geoflow-tooltip-more">
+                +{others} more
+              </div>
+            )}
+          </VizTooltipContent>
+        </div>
         {pinned && feature.details.links.length > 0 && <VizTooltipFooter dataLinks={feature.details.links} />}
       </VizTooltipWrapper>
     </div>

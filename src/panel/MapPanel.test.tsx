@@ -44,6 +44,7 @@ class FakeEngine implements MapEngine {
     document.body.appendChild(content);
   });
   closeTooltip = jest.fn();
+  tooltipSpace = jest.fn((_lngLat: [number, number]) => ({ width: 300, height: 200 }));
   setHovered = jest.fn();
   setSelected = jest.fn();
   resize = jest.fn();
@@ -364,6 +365,31 @@ describe('MapPanel', () => {
       expect(content.getByText('Query A')).toBeInTheDocument();
       expect(content.getByText('Depot')).toBeInTheDocument();
       expect(lastOf(engine.setSelected)).toEqual({ layerId: 'A', featureId: 1 });
+    });
+
+    it('sizes the tooltip to the room the map has beside it, measured when it opens', async () => {
+      await renderPanel({ data: { series } });
+      engine.tooltipSpace.mockReturnValue({ width: 600, height: 150 });
+      fire('click', hit(['A', 1]));
+      const box = () => (engine.openTooltip.mock.lastCall![1] as HTMLElement).firstElementChild as HTMLElement;
+
+      expect(engine.tooltipSpace).toHaveBeenLastCalledWith(at);
+      // Never wider than 400 px, however much room there is.
+      expect(box().style).toMatchObject({ maxWidth: '400px', maxHeight: '150px', minWidth: '180px' });
+
+      // Panning doesn't resize a pinned tooltip; paging keeps its size too.
+      engine.tooltipSpace.mockReturnValue({ width: 100, height: 50 });
+      fire('hover', hit(['A', 0]));
+      expect(box().style).toMatchObject({ maxWidth: '400px', maxHeight: '150px' });
+    });
+
+    it('lets a tooltip narrower than its usual minimum fit a small map', async () => {
+      await renderPanel({ data: { series } });
+      engine.tooltipSpace.mockReturnValue({ width: 120, height: 90 });
+      fire('hover', hit(['A', 1]));
+      const box = (engine.openTooltip.mock.lastCall![1] as HTMLElement).firstElementChild as HTMLElement;
+
+      expect(box.style).toMatchObject({ maxWidth: '120px', maxHeight: '90px', minWidth: '120px' });
     });
 
     it('pages through overlapping features, topmost first', async () => {

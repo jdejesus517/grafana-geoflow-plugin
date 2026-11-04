@@ -40,6 +40,7 @@ Hover a feature to highlight it and see its attributes. Click to pin the tooltip
 - **Several features under the pointer:** a pinned tooltip pages through them with **1 of 3**, topmost first. Hover shows the topmost and how many more there are.
 - **Data links** configured on the panel's fields appear at the bottom of the pinned tooltip.
 - **Closing:** press Escape, click the close button, click empty map, or change the basemap. A pinned tooltip stays put while you pan and zoom.
+- **Size:** a tooltip fits in the room beside its feature. When there are more fields than fit, the list scrolls in a pinned tooltip; pin a hover tooltip to scroll it.
 
 **Tooltip** in the panel options chooses **Hover** (hover shows a tooltip, click pins it), **Click** (only clicking shows one, for busy maps) or **Off**.
 

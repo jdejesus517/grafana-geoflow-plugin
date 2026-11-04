@@ -14,9 +14,13 @@ interface Options {
   frames: DataFrame[];
   layers: LayerSpec[];
   basemap: BasemapSpec;
-  width: number;
-  height: number;
 }
+
+/** The room a tooltip has, from MapEngine.tooltipSpace when it opened. */
+type Space = { width: number; height: number };
+
+/** Wider tooltips get hard to read; Grafana's own tooltips stop around here too. */
+const MAX_WIDTH = 400;
 
 /** A pinned feature, with what's needed to find it again in newer data. */
 interface PinnedRef extends FeatureRef {
@@ -26,6 +30,7 @@ interface PinnedRef extends FeatureRef {
 
 interface Pinned {
   lngLat: [number, number];
+  space: Space;
   refs: PinnedRef[];
   index: number;
   // What it was pinned on. Any of these changing closes it: the tooltip belonged to that map.
@@ -35,6 +40,7 @@ interface Pinned {
 
 interface Hover {
   lngLat: [number, number];
+  space: Space;
   refs: FeatureRef[];
   engine: MapEngine;
   results: ConversionResult[];
@@ -45,16 +51,7 @@ interface Hover {
  * a compact tooltip; clicking pins a full one with a pager and data links. Returns the tooltip's
  * React content, which renders into an element the engine anchors on the map.
  */
-export function useFeatureTooltip({
-  engine,
-  mode,
-  results,
-  frames,
-  layers,
-  basemap,
-  width,
-  height,
-}: Options): ReactNode {
+export function useFeatureTooltip({ engine, mode, results, frames, layers, basemap }: Options): ReactNode {
   // The panel owns the tooltip's DOM element; the engine only places it.
   const [element] = useState(() => document.createElement('div'));
   const [pinned, setPinned] = useState<Pinned>();
@@ -80,7 +77,11 @@ export function useFeatureTooltip({
           return result ? [{ ...ref, result, key: featureKey(result, ref.featureId) }] : [];
         });
         // A click on empty map unpins.
-        setPinned(refs.length > 0 ? { lngLat: hit.lngLat, refs, index: 0, engine, basemap } : undefined);
+        setPinned(
+          refs.length > 0
+            ? { lngLat: hit.lngLat, space: engine.tooltipSpace(hit.lngLat), refs, index: 0, engine, basemap }
+            : undefined
+        );
       },
       hover: (hit) => {
         if (!engine || hit.features.length === 0) {
@@ -91,6 +92,7 @@ export function useFeatureTooltip({
         // pointer don't change means only the tooltip's position updates, not its content.
         setHover((previous) => ({
           lngLat: hit.lngLat,
+          space: engine.tooltipSpace(hit.lngLat),
           refs: previous && sameRefs(previous.refs, hit.features) ? previous.refs : hit.features,
           engine,
           results,
@@ -135,6 +137,8 @@ export function useFeatureTooltip({
   // A pinned tooltip wins; while one is pinned, hovering only moves the highlight.
   const showHover = !pinnedShown && hoverShown && mode === 'hover' ? hoverShown : undefined;
   const lngLat = pinnedShown?.lngLat ?? showHover?.lngLat;
+  // Sized when it opens: a pinned tooltip keeps its size while the map pans under it.
+  const space = pinnedShown?.space ?? showHover?.space;
   useEffect(() => {
     if (!engine) {
       return;
@@ -151,7 +155,7 @@ export function useFeatureTooltip({
     () => (shownRefs ? tooltipFeatures(shownRefs, results, frames, layers) : []),
     [shownRefs, results, frames, layers]
   );
-  if (!engine || features.length === 0) {
+  if (!engine || !space || features.length === 0) {
     return null;
   }
   return createPortal(
@@ -159,8 +163,8 @@ export function useFeatureTooltip({
       features={features}
       index={Math.min(pinnedShown?.index ?? 0, features.length - 1)}
       pinned={!!pinnedShown}
-      maxWidth={Math.max(160, Math.min(400, width - 32))}
-      maxHeight={Math.max(120, height - 40)}
+      maxWidth={Math.min(MAX_WIDTH, space.width)}
+      maxHeight={space.height}
       onIndexChange={(index) => pinnedShown && setPinned({ ...pinnedShown, engine: engine!, basemap, index })}
       onClose={() => setPinned(undefined)}
     />,
@@ -178,7 +182,7 @@ function resolvePinned(
   engine: MapEngine | undefined,
   basemap: BasemapSpec,
   results: ConversionResult[]
-): { lngLat: [number, number]; refs: PinnedRef[]; index: number } | undefined {
+): Pick<Pinned, 'lngLat' | 'space' | 'refs' | 'index'> | undefined {
   if (!pinned || pinned.engine !== engine || pinned.basemap !== basemap) {
     return undefined;
   }
@@ -203,7 +207,7 @@ function resolvePinned(
       refs.push(found);
     }
   }
-  return refs.length > 0 ? { lngLat: pinned.lngLat, refs, index } : undefined;
+  return refs.length > 0 ? { lngLat: pinned.lngLat, space: pinned.space, refs, index } : undefined;
 }
 
 function tooltipFeatures(

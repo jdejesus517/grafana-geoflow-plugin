@@ -213,10 +213,11 @@ How hover and click tooltips work, as built ([phase_4.md](phase_4.md)):
 - **Engine contract additions:**
   - `LayerSpec.interactive`: whether the layer's features can be hovered and clicked
   - `hover` and `click` events with a `PointerHit`: the pointer's `lngLat` and the `FeatureRef`s (`{ layerId, featureId }`) under it, topmost first
-  - `openTooltip(lngLat, content, { interactive })` and `closeTooltip()`
+  - `openTooltip(lngLat, content, { interactive })`, `closeTooltip()`, and `tooltipSpace(lngLat)`: the largest tooltip that fits on the map when anchored there
   - `setHovered(ref)` and `setSelected(ref)`
 - **Hit testing:** the rendered features of interactive layers within 4 px of the pointer, de-duplicated (MapLibre returns a feature once per tile and style layer). Hover runs at most once per animation frame. It reports while the pointer is over features, so a tooltip can follow it, and once when it leaves them. Clicks inside a pinned tooltip aren't map clicks.
 - **Tooltip:** one MapLibre `Popup` the engine anchors, with content the panel owns. The panel renders `FeatureTooltip`, built from Grafana's `VizTooltip*` components, into that element through a React portal. A hover tooltip lets the pointer through (`pointer-events: none`); passing the same element again only moves the popup.
+- **Tooltip size:** MapLibre opens the popup above or below the point, and centered on it or beside it, wherever it fits, 8 px from the map's edges. It doesn't shrink content that fits nowhere, so the panel sizes the tooltip to `tooltipSpace` when it opens: the room on the roomier side of the point, or centered across it. The header and data links keep their height, and the field list between them scrolls. A pinned tooltip keeps its size while the map pans, so panning can carry it past an edge. A hover tooltip can't be scrolled, since the pointer passes through it; pinning it can.
 - **Highlights:** MapLibre feature-state (`hovered`, `selected`), read by `case` expressions in the style layers' paint.
 - **Panel state:** `useFeatureTooltip` keeps the hover and pinned state. What's shown is derived from the current engine, basemap, data and Tooltip mode, so a basemap change or a recreated map closes the tooltip without effects that reset state.
 - **Values:** formatted when a feature is hovered or clicked, from its data frame row, with the field config Grafana applied (`useFieldConfig()` in `module.ts`).

@@ -119,6 +119,31 @@ test.describe('click', () => {
     await expect(link).toHaveAttribute('href', /\/d\/geoflow-04-geometry\?var-building=2$/);
   });
 
+  test('fits on the map, scrolling its fields, when pinned in the middle of a short panel', async ({
+    page,
+    readProvisionedDashboard,
+    gotoDashboardPage,
+  }) => {
+    const { panel } = await openPanel({ readProvisionedDashboard, gotoDashboardPage }, 'Buildings');
+    await pointAt(page, panel, BUILDING, 'click');
+    const tooltip = panel.getByTestId('geoflow-tooltip');
+    const link = tooltip.getByRole('link', { name: /Show Academy Square Offices/ });
+    await expect(link).toBeVisible();
+
+    // The panel is too short for every field above or below the building, which is at its center.
+    const map = (await panel.locator('canvas.maplibregl-canvas').boundingBox())!;
+    const box = (await tooltip.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(map.y);
+    expect(box.y + box.height).toBeLessThanOrEqual(map.y + map.height);
+    expect(box.x).toBeGreaterThanOrEqual(map.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(map.x + map.width);
+    // The header and the data links stay in view; the fields between them scroll.
+    const linkBox = (await link.boundingBox())!;
+    expect(linkBox.y + linkBox.height).toBeLessThanOrEqual(box.y + box.height);
+    const fields = tooltip.locator('[style*="overflow-y"]');
+    expect(await fields.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+  });
+
   test('stays pinned while the pointer moves on', async ({ page, readProvisionedDashboard, gotoDashboardPage }) => {
     const { panel } = await openPanel({ readProvisionedDashboard, gotoDashboardPage }, 'Buildings');
     await pointAt(page, panel, BUILDING, 'click');
