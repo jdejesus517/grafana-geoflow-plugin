@@ -6,7 +6,7 @@ import { UrlEditor, UrlEditorSettings } from './panel/UrlEditor';
 const BASEMAP = ['Basemap'];
 const VIEW = ['Initial view'];
 
-export const plugin = new PanelPlugin<GeoFlowOptions>(MapPanel).setPanelOptions((builder) =>
+export const plugin = new PanelPlugin<GeoFlowOptions>(MapPanel).useFieldConfig().setPanelOptions((builder) =>
   builder
     .addRadio<BasemapKind, { options: Array<{ value: BasemapKind; label: string }> }>({
       path: 'basemap.kind',

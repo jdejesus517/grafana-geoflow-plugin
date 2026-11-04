@@ -377,3 +377,33 @@ Confirmed 2026-11-03, as proposed.
 | 7 | Tooltip option | **Hover and click (default), Click only, Off**, panel-wide. Per-layer settings come in Phase 6. | An on/off switch only. Dense maps then can't keep click tooltips without hover ones. |
 | 8 | Tooltip components | **Grafana's `VizTooltip*` components**, so tooltips look like every other Grafana tooltip, with the panel's own components as the fallback if step 4.1 or CI finds differences between versions. | The panel's own components from the start. No dependency on `@alpha` APIs, but more styling work and a look that drifts from Grafana's. |
 | 9 | Following a feature through a refresh | **By a key from the `id` column, numbers or strings**, kept apart from MapLibre's numeric id. Text keys such as `asset_id` work. | Use MapLibre's id, which is only stable when the `id` column is numeric; tooltips on layers with text keys would close on every refresh. Or MapLibre's `promoteId` with a string property as the id, which makes following a feature depend on how MapLibre stores and encodes ids. |
+
+## Outcome
+
+Filled in as the steps complete.
+
+### Step 4.1 findings
+
+Checked in the dev stack (Grafana 13.2.4) with a temporary dashboard and temporary inspection code, both removed afterwards.
+
+- **Field config** works as documented once `useFieldConfig()` is on:
+  - every field in `data.series` has a `display` function
+  - defaults and overrides change its output: a unit suffix on `floors`, and a value mapping turning `in_service` into "In service"
+- **Time zone:** time columns follow the dashboard's time zone. With the dashboard set to Pacific/Honolulu, a `date` of 2015-03-01 (midnight UTC) shows as "2015-03-01 14:00:00" the day before. Date-only columns show a time unless the user picks a date unit.
+- **Data links:** fields with links get `getLinks`, and `${__data.fields.…}` and dashboard variables (`${site}`) are filled in for the requested row.
+  - Field values in links are the *formatted* values: with **Decimals** set to 1 on all fields, `${__data.fields.id}` became `2.0`. Users who format an id column need to keep that in mind; the README will say so.
+- **MapLibre feature ids** (read back from `queryRenderedFeatures`):
+
+  | `id` column value | Id MapLibre reports |
+  |---|---|
+  | 42 | 42 |
+  | 4294967297 (above 2³²) | 4294967297 |
+  | 9007199254740993 (above 2⁵³) | 9007199254740992: already rounded by JavaScript when the frame arrived, and kept as is |
+  | −3 | 18446744073709552000: read back as an unsigned 64-bit number |
+  | 1.5, 2.5 | 1, 2: cut to whole numbers |
+  | 7.2 and 7.7 | 7 and 7: they collide |
+
+  The tightened rule in Design §2 is confirmed: unique, non-negative, whole numbers up to `Number.MAX_SAFE_INTEGER`. Step 4.3 implements it.
+- **Grafana's tooltip components** come from the running Grafana: `@grafana/ui` is provided by Grafana at runtime, not bundled. They can't be compared across versions locally, so the e2e tests in CI (Grafana 13.2.5, 13.3.0 and nightly) do the comparison from step 4.8 on.
+
+No checkpoint was needed.
