@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { framesToFeatureCollections } from '../adapter';
+import { LayerDefaults, buildLayerSpecs } from '../adapter';
 import { BasemapSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
+import { convertFrames } from './convertFrames';
 import { GeoFlowOptions, basemapFromOptions, viewFromOptions } from './options';
+import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 import { useOnScreen } from './useOnScreen';
 
 interface Props extends PanelProps<GeoFlowOptions> {}
@@ -64,11 +66,18 @@ const getStyles = (theme: GrafanaTheme2) => ({
     border-radius: ${theme.shape.radius.default};
     box-shadow: ${theme.shadows.z1};
   `,
-  notice: css`
+  notices: css`
     position: absolute;
     left: ${theme.spacing(1)};
     bottom: ${theme.spacing(1)};
     max-width: calc(100% - ${theme.spacing(2)});
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: ${theme.spacing(0.5)};
+  `,
+  notice: css`
+    max-width: 100%;
     padding: ${theme.spacing(0.5, 1)};
     color: ${theme.colors.warning.text};
     background: ${theme.colors.background.primary};
@@ -112,9 +121,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
 });
 
 /**
- * GeoFlow panel: an interactive basemap (docs/phase_2.md, Design §5). The map is created when the
- * panel comes on screen, updated in place as options, theme and size change, and destroyed when
- * the panel goes off screen or unmounts.
+ * GeoFlow panel: query results drawn on an interactive basemap (docs/phase_2.md, Design §5, and
+ * docs/phase_3.md, Design §5). The map is created when the panel comes on screen, updated in
+ * place as data, options, theme and size change, and destroyed when the panel goes off screen or
+ * unmounts.
  */
 export const MapPanel = ({ data, options, width, height }: Props) => {
   const styles = useStyles2(getStyles);
@@ -136,14 +146,26 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   const { lat, lon, zoom } = options.view ?? {};
   const view = useMemo(() => viewFromOptions({ lat, lon, zoom }), [lat, lon, zoom]);
 
+  const results = useMemo(() => convertFrames(data.series), [data.series]);
+  const layerDefaults = useMemo<LayerDefaults>(
+    () => ({
+      colors: theme.visualization.palette.map((name) => theme.visualization.getColorByName(name)),
+      outlineColor: theme.colors.background.primary,
+    }),
+    [theme]
+  );
+  const layers = useMemo(() => buildLayerSpecs(results, layerDefaults), [results, layerDefaults]);
+  // Data arrived, but no frame has a geometry column: say why instead of showing an empty map.
+  const noGeometry = layers.length === 0 ? results.find((result) => result.noGeometry)?.noGeometry : undefined;
+
   // Where the map is looking: the configured view until the user moves it. A map that is
   // released off screen and created again picks up from here.
   const currentView = useRef(view);
   const appliedView = useRef(view);
   // The engine loads asynchronously; it mounts with whatever the options are by then.
-  const latest = useRef({ basemap, theme: engineTheme });
+  const latest = useRef({ basemap, theme: engineTheme, layers });
   useEffect(() => {
-    latest.current = { basemap, theme: engineTheme };
+    latest.current = { basemap, theme: engineTheme, layers };
   });
 
   // A map holds a WebGL context, and browsers cap them per page (16 in Chromium), so the map
@@ -164,7 +186,7 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         loaded.on('error', (error) => setBasemapError({ basemap: latest.current.basemap, message: error.message }));
         loaded.on('viewChange', (next) => (currentView.current = next));
         loaded.on('contextLost', () => setPaused(true));
-        return loaded.mount(containerRef.current!, { ...latest.current, view: currentView.current, layers: [] }).then(() => {
+        return loaded.mount(containerRef.current!, { ...latest.current, view: currentView.current }).then(() => {
           if (!cancelled) {
             setEngine(loaded);
           }
@@ -184,6 +206,7 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
 
   useEffect(() => engine?.setBasemap(basemap), [engine, basemap]);
   useEffect(() => engine?.setTheme(engineTheme), [engine, engineTheme]);
+  useEffect(() => engine?.setLayers(layers), [engine, layers]);
   useEffect(() => {
     // Only a change to the configured view moves the map; a recreated map keeps the user's view.
     if (view !== appliedView.current) {
@@ -194,13 +217,27 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   }, [engine, view]);
   useEffect(() => engine?.resize(), [engine, width, height]);
 
-  const results = useMemo(
-    () =>
-      options.showSummary
-        ? framesToFeatureCollections(data.series.map((frame, i) => ({ ...frame, refId: frame.refId ?? `#${i}` })))
-        : [],
-    [data.series, options.showSummary]
-  );
+  // Test hook: e2e tests send INSPECT_EVENT to read the drawn-feature counts; see testHook.ts.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!engine || !container) {
+      return;
+    }
+    let active = true;
+    const inspect = () => {
+      container.removeAttribute(RENDERED_FEATURES_ATTRIBUTE);
+      engine.renderedFeatureCounts().then((counts) => {
+        if (active) {
+          container.setAttribute(RENDERED_FEATURES_ATTRIBUTE, JSON.stringify(counts));
+        }
+      });
+    };
+    container.addEventListener(INSPECT_EVENT, inspect);
+    return () => {
+      active = false;
+      container.removeEventListener(INSPECT_EVENT, inspect);
+    };
+  }, [engine]);
 
   return (
     <div ref={wrapperRef} className={styles.wrapper} style={{ width, height }} data-testid="geoflow-panel">
@@ -219,12 +256,19 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
           </Button>
         </div>
       )}
-      {basemapError?.basemap === basemap && engine && (
-        <div className={styles.notice} data-testid="geoflow-basemap-error" title={basemapError.message}>
-          Basemap: {basemapError.message}
-        </div>
-      )}
-      {results.length > 0 && (
+      <div className={styles.notices}>
+        {noGeometry && (
+          <div className={styles.notice} data-testid="geoflow-no-geometry">
+            {noGeometry.detail}
+          </div>
+        )}
+        {basemapError?.basemap === basemap && engine && (
+          <div className={styles.notice} data-testid="geoflow-basemap-error" title={basemapError.message}>
+            Basemap: {basemapError.message}
+          </div>
+        )}
+      </div>
+      {options.showSummary && results.length > 0 && (
         <div className={styles.overlay} data-testid="geoflow-summary">
           {results.map((result, i) => {
             const warning = firstWarning(result);
