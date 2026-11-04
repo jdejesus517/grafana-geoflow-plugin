@@ -1,6 +1,6 @@
 # Phase 4: Tooltips
 
-Status: **Approved** (2026-11-03). Not implemented yet.
+Status: **Implemented** (2026-11-03). See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §2.2 (panel layer), §2.4 (engine layer, tooltips), §3.3 (display values), §5.3 (Phase 4 row), §7 (features considered for later).
 
 ## Goal
@@ -380,7 +380,61 @@ Confirmed 2026-11-03, as proposed.
 
 ## Outcome
 
-Filled in as the steps complete.
+All exit criteria were met locally against Grafana 13.2.4:
+- 305 unit and component tests and 37 e2e tests pass
+- typecheck, lint, `check:dist` and the license check pass
+- CI on draft PR #22 passes build, lint, unit tests and e2e tests on Grafana 13.2.5, 13.3.0 and nightly. The e2e runs also show Grafana's `@alpha` tooltip components behave the same across those versions. The **Latest Grafana API compatibility check** fails on a false positive; see Findings.
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Hover highlights, shows a tooltip near the pointer with "+N more", and a hand pointer | Met. E2E tests hover a building and the splice case on three cables ("+3 more"). |
+| 2 | Click pins: pager, close button, data links; anchored while panning; hover doesn't replace it | Met. The overlap pages "1 of 4"; the pinned tooltip stays while the pointer moves on. |
+| 3 | Columns in query order with display names and formatted values; Feature properties too | Met (adapter, component and e2e tests). |
+| 4 | Standard options, value mappings and data links apply; dashboard time zone | Met. Checked in the dev stack in step 4.1 and by the e2e tests (unit suffix, date format, value mapping). |
+| 5 | **Hide in tooltip** | Met. The hidden `address` doesn't show in the e2e test. |
+| 6 | Data links with field values and variables filled in | Met. The e2e link points at `var-building=2`. |
+| 7 | Closing on empty-map click, Escape, the close button and a basemap change | Met (component and e2e tests). |
+| 8 | Thin lines can be hit | Met: hit testing looks 4 px around the pointer. |
+| 9 | A pinned tooltip follows its feature through a refresh by key; closes without keys | Met. The e2e test follows a text key through a refresh that reorders every row. |
+| 10 | Tooltip option: Hover, Click, Off; tap pins on touch screens | Met. Labels shortened (see differences). A tap is a click to MapLibre, so it pins; there's no touch-specific test. |
+| 11 | No ids MapLibre can't keep exactly | Met: the tightened rule, confirmed in step 4.1. |
+| 12 | Engine free of Grafana, React and Emotion; content as a DOM element; no `innerHTML` | Met. |
+| 13 | Tests pass locally and in CI, hovering and clicking real features | Met locally and in CI (e2e on 13.2.5, 13.3.0 and nightly). |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Change from Phase 3 |
+|---|---|---|---|
+| `module.js` | 32.4 KiB | 10.8 KiB | +8.9 KiB: the tooltip component and hook, feature details and lookups. Grafana's UI components aren't bundled. |
+| `maplibre.js` (engine and MapLibre CSS) | 39.7 KiB | 11.0 KiB | +2.8 KiB: hit testing, the tooltip anchor and highlights |
+| `36.js` (MapLibre) | 1139 KiB | 295 KiB | +8 KiB: MapLibre's `Popup` is now used |
+| Worker (`*.mjs`) | 502 KiB | 142 KiB | none |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| The engine emits `hover` only when the features under the pointer change | It emits once per animation frame while the pointer is over features, and once when it leaves them | So the hover tooltip follows the pointer, as Grafana's tooltips do. Passing the same content element only moves the popup, and the panel keeps the same feature list while the features don't change, so the content isn't rebuilt. |
+| `setBasemap` closes the tooltip in the engine | The panel closes it: a pinned tooltip remembers the basemap it was pinned on | Closing it in the engine would leave the panel thinking it was still pinned. |
+| Tooltip option labels **Hover and click**, **Click only**, **Off** | **Hover**, **Click**, **Off**, with the meaning in the description; **Hide in tooltip** sits in the same Tooltip group | The longer labels were cut off in the options pane. |
+| In Click mode, hover shows nothing | Hover still highlights the feature and shows the hand pointer, but no tooltip | The highlight shows what a click would pin (decision 6). |
+| Hidden standard options: Min, Max, Color, Thresholds, Actions | Also Field min/max and Filterable | They do nothing in a map panel either. |
+| `featureDetails(frame, result, row)` | `featureDetails(frame, result, featureId)` | It needs the feature too, for the properties of GeoJSON Feature input. |
+| The tooltip title | The frame's name, or "Query A" | Grafana's name for an unnamed frame is its field list ("id, name, geometry"). |
+| Steps 4.5 and 4.6 as separate commits | One commit | Hover and pinned tooltips share one tooltip element and one set of highlights. Step 4.7 then only added the data link tests, since `FeatureTooltip` renders the footer. |
+| The overlap e2e test shows "1 of 2" | "1 of 4" | SC-01 sits on three cables. |
+
+### Findings for later phases
+
+- **API compatibility check (Levitate).** It reports `PanelPlugin.useFieldConfig` as changed between `@grafana/data` 13.2.0 and 13.3.0. 13.3 adds a second type parameter, `SetFieldConfigOptionsArgs<TFieldConfigOptions, TContextOptions = unknown>`. With its default, code written for 13.2 compiles unchanged, nothing changes at runtime, and the e2e tests pass on 13.3.0 and nightly. Levitate flags any change to an API a plugin calls, so the check now fails on every PR. Whether to make it report-only is open.
+
+- **Software rendering in headless Chromium.** By default, Playwright's Chromium draws WebGL with SwiftShader on the CPU, where redrawing 100k points takes 100 ms or more. Panning that layer took about 340 ms per move. On this machine's GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), panning and hovering 100k points both ran with no main-thread task over 50 ms. Phase 8's performance work has to use the GPU; e2e timings in CI say nothing about real performance.
+- **Highlight method.** Because of the slow software rendering, hover at first looked slow with feature-state highlights. An overlay source for highlighted features was built and measured, then dropped: on the GPU, feature-state and the overlay performed the same, and feature-state is simpler and is what the plan specified.
+- **Tooltip placement.** MapLibre anchors a pinned tooltip below its feature when there's no room above, so the tooltip can cover the map just south of the feature. The e2e tests click empty map at the canvas's edge for that reason.
+- **Unpinning while over a feature** brings back its hover tooltip straight away. That's intended, and the e2e tests check the pinned tooltip's close button rather than the absence of any tooltip.
+- **Grafana's `suffix:` units** keep the space after the colon, so `suffix: floors` formats as "4  floors". HTML collapses it on screen.
+- **`module.js` is 32.4 KiB.** The tooltip code is only needed once a map exists, so it could move into the lazily loaded chunk if size becomes a concern (Phase 8).
+- **Basemap option labels** ("OpenStreetMap", "Custom tiles", "Style URL") are cut off in the options pane, as the Tooltip labels were. Phase 5, which adds more options, should switch them to shorter labels or a select.
 
 ### Step 4.1 findings
 
