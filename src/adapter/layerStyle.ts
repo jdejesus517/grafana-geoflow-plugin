@@ -19,9 +19,17 @@ export interface MapStyleConfig {
   lineStyle?: LineStyleOption;
   /** Dash and gap lengths in pixels, for the custom line style. */
   dashPattern?: string;
+  /** The column whose values color the features (docs/phase_6.md, Design §1). */
+  colorBy?: string;
+  /** The number column whose values size the points. */
+  sizeBy?: string;
+  /** Point diameter at the Size by column's Min, pixels. */
+  sizeMin?: number;
+  /** Point diameter at its Max, pixels. */
+  sizeMax?: number;
 }
 
-type NumberOption = Exclude<keyof MapStyleConfig, 'lineStyle' | 'dashPattern'>;
+type NumberOption = Exclude<keyof MapStyleConfig, 'lineStyle' | 'dashPattern' | 'colorBy' | 'sizeBy'>;
 
 /** Ranges and defaults of the numeric options. The defaults draw as Phases 3 and 4 did. */
 export const MAP_STYLE_RANGES: Record<NumberOption, { min: number; max: number; default: number }> = {
@@ -29,6 +37,8 @@ export const MAP_STYLE_RANGES: Record<NumberOption, { min: number; max: number; 
   fillOpacity: { min: 0, max: 100, default: DEFAULT_LAYER_STYLE.fillOpacity * 100 },
   lineWidth: { min: 1, max: 10, default: DEFAULT_LAYER_STYLE.lineWidth },
   pointSize: { min: 2, max: 40, default: DEFAULT_LAYER_STYLE.pointRadius * 2 },
+  sizeMin: { min: 2, max: 40, default: 4 },
+  sizeMax: { min: 2, max: 40, default: 20 },
 };
 
 /**
