@@ -1,6 +1,6 @@
 # Phase 5: Style options
 
-Status: **Approved** (2026-11-04). Decisions 1–8 accepted as proposed.
+Status: **Implemented** (2026-11-04). Decisions 1–8 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §2.2 (panel layer), §2.3 (adapter), §2.4 (engine layer, drawing data), §3.4 (layer binding), §5.3 (Phase 5 and 6 rows), §7 (features considered for later).
 
 ## Goal
@@ -284,4 +284,65 @@ Accepted as proposed (2026-11-04):
 
 ## Outcome
 
-To be filled in when the phase is done.
+Implemented on branch `phase-5` in seven commits, one per step:
+- 346 unit and component tests pass, and 40 e2e tests (plus the login setup)
+- the new style e2e tests compare six stored screenshots, and the Phase 3 geometry screenshot still matches, so the defaults draw as before
+- CI on PR #25 passes build, lint, unit tests and e2e tests on Grafana 13.2.5, 13.3.0 and nightly. The style screenshots match on all three, so Grafana's color schemes give the same colors on each (the nightly part of step 5.1).
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Defaults look the same | Met. The geometry screenshot is unchanged, and `layerStyle` with no config gives Phase 4's style (unit test). |
+| 2 | Color scheme: classic palette, single color, shades, by name; no by-value modes | Met (step 5.1). By name hashes the layer's name (see Findings). |
+| 3 | Map style options | Met: Opacity, Fill opacity, Line width, Line style (with Dash pattern) and Point size. |
+| 4 | Per query, with overrides | Met. The `06 Style` dashboard's Per query and Line styles panels use **Fields returned by query** overrides. |
+| 5 | Highlights follow the style | Met. Highlights add Phase 4's increments to the set style, and opacity applies to them too (unit tests). |
+| 6 | Tooltip color marker is the layer's color | Met, unchanged code: the marker reads the layer's style. |
+| 7 | No redraw of data on a style change | Met. On 100k points with the GPU, three Point size changes caused no main-thread task over 50 ms; a refresh, which converts the data, caused one of 351 ms. |
+| 8 | Basemap select | Met. Line style is a select too (see Differences). |
+| 9 | Bad values are safe | Met. Out-of-range numbers are clamped, other values take the default, and an unusable dash pattern says why under the field and draws solid (unit and e2e tests). |
+| 10 | Engine boundary | Met. The engine gets resolved colors, numbers and a `LineStyle`. |
+| 11 | Tests | Met locally and in CI (e2e on 13.2.5, 13.3.0 and nightly). |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Change from Phase 4 |
+|---|---|---|---|
+| `module.js` | 37.1 KiB | 12.1 KiB | +4.7 KiB: the style options, `layerStyle`, the dash pattern parser |
+| `maplibre.js` (engine and MapLibre CSS) | 40.2 KiB | 11.2 KiB | +0.5 KiB: opacity, dash arrays and the layout diff |
+| `36.js` (MapLibre) | 1139 KiB | 295 KiB | none |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| Line style as radio buttons | A select | Four radio buttons don't fit the options pane: the labels were cut to "S…", "Das…" (found in step 5.5). |
+| By name: Grafana's calculator, with a fallback if colors collide | The layer's name is always hashed | Step 5.1 found every layer got the same color: each query's geometry column is called `geometry`. |
+| The conversion cache keyed on the geometry field's `values` | Keyed on the first field's `values`, still checking every field's name and `values` | The same result, without detecting the geometry column before looking in the cache. |
+| A text editor "like `UrlEditor`" for the dash pattern | `UrlEditor` became `CheckedTextEditor`, used by the basemap URLs and the dash pattern | One editor that shows why a value can't be used, for panel and field options. |
+| The paint diff in `setLayers` | Also resets paint properties a new style no longer sets, and diffs layout | Going back to a solid line must clear the dash array; custom patterns change `line-cap`. |
+
+### Findings for later phases
+
+- **Field config builds new frames.** Grafana's `applyFieldOverrides` copies frames and fields on every field option change, around the same `values` arrays. Anything cached by frame object misses after a style change. Phase 8's structural check for refreshes can build on the `values` key.
+- **Shades use Grafana's series index,** which counts every non-time column of every query. The shade of a layer depends on how many columns the queries before it have. Acceptable for a scheme meant to tell layers apart, not to fix a color.
+- **Dotted lines at 1 px** are single-pixel dots, which read as a faint dotted line. Thicker lines show round dots.
+- **The panel editor's map is wider and shorter** (580 × 246 px at the test viewport) than the dashboard's (409 × 322). Screenshots around the map's center use 300 × 200 px, which fits both.
+- **Grafana nightly shows the dashboard before the panel editor.** With nightly 13.3.0-34793047961, opening `?editPanel=8` showed the whole dashboard for a moment. `PanelEditPage.panel` from `@grafana/plugin-e2e` matches every panel header, so a test that used it straight away found all ten panels and failed (3 times in 8 locally, every attempt in CI). The e2e tests now open the edited panel through `editedPanel()` in `tests/fixtures/`, which waits for the editor's options pane and then for a single panel.
+- **Local e2e flakiness.** Some basemap and adapter tests occasionally don't see the map canvas within the default 5 s on this machine. The same tests fail the same way on `main`, so it isn't from Phase 5; CI has been green. Worth a look in Phase 9 (hardening).
+
+### Step 5.1 findings
+
+Checked on Grafana 13.2.4 with a temporary dashboard of three queries (buildings, cables, splice cases) and a debug hook that was removed afterwards. Nightly is covered by CI, where the style screenshots run on every Grafana version: they matched on 13.2.5, 13.3.0 and nightly.
+
+| Check | Result |
+|---|---|
+| Color scheme modes | With `byValueSupport: false`, the editor offers exactly **Single color**, **Shades of a color**, **Classic palette** and **Classic palette (by series name)**, on the text geometry column. |
+| Field config on the geometry column | The Map style defaults reach the string geometry field's `config.custom`, with every default filled in. A **Fields returned by query** override (query B: Custom line style, `8, 4`, Single color red) applies to that query's geometry field only. |
+| Data arrays after an option change | Changing **Fill opacity** hands the panel new frame objects, but every field's `values` array is the same object as before. `applyFieldOverrides` copies fields with `...originalField`. Design §3's cache key works as planned. |
+| By-name colors | **Risk confirmed.** Grafana hashes the field's display name, or its name when there's none. Every layer's geometry column was called `geometry`, so all three layers got the same color. `layerStyle` hashes the layer's name (the frame name, or its refId) instead. The three layers then got three colors. |
+| Shades | Uses Grafana's series index, which counts every column: three layers got three different shades. |
+| Dash patterns | At 1 px and 10 px, **Dashed** (`[3, 3]`, round ends) draws even dashes, and **Dotted** (`[0, 2]`) round dots. At 1 px the dots are a single pixel, so a dotted line reads as a faint dotted line. **Custom** `12, 4, 2, 4` with flat ends comes out at the typed pixel lengths. |
+| Dash pattern visibility | `showIf` hides **Dash pattern** in the defaults while Line style is Solid. In an override, it shows once added as a property, whatever the line style. That's how Grafana lists override properties, and harmless: the pattern is ignored unless the line style is Custom. |
+| Field option editor types | `FieldConfigEditorBuilder.addGenericEditor` types the editor's props with the settings type as the value type. The Dash pattern editor is passed with a cast, commented in `module.ts`. |

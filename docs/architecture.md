@@ -128,7 +128,7 @@ The Grafana and Postgres directories don't depend on each other. Each one can be
 
 ### 2.2 Panel layer (`src/panel`, Grafana-aware)
 
-- **`module.ts`**: `new PanelPlugin<MapOptions>(MapPanel).setPanelOptions(...)`. It declares basemap, view, tooltip and layer options. `useFieldConfig()` is enabled so per-field units, decimals, value mappings and data links work in tooltips (Phase 4).
+- **`module.ts`**: `new PanelPlugin<MapOptions>(MapPanel).setPanelOptions(...)`. It declares basemap, view, tooltip and layer options. `useFieldConfig()` is enabled so per-field units, decimals, value mappings and data links work in tooltips (Phase 4), and so each query's layer is styled from its geometry field: Grafana's Color scheme and GeoFlow's Map style options (Phase 5).
 - **`MapPanel.tsx`**: A thin React component.
   - On mount: create a `div`, call `engine.mount(div, initialView, basemap)`.
   - On `data` / `options` change: call the adapter to build `LayerSpec[]`, then call `engine.setLayers(specs)`.
@@ -200,7 +200,7 @@ MapLibre GL JS 6 shapes how the engine is built and shipped:
 #### Drawing data (Phase 3)
 
 How the engine draws `LayerSpec`s, as built:
-- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`. `interactive` arrives with Phase 4 (tooltips), and `name` and `visible` with Phase 7.
+- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values; Phase 5 adds `opacity` and `lineStyle`. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`, and from field config since Phase 5. `interactive` arrives with Phase 4 (tooltips), and `name` and `visible` with Phase 7.
 - **Ids:** sources and style layers are prefixed `geoflow-layer:` (for example `geoflow-layer:A:fill`). The prefix keeps them apart from the basemap and from layers in a user's style URL. Layer ids come from refIds and are never parsed back out of these strings.
 - **Geometry filters:** in MapLibre 6, `['geometry-type']` reports Multi* features as their simple type (MultiPolygon as Polygon). The filters list both forms, which is correct in every version.
 - **Basemap changes:** `transformStyle`, passed to the `Map` constructor, appends the data sources and layers to every style MapLibre loads afterwards, inline or from a URL. MapLibre fires `style.load` both after a full style load and after a style it applied in place. The engine tracks readiness with `styledataloading` and `style.load`, and applies any `setLayers` call made in between on `style.load`.
@@ -221,6 +221,14 @@ How hover and click tooltips work, as built ([phase_4.md](phase_4.md)):
 - **Highlights:** MapLibre feature-state (`hovered`, `selected`), read by `case` expressions in the style layers' paint.
 - **Panel state:** `useFeatureTooltip` keeps the hover and pinned state. What's shown is derived from the current engine, basemap, data and Tooltip mode, so a basemap change or a recreated map closes the tooltip without effects that reset state.
 - **Values:** formatted when a feature is hovered or clicked, from its data frame row, with the field config Grafana applied (`useFieldConfig()` in `module.ts`).
+
+#### Styling (Phase 5)
+
+How layers are styled, as built ([phase_5.md](phase_5.md)):
+- **Where styles live:** in field config, as in Grafana's time series panel. Grafana's standard **Color scheme** (palette and single-color modes only) and GeoFlow's **Map style** options: Opacity, Fill opacity, Line width, Line style with a custom Dash pattern, and Point size. Grafana applies defaults and overrides to every field; `layerStyle` (adapter) reads each layer's style from its frame's geometry field. A **Fields returned by query** override styles one layer.
+- **Colors:** the classic palette goes by layer position, as in Phase 3. Single color and shades use Grafana's color calculator. By name hashes the layer's name (frame name or refId), because every query's geometry column may share one name.
+- **Engine:** `paintFor` adds the layer's opacity to every paint property and the dash array to lines (in line widths: dashed `[3, 3]`, dotted `[0, 2]`, custom patterns converted from pixels). `layoutFor` gives custom patterns flat line ends, so their lengths come out as typed. A style change diffs paint and layout properties, and resets a property the new style no longer sets.
+- **No redraw of data:** Grafana applies field config by building new frames around the same `values` arrays, so the conversion cache is keyed on those arrays, not on frames. A style change reuses the FeatureCollection, and the engine only repaints.
 
 ---
 
@@ -349,7 +357,7 @@ Design rules that keep later modes cheap to add:
 | **Payload size.** GeoJSON text is verbose. | Recommend `ST_AsGeoJSON(geom, 6)`. For detailed polygons, recommend `ST_SimplifyPreserveTopology`. Mention the data source row limit (`row_limit` in Grafana config). |
 | **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 9. If 100k blocks too long, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. A first measurement in Phase 3: 100k points draw about 2.5 s after the query returns, with main-thread tasks of up to about 0.5 s. |
 | **Hover on large data.** Hit testing runs on every pointer move, and a highlight changes feature-state on a large source. | Measured on 100k points in Phase 4 with the machine's GPU: hover is as fast as plain panning, with no main-thread task over 50 ms. Headless Chromium's default software rendering (SwiftShader) is far slower for anything that redraws a large layer, including panning, so performance has to be judged with the GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), not in the default e2e browser. |
-| **Redundant work on refresh.** | Conversion is cached per frame object (Phase 3), so a frame Grafana didn't replace keeps its data and the engine skips `setData`. Skipping frames that are new objects with the same content (structural hash) and keeping the viewport across refreshes unless "fit to data on refresh" is on come in Phase 8. |
+| **Redundant work on refresh.** | Conversion is cached per frame data (Phase 3, keyed on the frames' `values` arrays since Phase 5), so a frame whose data Grafana didn't replace keeps its FeatureCollection and the engine skips `setData`. That includes every style change. Skipping frames that are new objects with the same content (structural hash) and keeping the viewport across refreshes unless "fit to data on refresh" is on come in Phase 8. |
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
 | **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` stays about 19 KiB. The Bundle Stats workflow reports size changes on every PR. |
 | **Beyond about 100k features.** | Out of scope for the MVP. The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |

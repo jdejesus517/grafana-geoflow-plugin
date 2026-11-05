@@ -1,4 +1,4 @@
-import { STUB_TILE_HOST, expect, test } from './fixtures';
+import { STUB_TILE_HOST, editedPanel, expect, test } from './fixtures';
 
 const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
 
@@ -66,7 +66,7 @@ test('switching the basemap in the panel editor keeps the same map', async ({
 }) => {
   const dashboard = await readProvisionedDashboard({ fileName: '02-basemap.json' });
   const panelEditPage = await gotoPanelEditPage({ dashboard, id: '1' });
-  const panel = panelEditPage.panel.locator;
+  const panel = await editedPanel(panelEditPage);
   const canvas = panel.locator('canvas.maplibregl-canvas');
   await expect(canvas).toBeVisible();
   // Tag the canvas: if the map were recreated, the tag would be gone.
@@ -75,10 +75,10 @@ test('switching the basemap in the panel editor keeps the same map', async ({
 
   // MapLibre keeps the attribution element and hides it with a class when no source has one.
   const attribution = panel.locator('.maplibregl-ctrl-attrib');
-  await basemap.getRadioGroup('Basemap').check('None');
+  await basemap.getSelect('Basemap').selectOption('None');
   await expect(attribution).toHaveClass(/maplibregl-attrib-empty/);
 
-  await basemap.getRadioGroup('Basemap').check('Custom tiles');
+  await basemap.getSelect('Basemap').selectOption('Custom tiles');
   const tileUrl = basemap.getTextInput('Tile URL template');
   await expect(basemap.element.getByText('Enter a tile URL template')).toBeVisible();
   await tileUrl.fill(`https://${STUB_TILE_HOST}/{z}/{x}/{y}.png`);
@@ -86,7 +86,7 @@ test('switching the basemap in the panel editor keeps the same map', async ({
   await expect(basemap.element.getByText('Enter a tile URL template')).not.toBeVisible();
   await expect.poll(() => tileRequests.some((url) => url.includes(STUB_TILE_HOST))).toBe(true);
 
-  await basemap.getRadioGroup('Basemap').check('OpenStreetMap');
+  await basemap.getSelect('Basemap').selectOption('OpenStreetMap');
   await expect(attribution).not.toHaveClass(/maplibregl-attrib-empty/);
   await expect(attribution).toContainText(OSM_ATTRIBUTION);
   await expect(canvas).toHaveAttribute('data-e2e-original', 'true');

@@ -1,6 +1,8 @@
 // Grafana DataFrame → GeoJSON adapter (docs/architecture.md §2.3).
 export { buildLayerSpecs } from './buildLayerSpecs';
-export type { LayerDefaults } from './buildLayerSpecs';
+export { DASH_PATTERN_EXAMPLE, dashPatternProblem, parseDashPattern } from './dashPattern';
+export { LINE_STYLE_OPTIONS, MAP_STYLE_RANGES, layerStyle } from './layerStyle';
+export type { LineStyleOption, MapStyleConfig } from './layerStyle';
 export { detectGeometryField } from './detectGeometryField';
 export { EMPTY_VALUE, featureDetails } from './featureDetails';
 export type { FeatureDetailItem, FeatureDetails } from './featureDetails';

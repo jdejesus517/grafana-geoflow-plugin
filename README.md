@@ -2,7 +2,7 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** Phase 4 is complete: the panel draws query results on an interactive basemap, with tooltips that show each feature's attributes. Style options arrive in Phase 5. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: pre-MVP.** Phase 5 is complete: the panel draws query results on an interactive basemap, styled per query, with tooltips that show each feature's attributes. Data-driven styling arrives in Phase 6. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
@@ -29,7 +29,7 @@ WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
 - **Other columns:** become the feature's properties, shown in its tooltip.
 - **An `id` column** (any column named `id`) identifies features. Keep it unique: a pinned tooltip then follows its feature when the dashboard refreshes. Text ids work too.
 
-**Each query is a layer.** Queries A, B, C… are drawn in that order, later ones on top, each in its own color from the Grafana theme. Queries without a geometry column are left out.
+**Each query is a layer.** Queries A, B, C… are drawn in that order, later ones on top, each in its own color from the Grafana theme unless styled otherwise (see [Styling](#styling)). Queries without a geometry column are left out.
 
 **Rows that can't be drawn are skipped:** empty or invalid geometry, GeometryCollections, other coordinate systems, and coordinates outside ±180/±90. Turn on **Show data summary** in the panel options to see how many rows each query lost, and why. If no query has a geometry column, the panel says what to select instead. For example, a raw PostGIS `geom` column needs `ST_AsGeoJSON(geom)`.
 
@@ -54,6 +54,26 @@ Values are formatted with the panel's field options, as in Grafana's other panel
 Times show in the dashboard's time zone. Properties that come inside a GeoJSON Feature (`ST_AsGeoJSON(t.*)`) are listed as plain text, because they aren't Grafana fields; select them as columns to format them.
 
 When new data arrives, a pinned tooltip shows the feature's new values if its query has a unique `id` column. Without one, the tooltip closes, because a row position may now be a different feature.
+
+## Styling
+
+Style the map in the panel's field options, as in Grafana's other panels:
+
+- **Standard options → Color scheme:**
+  - **Classic palette** (default): each query in the next palette color, in query order
+  - **Single color:** one color, alpha included
+  - **Shades of a color**
+  - **Classic palette (by series name):** a color from the query's name (the frame name, or its letter), the same wherever the query is
+- **Map style:**
+  - **Opacity:** the whole layer: lines, points, outlines and fills
+  - **Fill opacity:** polygon interiors
+  - **Line width:** lines; polygon outlines stay 1 px
+  - **Line style:** Solid, Dashed, Dotted, or Custom with a **Dash pattern** of dash and gap lengths in pixels, such as `12, 4, 2, 4`. An odd number of lengths repeats, as in SVG. Polygon outlines stay solid.
+  - **Point size:** point diameter
+
+**Styling one query:** add a field override with **Fields returned by query**, pick the query, and add the properties to change. An override by field name, such as `geometry`, styles every query whose geometry column has that name. GeoFlow reads each query's style from its geometry column, so the style options do nothing on other columns.
+
+Hovered and selected features stand out from whatever style is set. Changing a style only repaints the map: the data isn't converted or loaded again.
 
 ## Basemap
 
@@ -113,6 +133,7 @@ Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 | 03 Many panels | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                       |
 | 04 Geometry    | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.       |
 | 05 Tooltips    | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes. |
+| 06 Style       | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                             |
 
 ### Docker environment
 
@@ -163,7 +184,7 @@ E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers e
 Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
 
 - **Drawn-feature counts.** `renderedFeatures(panel)` in `tests/fixtures/` asks the panel's map which features it drew. This goes through a small test hook in the plugin ([src/panel/testHook.ts](src/panel/testHook.ts)), which does nothing unless a test triggers it. All test-only code in `src/` is marked with a `// Test hook:` comment: `grep -rn "Test hook:" src/` lists it.
-- **One screenshot comparison** of the 04 Geometry dashboard's mixed panel, stored in `tests/geometry.spec.ts-snapshots/`. After an intended change to how features look, regenerate it with `npx playwright test tests/geometry.spec.ts --update-snapshots` and review the image diff.
+- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style dashboard, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
 
 To hover or click a known feature, `mapPoint(panel, [lon, lat], view)` in `tests/fixtures/` works out where a coordinate is on screen from the panel's view in the dashboard JSON. It's plain Web Mercator math, so it needs no test hook.
 
@@ -179,7 +200,7 @@ node scripts/capture-frames.mjs
 
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
-- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md)
+- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md)
 
 ## License
 

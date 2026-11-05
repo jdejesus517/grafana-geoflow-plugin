@@ -13,6 +13,7 @@ export type {
   FeatureRef,
   LayerSpec,
   LayerStyle,
+  LineStyle,
   MapEngine,
   PointerHit,
   ViewState,
