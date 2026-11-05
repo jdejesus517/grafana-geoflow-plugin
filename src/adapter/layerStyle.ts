@@ -1,0 +1,111 @@
+import { DataFrame, FieldColorModeId, GrafanaTheme2, getFieldColorModeForField } from '@grafana/data';
+import { DEFAULT_LAYER_STYLE, LayerStyle, LineStyle } from '../engine';
+import { parseDashPattern } from './dashPattern';
+import { ConversionResult } from './frameToFeatureCollection';
+
+export type LineStyleOption = 'solid' | 'dash' | 'dot' | 'custom';
+export const LINE_STYLE_OPTIONS: readonly LineStyleOption[] = ['solid', 'dash', 'dot', 'custom'];
+
+/** GeoFlow's Map style field options, as saved in the dashboard (docs/phase_5.md, Design §1). */
+export interface MapStyleConfig {
+  /** Percent. */
+  opacity?: number;
+  /** Percent. */
+  fillOpacity?: number;
+  /** Pixels. */
+  lineWidth?: number;
+  /** Point diameter, pixels. */
+  pointSize?: number;
+  lineStyle?: LineStyleOption;
+  /** Dash and gap lengths in pixels, for the custom line style. */
+  dashPattern?: string;
+}
+
+type NumberOption = Exclude<keyof MapStyleConfig, 'lineStyle' | 'dashPattern'>;
+
+/** Ranges and defaults of the numeric options. The defaults draw as Phases 3 and 4 did. */
+export const MAP_STYLE_RANGES: Record<NumberOption, { min: number; max: number; default: number }> = {
+  opacity: { min: 0, max: 100, default: DEFAULT_LAYER_STYLE.opacity * 100 },
+  fillOpacity: { min: 0, max: 100, default: DEFAULT_LAYER_STYLE.fillOpacity * 100 },
+  lineWidth: { min: 1, max: 10, default: DEFAULT_LAYER_STYLE.lineWidth },
+  pointSize: { min: 2, max: 40, default: DEFAULT_LAYER_STYLE.pointRadius * 2 },
+};
+
+/**
+ * The style of the layer drawn from `frame`, from its geometry field's config (docs/phase_5.md,
+ * Design §2). Grafana applies the panel's field options and overrides to every field, so an
+ * override on one query, or on the geometry column's name, styles that layer. Bad or missing
+ * values fall back to the defaults, so old dashboards draw as before.
+ */
+export function layerStyle(
+  frame: DataFrame,
+  result: ConversionResult,
+  layerIndex: number,
+  theme: GrafanaTheme2
+): LayerStyle {
+  const field = frame.fields.find(({ name }) => name === result.geometryField);
+  const custom: MapStyleConfig = field?.config.custom ?? {};
+  const option = (name: NumberOption) => {
+    const { min, max, default: fallback } = MAP_STYLE_RANGES[name];
+    const value = custom[name];
+    return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+  };
+
+  return {
+    color: layerColor(frame, field, layerIndex, theme),
+    opacity: option('opacity') / 100,
+    fillOpacity: option('fillOpacity') / 100,
+    lineWidth: option('lineWidth'),
+    lineStyle: lineStyle(custom),
+    pointRadius: option('pointSize') / 2,
+    outlineColor: theme.colors.background.primary,
+  };
+}
+
+/**
+ * Classic palette colors go by the layer's position among layers, as before Phase 5 (decision 2):
+ * Grafana's own series index counts every column of every query. Other schemes use Grafana's
+ * color calculator, so they behave as in its other panels. By name hashes the layer's name, the
+ * frame's name or refId: Grafana would hash the field's, and every query's geometry column may
+ * be called `geometry` (docs/phase_5.md, step 5.1). By-value schemes aren't offered (there's no
+ * value to color by), and fall back to the palette if set by hand.
+ */
+function layerColor(
+  frame: DataFrame,
+  field: DataFrame['fields'][number] | undefined,
+  layerIndex: number,
+  theme: GrafanaTheme2
+): string {
+  const palette = () => {
+    const names = theme.visualization.palette;
+    return theme.visualization.getColorByName(names[layerIndex % names.length]);
+  };
+  const mode = field?.config.color?.mode;
+  if (!field || !mode || mode === FieldColorModeId.PaletteClassic) {
+    return palette();
+  }
+  const colorMode = getFieldColorModeForField(field);
+  if (colorMode.isByValue) {
+    return palette();
+  }
+  const named =
+    mode === FieldColorModeId.PaletteClassicByName
+      ? { ...field, state: { ...field.state, displayName: frame.name || frame.refId } }
+      : field;
+  return colorMode.getCalculator(named, theme)(0, 0);
+}
+
+function lineStyle({ lineStyle: kind, dashPattern }: MapStyleConfig): LineStyle {
+  switch (kind) {
+    case 'dash':
+    case 'dot':
+      return { kind };
+    case 'custom': {
+      // A pattern that doesn't parse draws solid; the option's editor says why.
+      const parsed = parseDashPattern(dashPattern);
+      return 'pattern' in parsed ? { kind: 'custom', pattern: parsed.pattern } : { kind: 'solid' };
+    }
+    default:
+      return { kind: 'solid' };
+  }
+}

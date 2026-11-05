@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { LayerDefaults, buildLayerSpecs } from '../adapter';
+import { buildLayerSpecs } from '../adapter';
 import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { convertFrames } from './convertFrames';
@@ -164,18 +164,11 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   const view = useMemo(() => viewFromOptions({ lat, lon, zoom }), [lat, lon, zoom]);
 
   const results = useMemo(() => convertFrames(data.series), [data.series]);
-  const layerDefaults = useMemo<LayerDefaults>(
-    () => ({
-      colors: theme.visualization.palette.map((name) => theme.visualization.getColorByName(name)),
-      outlineColor: theme.colors.background.primary,
-    }),
-    [theme]
-  );
   const mode = tooltipMode(options);
   const interactive = mode !== 'off';
   const layers = useMemo(
-    () => buildLayerSpecs(results, layerDefaults, { interactive }),
-    [results, layerDefaults, interactive]
+    () => buildLayerSpecs(results, data.series, theme, { interactive }),
+    [results, data.series, theme, interactive]
   );
   // Data arrived, but no frame has a geometry column: say why instead of showing an empty map.
   const noGeometry = layers.length === 0 ? results.find((result) => result.noGeometry)?.noGeometry : undefined;

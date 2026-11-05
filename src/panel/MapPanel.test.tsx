@@ -85,6 +85,16 @@ class FakeIntersectionObserver {
 }
 
 /** Moves every panel on or off screen. */
+/** A query's new result after a refresh: a new frame with new values arrays. */
+function refreshed(frame: DataFrame): DataFrame {
+  return { ...frame, fields: frame.fields.map((field) => ({ ...field, values: [...field.values] })) };
+}
+
+/** What Grafana does when field config changes: new frame and field objects around the same values. */
+function withFieldConfig(frame: DataFrame, custom: Record<string, unknown>): DataFrame {
+  return { ...frame, fields: frame.fields.map((field) => ({ ...field, config: { ...field.config, custom } })) };
+}
+
 function setOnScreen(onScreen: boolean) {
   act(() => FakeIntersectionObserver.instances.forEach((observer) => observer.report(onScreen)));
 }
@@ -502,7 +512,7 @@ describe('MapPanel', () => {
       const { rerender } = await renderPanel({ data: { series } });
       fire('click', hit(['B', 0]));
       engine.closeTooltip.mockClear();
-      rerender(<MapPanel {...props({ data: { series: [series[0], toDataFrame({ ...noKeys })] } })} />);
+      rerender(<MapPanel {...props({ data: { series: [series[0], refreshed(noKeys)] } })} />);
 
       expect(engine.closeTooltip).toHaveBeenCalled();
     });
@@ -634,12 +644,22 @@ describe('MapPanel', () => {
     it('reuses the data of frames that did not change', async () => {
       const { rerender } = await renderPanel({ data: { series: [points, lines] } });
       const before = lastLayers();
-      const newLines = toDataFrame({ ...lines });
-      rerender(<MapPanel {...props({ data: { series: [points, newLines] } })} />);
+      rerender(<MapPanel {...props({ data: { series: [points, refreshed(lines)] } })} />);
       const after = lastLayers();
 
       expect(after[0].data).toBe(before[0].data);
       expect(after[1].data).not.toBe(before[1].data);
+    });
+
+    it('restyles a layer from new field config, keeping its data', async () => {
+      const { rerender } = await renderPanel({ data: { series: [points, lines] } });
+      const before = lastLayers();
+      rerender(<MapPanel {...props({ data: { series: [points, withFieldConfig(lines, { lineWidth: 6 })] } })} />);
+      const after = lastLayers();
+
+      expect(after[1].style.lineWidth).toBe(6);
+      expect(after[1].data).toBe(before[1].data);
+      expect(after[0]).toEqual(before[0]);
     });
 
     it('does not touch the layers when something else changes', async () => {
