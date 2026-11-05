@@ -295,7 +295,7 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         </div>
       )}
       <div className={styles.notices}>
-        <MapLegend entries={legend} maxHeight={height / 3} />
+        <MapLegend entries={legend} maxHeight={height / 2} />
         {noGeometry && (
           <div className={styles.notice} data-testid="geoflow-no-geometry">
             {noGeometry.detail}

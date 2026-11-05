@@ -115,7 +115,9 @@ describe('legendEntries', () => {
   it("shows a by-value scheme as a gradient across the column's range", () => {
     const gradient = { mode: 'continuous-GrYlRd' } as FieldConfig['color'];
     const [fromData] = entries(query('A', { colorBy: 'pct' }, { color: gradient }));
-    const [fromMinMax] = entries(query('A', { colorBy: 'pct' }, { color: gradient, min: 0, max: 200, unit: 'lengthm' }));
+    const [fromMinMax] = entries(
+      query('A', { colorBy: 'pct' }, { color: gradient, min: 0, max: 200, unit: 'lengthm' })
+    );
 
     expect(fromData.items).toEqual([]);
     expect(fromData.gradient).toEqual({
