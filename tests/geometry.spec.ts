@@ -57,11 +57,11 @@ test('switching the basemap keeps the features', async ({ readProvisionedDashboa
   const panel = panelEditPage.panel.locator;
   const drawn = { A: BUILDING_COUNT, B: FIBER_CABLE_COUNT };
   await expect.poll(() => renderedFeatures(panel), DRAWN).toEqual(drawn);
-  const basemap = panelEditPage.getCustomOptions('Basemap').getRadioGroup('Basemap');
+  const basemap = panelEditPage.getCustomOptions('Basemap').getSelect('Basemap');
 
-  await basemap.check('None');
+  await basemap.selectOption('None');
   await expect.poll(() => renderedFeatures(panel), DRAWN).toEqual(drawn);
-  await basemap.check('OpenStreetMap');
+  await basemap.selectOption('OpenStreetMap');
   await expect.poll(() => renderedFeatures(panel), DRAWN).toEqual(drawn);
 });
 

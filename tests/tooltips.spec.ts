@@ -185,7 +185,7 @@ test.describe('click', () => {
     await pointAt(page, panel, BUILDING, 'click');
     await expect(panel.getByTestId('geoflow-tooltip')).toBeVisible();
 
-    await panelEditPage.getCustomOptions('Basemap').getRadioGroup('Basemap').check('OpenStreetMap');
+    await panelEditPage.getCustomOptions('Basemap').getSelect('Basemap').selectOption('OpenStreetMap');
     await expect(panel.getByTestId('geoflow-tooltip')).toHaveCount(0);
   });
 
