@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { DRAWN, expect, renderedFeatures, test } from './fixtures';
+import { DRAWN, editedPanel, expect, renderedFeatures, test } from './fixtures';
 
 // Panels of docker/grafana/provisioning/dashboards/06-style.json. The basemap is None, so the
 // screenshots show only the data.
@@ -59,7 +59,7 @@ test('restyles the map as options change in the panel editor', async ({
 }) => {
   const dashboard = await readProvisionedDashboard({ fileName: '06-style.json' });
   const panelEditPage = await gotoPanelEditPage({ dashboard, id: STYLE_EDITOR_PANEL });
-  const panel = panelEditPage.panel.locator;
+  const panel = await editedPanel(panelEditPage);
   const counts = await drawn(panel, 3);
   const mapStyle = panelEditPage.getCustomOptions('Map style');
   const setSlider = async (label: string, value: string) => {

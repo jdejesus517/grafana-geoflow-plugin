@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { DRAWN, PanelView, expect, mapPoint, renderedFeatures, test } from './fixtures';
+import { DRAWN, PanelView, editedPanel, expect, mapPoint, renderedFeatures, test } from './fixtures';
 
 // Panels, views and fixture rows of docker/grafana/provisioning/dashboards/05-tooltips.json.
 const BUILDING: PanelView = { lat: 35.7885, lon: -78.7815, zoom: 16 }; // Academy Square Offices
@@ -180,7 +180,7 @@ test.describe('click', () => {
   test('closes when the basemap changes', async ({ page, readProvisionedDashboard, gotoPanelEditPage }) => {
     const dashboard = await readProvisionedDashboard({ fileName: '05-tooltips.json' });
     const panelEditPage = await gotoPanelEditPage({ dashboard, id: '1' });
-    const panel = panelEditPage.panel.locator;
+    const panel = await editedPanel(panelEditPage);
     await expect.poll(async () => (await renderedFeatures(panel)).A > 0, DRAWN).toBe(true);
     await pointAt(page, panel, BUILDING, 'click');
     await expect(panel.getByTestId('geoflow-tooltip')).toBeVisible();

@@ -1,7 +1,7 @@
 // Project test entry point: @grafana/plugin-e2e's test, plus tile stubbing for every test.
 // Every GeoFlow panel shows a basemap, and OpenStreetMap's tile policy forbids automated
 // traffic, so all tile requests are answered with a local PNG and never reach the network.
-import { test as base, expect } from '@grafana/plugin-e2e';
+import { PanelEditPage, test as base, expect } from '@grafana/plugin-e2e';
 import type { Locator } from '@playwright/test';
 import { join } from 'node:path';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from '../../src/panel/testHook';
@@ -28,6 +28,21 @@ export const test = base.extend<{ tileRequests: string[] }>({
     { auto: true },
   ],
 });
+
+/**
+ * The panel open in the panel editor. `PanelEditPage.panel` matches every panel header on the
+ * page, and Grafana nightly can show the whole dashboard for a moment before the editor opens,
+ * so using it straight away may find all the dashboard's panels. This waits for the editor's
+ * options pane, then for the one panel it edits.
+ */
+export async function editedPanel(panelEditPage: PanelEditPage): Promise<Locator> {
+  await expect(panelEditPage.ctx.page.getByRole('button', { name: 'Search options' })).toBeVisible({
+    timeout: 30_000,
+  });
+  const panel = panelEditPage.panel.locator;
+  await expect(panel).toHaveCount(1, { timeout: 30_000 });
+  return panel;
+}
 
 /** For expect.poll around renderedFeatures: the first count waits for the map to be created. */
 export const DRAWN = { timeout: 30_000 };

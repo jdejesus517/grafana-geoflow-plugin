@@ -1,4 +1,4 @@
-import { DRAWN, expect, renderedFeatures, test } from './fixtures';
+import { DRAWN, editedPanel, expect, renderedFeatures, test } from './fixtures';
 
 // Row counts from docker/postgres/init/03_seed_fixtures.sql.
 const BUILDING_COUNT = 9;
@@ -54,7 +54,7 @@ test('two queries draw as two layers', async ({ readProvisionedDashboard, gotoDa
 test('switching the basemap keeps the features', async ({ readProvisionedDashboard, gotoPanelEditPage }) => {
   const dashboard = await readProvisionedDashboard({ fileName: '04-geometry.json' });
   const panelEditPage = await gotoPanelEditPage({ dashboard, id: '8' });
-  const panel = panelEditPage.panel.locator;
+  const panel = await editedPanel(panelEditPage);
   const drawn = { A: BUILDING_COUNT, B: FIBER_CABLE_COUNT };
   await expect.poll(() => renderedFeatures(panel), DRAWN).toEqual(drawn);
   const basemap = panelEditPage.getCustomOptions('Basemap').getSelect('Basemap');

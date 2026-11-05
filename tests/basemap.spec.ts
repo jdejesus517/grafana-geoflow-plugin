@@ -1,4 +1,4 @@
-import { STUB_TILE_HOST, expect, test } from './fixtures';
+import { STUB_TILE_HOST, editedPanel, expect, test } from './fixtures';
 
 const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
 
@@ -66,7 +66,7 @@ test('switching the basemap in the panel editor keeps the same map', async ({
 }) => {
   const dashboard = await readProvisionedDashboard({ fileName: '02-basemap.json' });
   const panelEditPage = await gotoPanelEditPage({ dashboard, id: '1' });
-  const panel = panelEditPage.panel.locator;
+  const panel = await editedPanel(panelEditPage);
   const canvas = panel.locator('canvas.maplibregl-canvas');
   await expect(canvas).toBeVisible();
   // Tag the canvas: if the map were recreated, the tag would be gone.

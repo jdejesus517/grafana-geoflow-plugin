@@ -329,6 +329,7 @@ Implemented on branch `phase-5` in seven commits, one per step:
 - **Shades use Grafana's series index,** which counts every non-time column of every query. The shade of a layer depends on how many columns the queries before it have. Acceptable for a scheme meant to tell layers apart, not to fix a color.
 - **Dotted lines at 1 px** are single-pixel dots, which read as a faint dotted line. Thicker lines show round dots.
 - **The panel editor's map is wider and shorter** (580 × 246 px at the test viewport) than the dashboard's (409 × 322). Screenshots around the map's center use 300 × 200 px, which fits both.
+- **Grafana nightly shows the dashboard before the panel editor.** With nightly 13.3.0-34793047961, opening `?editPanel=8` showed the whole dashboard for a moment. `PanelEditPage.panel` from `@grafana/plugin-e2e` matches every panel header, so a test that used it straight away found all ten panels and failed (3 times in 8 locally, every attempt in CI). The e2e tests now open the edited panel through `editedPanel()` in `tests/fixtures/`, which waits for the editor's options pane and then for a single panel.
 - **Local e2e flakiness.** Some basemap and adapter tests occasionally don't see the map canvas within the default 5 s on this machine. The same tests fail the same way on `main`, so it isn't from Phase 5; CI has been green. Worth a look in Phase 9 (hardening).
 
 ### Step 5.1 findings
