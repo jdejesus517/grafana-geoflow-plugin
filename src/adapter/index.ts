@@ -8,7 +8,9 @@ export { dataStyleFields, featureStyles } from './featureStyles';
 export type { DataStyleFields } from './featureStyles';
 export { EMPTY_VALUE, featureDetails } from './featureDetails';
 export type { FeatureDetailItem, FeatureDetails } from './featureDetails';
-export { featureByKey, featureKey, featureRow } from './featureLookup';
+export { featureByKey, featureIndex, featureKey, featureRow } from './featureLookup';
+export { legendEntries } from './legend';
+export type { LegendEntry, LegendItem } from './legend';
 export type { GeometryFieldDetection, NoGeometryReason } from './detectGeometryField';
 export { MAX_WARNING_SAMPLES, frameToFeatureCollection, framesToFeatureCollections } from './frameToFeatureCollection';
 export type {
