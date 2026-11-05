@@ -239,3 +239,22 @@ Accepted as proposed (2026-11-05):
 ## Outcome
 
 To be filled in when the phase is done.
+
+### Step 6.1 findings
+
+The display processor was checked with `applyFieldOverrides` and `@grafana/data` 13.2.5 in a throwaway Jest test, and feature-state with MapLibre 6.16 in a page of its own: 100k points, one circle layer, Playwright's Chromium on this machine's GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`, as in Phase 4). The options pane checks (`addFieldNamePicker` in an override, Thresholds on the text geometry column) need the options, so they're done in step 6.4.
+
+| Check | Result |
+|---|---|
+| Thresholds | `display(v).color` gives each value its step's color, with Color scheme **From thresholds** and also with no scheme set. GeoFlow's default scheme is Classic palette, so a column needs **From thresholds** set, as the plan has it. |
+| By-value gradient | Green-Yellow-Red across the data's range without Min and Max (`state.range` 0–100: green, yellow, red), and across Min/Max when set (0–200: 100 is yellow). |
+| Value mappings | A mapping with a color gives that color, and its text (`underground` → "UG", blue). A mapping without a color, and a value no mapping matches, get the scheme's color: the base threshold, or the column's palette color. That's what a table cell shows. |
+| Empty values | **Differs from the plan.** `display(null)` doesn't come back without a color: it gives the base threshold color (or the gradient's first). Design §2 relies on "a display result without a color", so an empty value is checked against the column's mappings directly (`getValueMappingResult`): a matching Null mapping with a color gives that color, anything else keeps the layer's. |
+| Text columns | Classic palette gives every value the column's one series color; thresholds don't apply to text. Coloring by a text column needs value mappings, as in Grafana's tables. |
+| Feature-state cost | Setting color and radius on all 100k points: under 25 ms of calls, then one task of 228 ms the first time and 163–171 ms after. Changing half: one task of 86 ms. A quarter or fewer: no task over 50 ms. Removing all states: 172 ms. |
+| `setData` with colors as properties | 231–239 ms, then two or three more tasks of 50–65 ms, every time. **Feature-state is cheaper,** and much cheaper for partial changes, so Design §3 stands. |
+| Comparing 100k colors | 1 ms, so diffing against the last styles before calling MapLibre costs nothing. |
+| Feature-state across `setData` | Kept for ids that stay, as the plan expected. |
+| Feature-state across a basemap change | Dropped by a style loaded from scratch, so the engine sets it again on `style.load`, as planned. |
+
+Exit criterion 8 (no task over 200 ms) holds for changes that recolor up to about half the features. A change that recolors every one of 100k points costs about 170 ms after the first, and 230 ms the first time, which comes with loading the layer anyway.
