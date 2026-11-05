@@ -330,6 +330,7 @@ Design rules that keep later modes cheap to add:
   - **Layer cap.** `maxLayers`, default 50, guards against splitting on a high-cardinality column. Values beyond the cap are grouped into an "Other" layer and reported as a panel warning.
   - **Per-value colors.** Values get colors from the Grafana theme's classic palette, overridable through standard Grafana value mappings.
   - **Null or empty split values** go into a "(none)" layer.
+  - **Line style by value.** Each value's layer takes its line style from an override, so no value-to-line-style mapping is needed (Phase 6, decision 5).
 
 ---
 
@@ -397,7 +398,7 @@ Each phase ends with something demonstrable and its own tests. I will stop for r
 | 3 | Single-layer rendering of all six geometry types with default style | Style-builder unit tests + e2e on mixed-geometry dashboard |
 | 4 | Tooltips: hover highlight and tooltip, click to pin, feature attributes formatted via field config, data links | e2e hover and click → tooltip content and links |
 | 5 | Basic styling options (color, opacity, point size, line width, line style, fill opacity) in field config, per query through overrides | Unit tests + e2e option change |
-| 6 | Data-driven styling: color, size and line style from a column's value, with Grafana's color schemes (thresholds, gradients, value mappings), and a legend | Unit tests on per-feature styles + e2e dashboard styled by value |
+| 6 | Data-driven styling: feature color and point size from a column's value, with Grafana's color schemes (thresholds, gradients, value mappings), and a legend | Unit tests on per-feature styles + e2e dashboard styled by value |
 | 7 | Multiple layers in `perFrame` mode: layer list editor (names, geometry and id columns; style stays in field config), `LayerBinding` option (only `perFrame` exposed), ordering, visibility | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
 | 8 | Refresh behavior: in-place `setData`, viewport preservation, fit-to-data option, theme switching | Component tests + e2e refresh |
 | 9 | Hardening: warnings/notices, WebGL detection, CSP docs, performance benchmark and any resulting optimization | Perf dashboard results recorded in docs |
@@ -409,7 +410,7 @@ Phases 0–10 make up the **MVP**. Post-MVP phases each add one capability:
 
 | Phase | Deliverable | Verified by |
 |---|---|---|
-| 11 | `byColumn` layer binding (§3.4): split column picker, layer cap + "Other", per-value colors (reusing Phase 6's value mappings), stable ids across refresh | Unit tests on `bindByColumn` (cardinality, nulls, id stability) + e2e dashboard split by a category column |
+| 11 | `byColumn` layer binding (§3.4): split column picker, layer cap + "Other", per-value colors (reusing Phase 6's value mappings), line style by value through per-layer overrides, stable ids across refresh | Unit tests on `bindByColumn` (cardinality, nulls, id stability) + e2e dashboard split by a category column |
 
 ### 5.4 License compliance
 
@@ -459,4 +460,5 @@ Features that have come up but aren't in a phase yet. Each one would get its own
 | **GeometryCollection** | §3.3. Rows are skipped and reported as `unsupported`. | Splitting a collection into its parts in the adapter, with a decision on how the parts share one feature's tooltip and id. |
 | **Vector tiles for very large data** | §4.2. Beyond about 100k features, GeoJSON through the data source gets slow. | Vector tiles from PostGIS (`ST_AsMVT` through Martin or pg_tileserv). This is a deliberate exception to "Grafana data source only" and needs separate approval. |
 | **Point symbols** | Points are drawn as circles (Phase 3), sized and colored by Phase 5's options. Shapes (square, triangle, star…) and icons were considered alongside data-driven styling and left out of the MVP. | A MapLibre `symbol` layer with images in place of the `circle` layer: built-in shapes drawn in the browser as SDF images, so they can be tinted per layer and per value. The engine re-adds the images after every basemap change, since `transformStyle` carries layers but not images. `icon-size` can't read feature-state, so highlights need a halo or a circle beneath. Symbols must allow overlap, and cost more than circles at 100k points, so the performance benchmark has to cover them. Shape by value reuses Phase 6's per-feature styles. Custom icon URLs raise CSP and CORS questions. |
+| **Line width by value** | Phase 6 sizes points by a column's value. Lines keep the layer's Line width. | A Size by for lines, scaling `line-width` through feature-state between a minimum and maximum width, like point size. |
 | **Antimeridian-crossing geometries** | §4.1. Documented rather than solved. | Splitting or unwrapping geometries that cross ±180° in the adapter. |
