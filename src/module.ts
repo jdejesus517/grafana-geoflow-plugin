@@ -1,4 +1,4 @@
-import { FieldColorModeId, FieldConfigProperty, PanelPlugin, StandardEditorProps } from '@grafana/data';
+import { FieldColorModeId, FieldConfigProperty, FieldType, PanelPlugin, StandardEditorProps } from '@grafana/data';
 import { DASH_PATTERN_EXAMPLE, LineStyleOption, MAP_STYLE_RANGES, dashPatternProblem } from './adapter';
 import { CheckedTextEditor, CheckedTextEditorSettings } from './panel/CheckedTextEditor';
 import { MapPanel } from './panel/MapPanel';
@@ -32,7 +32,13 @@ const LINE_STYLE_OPTIONS: Array<{ value: LineStyleOption; label: string }> = [
 ];
 
 /** A Map style slider: its range and default from MAP_STYLE_RANGES. */
-function styleSlider(path: keyof typeof MAP_STYLE_RANGES, name: string, description: string, unit: string) {
+function styleSlider(
+  path: keyof typeof MAP_STYLE_RANGES,
+  name: string,
+  description: string,
+  unit: string,
+  showIf?: (config: GeoFlowFieldConfig) => boolean
+) {
   const { min, max, default: defaultValue } = MAP_STYLE_RANGES[path];
   return {
     path,
@@ -41,19 +47,19 @@ function styleSlider(path: keyof typeof MAP_STYLE_RANGES, name: string, descript
     category: MAP_STYLE,
     defaultValue,
     settings: { min, max, step: 1 },
+    showIf,
   };
 }
 
 export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPanel)
   // Field options format tooltip values and give them data links (docs/phase_4.md, Design §1),
-  // and style each query's layer from its geometry field (docs/phase_5.md, Design §1). Options
-  // that nothing uses are hidden.
+  // style each query's layer from its geometry field (docs/phase_5.md, Design §1), and color and
+  // size features by a column's value (docs/phase_6.md, Design §1). Options that nothing uses
+  // are hidden.
   .useFieldConfig({
     disableStandardOptions: [
-      FieldConfigProperty.Min,
-      FieldConfigProperty.Max,
+      // Color by and Size by use the column's own range: its Min and Max, or its data's.
       FieldConfigProperty.FieldMinMax,
-      FieldConfigProperty.Thresholds,
       FieldConfigProperty.Filterable,
       // Plugins can't build Grafana's actions yet (docs/architecture.md §7).
       FieldConfigProperty.Actions,
@@ -61,8 +67,9 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
     standardOptions: {
       [FieldConfigProperty.Color]: {
         defaultValue: { mode: FieldColorModeId.PaletteClassic },
-        // A layer has no value to color by until data-driven styling (Phase 6).
-        settings: { byValueSupport: false, bySeriesSupport: true, preferThresholdsMode: false },
+        // By-value schemes color features through a Color by column. On the geometry column
+        // itself, they fall back to the palette.
+        settings: { byValueSupport: true, bySeriesSupport: true, preferThresholdsMode: false },
       },
     },
     useCustomConfig: (builder) =>
@@ -94,6 +101,32 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
           ) => ReturnType<typeof CheckedTextEditor>
         )
         .addSliderInput(styleSlider('pointSize', 'Point size', 'Point diameter', 'px'))
+        .addFieldNamePicker({
+          path: 'colorBy',
+          name: 'Color by',
+          description:
+            "Colors the features by this column's value, with its thresholds, color scheme and value mappings.",
+          category: MAP_STYLE,
+          settings: { placeholderText: 'None', isClearable: true },
+        })
+        .addFieldNamePicker({
+          path: 'sizeBy',
+          name: 'Size by',
+          description: "Sizes the points by this number column's value, across its Min and Max.",
+          category: MAP_STYLE,
+          settings: {
+            placeholderText: 'None',
+            isClearable: true,
+            filter: (field) => field.type === FieldType.number,
+            noFieldsMessage: 'No number columns',
+          },
+        })
+        .addSliderInput(
+          styleSlider('sizeMin', 'Min point size', 'Point diameter at Min', 'px', (config) => !!config.sizeBy)
+        )
+        .addSliderInput(
+          styleSlider('sizeMax', 'Max point size', 'Point diameter at Max', 'px', (config) => !!config.sizeBy)
+        )
         .addBooleanSwitch({
           path: 'hideInTooltip',
           name: 'Hide in tooltip',
@@ -175,6 +208,12 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
             { value: 'off', label: 'Off' },
           ],
         },
+      })
+      .addBooleanSwitch({
+        path: 'legend.show',
+        name: 'Legend',
+        description: 'Shows the colors of layers colored by a column, over the map.',
+        defaultValue: DEFAULT_OPTIONS.legend.show,
       })
       .addBooleanSwitch({
         path: 'showSummary',
