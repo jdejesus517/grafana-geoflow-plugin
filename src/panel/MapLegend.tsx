@@ -1,7 +1,6 @@
 import React from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2 } from '@grafana/data';
-import { LegendDisplayMode } from '@grafana/schema';
 import { VizLegend, VizLegendItem, useStyles2 } from '@grafana/ui';
 import { LegendEntry } from '../adapter';
 
@@ -61,8 +60,9 @@ export function MapLegend({ entries, maxHeight }: Props) {
           </div>
           {entry.items.length > 0 && (
             <VizLegend
+              // List display is the default. @grafana/schema isn't provided by Grafana: importing
+              // LegendDisplayMode would bundle it.
               placement="right"
-              displayMode={LegendDisplayMode.List}
               items={entry.items.map((item, i): VizLegendItem => ({
                 ...item,
                 yAxis: 1,
