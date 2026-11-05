@@ -285,3 +285,18 @@ Accepted as proposed (2026-11-04):
 ## Outcome
 
 To be filled in when the phase is done.
+
+### Step 5.1 findings
+
+Checked on Grafana 13.2.4 with a temporary dashboard of three queries (buildings, cables, splice cases) and a debug hook that was removed afterwards. Nightly is covered by CI, where the style screenshots run on every Grafana version.
+
+| Check | Result |
+|---|---|
+| Color scheme modes | With `byValueSupport: false`, the editor offers exactly **Single color**, **Shades of a color**, **Classic palette** and **Classic palette (by series name)**, on the text geometry column. |
+| Field config on the geometry column | The Map style defaults reach the string geometry field's `config.custom`, with every default filled in. A **Fields returned by query** override (query B: Custom line style, `8, 4`, Single color red) applies to that query's geometry field only. |
+| Data arrays after an option change | Changing **Fill opacity** hands the panel new frame objects, but every field's `values` array is the same object as before. `applyFieldOverrides` copies fields with `...originalField`. Design §3's cache key works as planned. |
+| By-name colors | **Risk confirmed.** Grafana hashes the field's display name, or its name when there's none. Every layer's geometry column was called `geometry`, so all three layers got the same color. `layerStyle` hashes the layer's name (the frame name, or its refId) instead. The three layers then got three colors. |
+| Shades | Uses Grafana's series index, which counts every column: three layers got three different shades. |
+| Dash patterns | At 1 px and 10 px, **Dashed** (`[3, 3]`, round ends) draws even dashes, and **Dotted** (`[0, 2]`) round dots. At 1 px the dots are a single pixel, so a dotted line reads as a faint dotted line. **Custom** `12, 4, 2, 4` with flat ends comes out at the typed pixel lengths. |
+| Dash pattern visibility | `showIf` hides **Dash pattern** in the defaults while Line style is Solid. In an override, it shows once added as a property, whatever the line style. That's how Grafana lists override properties, and harmless: the pattern is ignored unless the line style is Custom. |
+| Field option editor types | `FieldConfigEditorBuilder.addGenericEditor` types the editor's props with the settings type as the value type. The Dash pattern editor is passed with a cast, commented in `module.ts`. |
