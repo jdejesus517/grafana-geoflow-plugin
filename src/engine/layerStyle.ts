@@ -2,12 +2,14 @@
 // styling rules are unit-tested without WebGL.
 // Type-only import: erased at build time, so this module doesn't pull MapLibre into the eager chunk.
 import type { ExpressionSpecification, LayerSpecification } from 'maplibre-gl';
-import { LayerSpec, LayerStyle } from './types';
+import { LayerSpec, LayerStyle, LineStyle } from './types';
 
-/** Style defaults for the parts the panel doesn't set yet. Phase 5 makes them panel options. */
+/** The style a layer has before any option is set; colors come from the theme. */
 export const DEFAULT_LAYER_STYLE: Omit<LayerStyle, 'color' | 'outlineColor'> = {
+  opacity: 1,
   fillOpacity: 0.35,
   lineWidth: 2,
+  lineStyle: { kind: 'solid' },
   pointRadius: 5,
 };
 
@@ -73,29 +75,77 @@ const FILTERS: Record<StyleLayerKind, ExpressionSpecification> = {
   circle: geometryFilter('Point', 'MultiPoint'),
 };
 
-type Paint = Record<string, string | number | ExpressionSpecification>;
+type Value = string | number | number[] | ExpressionSpecification;
+type Properties = Record<string, Value>;
 
-/** Paint properties per style layer kind. Kept separate so the engine can diff them on a style change. */
-export function paintFor(style: LayerStyle): Record<StyleLayerKind, Paint> {
+/**
+ * MapLibre dash arrays, in line widths (docs/phase_5.md, Design §4). Round line ends add half a
+ * width to each end of every dash: dashed draws dashes of 4 widths with gaps of 2, and a dash of
+ * length 0 draws a round dot one width across.
+ */
+const DASH_ARRAYS = { dash: [3, 3], dot: [0, 2] } as const;
+
+/** The line layer's dash array, or undefined for a solid line. */
+function dashArray(lineStyle: LineStyle, lineWidth: number): number[] | undefined {
+  switch (lineStyle.kind) {
+    case 'dash':
+    case 'dot':
+      return [...DASH_ARRAYS[lineStyle.kind]];
+    // Typed in pixels; MapLibre measures in line widths.
+    case 'custom':
+      return lineStyle.pattern.map((length) => length / lineWidth);
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Paint properties per style layer kind. Kept separate so the engine can diff them on a style
+ * change; a property left out (a solid line's dash array) goes back to MapLibre's default.
+ */
+export function paintFor(style: LayerStyle): Record<StyleLayerKind, Properties> {
+  const { opacity } = style;
+  const dashes = dashArray(style.lineStyle, style.lineWidth);
   return {
     fill: {
       'fill-color': style.color,
-      'fill-opacity': whenHighlighted(Math.min(1, style.fillOpacity + HIGHLIGHT.fillOpacity), style.fillOpacity),
+      'fill-opacity': whenHighlighted(
+        Math.min(1, style.fillOpacity + HIGHLIGHT.fillOpacity) * opacity,
+        style.fillOpacity * opacity
+      ),
     },
     outline: {
       'line-color': style.color,
+      'line-opacity': opacity,
       'line-width': whenHighlighted(OUTLINE_WIDTH + HIGHLIGHT.width, OUTLINE_WIDTH),
     },
     line: {
       'line-color': style.color,
+      'line-opacity': opacity,
       'line-width': whenHighlighted(style.lineWidth + HIGHLIGHT.width, style.lineWidth),
+      ...(dashes && { 'line-dasharray': dashes }),
     },
     circle: {
       'circle-color': style.color,
+      'circle-opacity': opacity,
       'circle-radius': whenHighlighted(style.pointRadius + HIGHLIGHT.radius, style.pointRadius),
       'circle-stroke-color': style.outlineColor,
+      'circle-stroke-opacity': opacity,
       'circle-stroke-width': whenHighlighted(HIGHLIGHT.strokeWidth, POINT_STROKE_WIDTH),
     },
+  };
+}
+
+/**
+ * Layout properties per style layer kind, diffed like paint. Lines have round ends, except custom
+ * patterns: flat ends keep their dashes and gaps at the lengths typed.
+ */
+export function layoutFor(style: LayerStyle): Record<StyleLayerKind, Properties> {
+  return {
+    fill: {},
+    outline: { 'line-join': 'round' },
+    line: { 'line-join': 'round', 'line-cap': style.lineStyle.kind === 'custom' ? 'butt' : 'round' },
+    circle: {},
   };
 }
 
@@ -107,19 +157,16 @@ export function paintFor(style: LayerStyle): Record<StyleLayerKind, Paint> {
 export function styleLayers(spec: LayerSpec): LayerSpecification[] {
   const source = dataSourceId(spec.id);
   const paint = paintFor(spec.style);
+  const layout = layoutFor(spec.style);
   const id = (kind: StyleLayerKind) => styleLayerId(spec.id, kind);
-  const roundLine = { 'line-join': 'round', 'line-cap': 'round' } as const;
-  return [
-    { id: id('fill'), type: 'fill', source, filter: FILTERS.fill, paint: paint.fill },
-    {
-      id: id('outline'),
-      type: 'line',
+  const layer = (kind: StyleLayerKind, type: 'fill' | 'line' | 'circle') =>
+    ({
+      id: id(kind),
+      type,
       source,
-      filter: FILTERS.outline,
-      layout: { 'line-join': 'round' },
-      paint: paint.outline,
-    },
-    { id: id('line'), type: 'line', source, filter: FILTERS.line, layout: roundLine, paint: paint.line },
-    { id: id('circle'), type: 'circle', source, filter: FILTERS.circle, paint: paint.circle },
-  ];
+      filter: FILTERS[kind],
+      ...(Object.keys(layout[kind]).length > 0 && { layout: layout[kind] }),
+      paint: paint[kind],
+    }) as LayerSpecification;
+  return [layer('fill', 'fill'), layer('outline', 'line'), layer('line', 'line'), layer('circle', 'circle')];
 }

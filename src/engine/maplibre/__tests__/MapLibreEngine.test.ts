@@ -24,6 +24,7 @@ class FakeMap {
   keyboard = { disableRotation: jest.fn() };
   setStyle = jest.fn();
   setPaintProperty = jest.fn();
+  setLayoutProperty = jest.fn();
   jumpTo = jest.fn();
   resize = jest.fn();
   remove = jest.fn();
@@ -156,7 +157,15 @@ const options: EngineOptions = {
   layers: [],
 };
 
-const style: LayerStyle = { color: '#73bf69', fillOpacity: 0.35, lineWidth: 2, pointRadius: 5, outlineColor: '#fff' };
+const style: LayerStyle = {
+  color: '#73bf69',
+  opacity: 1,
+  fillOpacity: 0.35,
+  lineWidth: 2,
+  lineStyle: { kind: 'solid' },
+  pointRadius: 5,
+  outlineColor: '#fff',
+};
 
 function layer(id: string, overrides: Partial<LayerSpec> = {}): LayerSpec {
   return { id, data: { type: 'FeatureCollection', features: [] }, style, interactive: true, ...overrides };
@@ -429,6 +438,22 @@ describe('MapLibreEngine', () => {
         ['geoflow-layer:A:circle', 'circle-color', '#f2cc0c'],
       ]);
       expect(map.sources['geoflow-layer:A'].setData).not.toHaveBeenCalled();
+    });
+
+    it('switches line ends and dashes with the line style, and clears the dashes for solid lines', async () => {
+      const spec = layer('A');
+      const { engine, map } = await mounted({ ...options, layers: [spec] });
+      const custom: LayerSpec = { ...spec, style: { ...style, lineStyle: { kind: 'custom', pattern: [8, 4] } } };
+      engine.setLayers([custom]);
+
+      expect(map.setPaintProperty.mock.calls).toEqual([['geoflow-layer:A:line', 'line-dasharray', [4, 2]]]);
+      expect(map.setLayoutProperty.mock.calls).toEqual([['geoflow-layer:A:line', 'line-cap', 'butt']]);
+
+      map.setPaintProperty.mockClear();
+      map.setLayoutProperty.mockClear();
+      engine.setLayers([{ ...spec, style: { ...style } }]);
+      expect(map.setPaintProperty.mock.calls).toEqual([['geoflow-layer:A:line', 'line-dasharray', undefined]]);
+      expect(map.setLayoutProperty.mock.calls).toEqual([['geoflow-layer:A:line', 'line-cap', 'round']]);
     });
 
     it('restacks the layers when their order changes', async () => {

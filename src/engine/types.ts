@@ -20,13 +20,23 @@ export interface EngineTheme {
   background: string;
 }
 
+/**
+ * The pattern of lines. Dashed and dotted are fixed patterns; custom is dash and gap lengths in
+ * pixels, an even number of them (docs/phase_5.md, Design §4).
+ */
+export type LineStyle = { kind: 'solid' | 'dash' | 'dot' } | { kind: 'custom'; pattern: number[] };
+
 /** How a layer's features are drawn. Colors are resolved CSS colors, never theme names. */
 export interface LayerStyle {
   color: string;
-  /** Polygon fill, 0–1. */
+  /** The whole layer, 0–1: lines, points, outlines and fills. */
+  opacity: number;
+  /** Polygon fill, 0–1, before `opacity`. */
   fillOpacity: number;
   /** Lines, px. Polygon outlines are always 1 px. */
   lineWidth: number;
+  /** Lines only; polygon outlines are always solid. */
+  lineStyle: LineStyle;
   /** Points, px. */
   pointRadius: number;
   /** Point stroke, for contrast with the basemap. */

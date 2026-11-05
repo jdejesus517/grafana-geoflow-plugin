@@ -19,6 +19,7 @@ import {
   SELECTED_STATE,
   STYLE_LAYER_KINDS,
   dataSourceId,
+  layoutFor,
   paintFor,
   styleLayerId,
   styleLayerIds,
@@ -52,6 +53,7 @@ export const TOOLTIP_MARGIN_PX = 8;
 let workerUrlSet = false;
 
 type PaintProperty = Parameters<MapLibreMap['setPaintProperty']>[1];
+type LayoutProperty = Parameters<MapLibreMap['setLayoutProperty']>[1];
 
 type Listeners = { [E in keyof EngineEvents]: Set<(payload: EngineEvents[E]) => void> };
 
@@ -380,14 +382,15 @@ export class MapLibreEngine implements MapEngine {
   }
 
   private repaint(map: MapLibreMap, id: string, from: LayerStyle, to: LayerStyle): void {
-    const before = paintFor(from);
-    const after = paintFor(to);
+    const paint = [paintFor(from), paintFor(to)] as const;
+    const layout = [layoutFor(from), layoutFor(to)] as const;
     for (const kind of STYLE_LAYER_KINDS) {
-      for (const [property, value] of Object.entries(after[kind])) {
-        // Values can be expressions (highlights), so compare them as JSON.
-        if (JSON.stringify(before[kind][property]) !== JSON.stringify(value)) {
-          map.setPaintProperty(styleLayerId(id, kind), property as PaintProperty, value);
-        }
+      const layerId = styleLayerId(id, kind);
+      for (const [property, value] of changed(paint[0][kind], paint[1][kind])) {
+        map.setPaintProperty(layerId, property as PaintProperty, value);
+      }
+      for (const [property, value] of changed(layout[0][kind], layout[1][kind])) {
+        map.setLayoutProperty(layerId, property as LayoutProperty, value);
       }
     }
   }
@@ -507,6 +510,18 @@ export class MapLibreEngine implements MapEngine {
       listener(payload);
     }
   }
+}
+
+/**
+ * Properties whose value differs between two sets, with the new value; one that was removed comes
+ * back as undefined, which resets it to MapLibre's default. Values can be expressions
+ * (highlights) or arrays (dashes), so they're compared as JSON.
+ */
+function changed<V>(before: Record<string, V>, after: Record<string, V>): Array<[string, V | undefined]> {
+  const properties = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...properties]
+    .filter((property) => JSON.stringify(before[property]) !== JSON.stringify(after[property]))
+    .map((property) => [property, after[property]]);
 }
 
 function geoJsonSource(spec: LayerSpec): GeoJSONSourceSpecification {
