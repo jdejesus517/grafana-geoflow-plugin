@@ -287,7 +287,7 @@ Accepted as proposed (2026-11-04):
 Implemented on branch `phase-5` in seven commits, one per step:
 - 346 unit and component tests pass, and 40 e2e tests (plus the login setup)
 - the new style e2e tests compare six stored screenshots, and the Phase 3 geometry screenshot still matches, so the defaults draw as before
-- CI results are on the pull request
+- CI on PR #25 passes build, lint, unit tests and e2e tests on Grafana 13.2.5, 13.3.0 and nightly. The style screenshots match on all three, so Grafana's color schemes give the same colors on each (the nightly part of step 5.1).
 
 ### Exit criteria
 
@@ -303,7 +303,7 @@ Implemented on branch `phase-5` in seven commits, one per step:
 | 8 | Basemap select | Met. Line style is a select too (see Differences). |
 | 9 | Bad values are safe | Met. Out-of-range numbers are clamped, other values take the default, and an unusable dash pattern says why under the field and draws solid (unit and e2e tests). |
 | 10 | Engine boundary | Met. The engine gets resolved colors, numbers and a `LineStyle`. |
-| 11 | Tests | Met locally; CI on the pull request. |
+| 11 | Tests | Met locally and in CI (e2e on 13.2.5, 13.3.0 and nightly). |
 
 ### Bundle sizes (production build)
 
@@ -333,7 +333,7 @@ Implemented on branch `phase-5` in seven commits, one per step:
 
 ### Step 5.1 findings
 
-Checked on Grafana 13.2.4 with a temporary dashboard of three queries (buildings, cables, splice cases) and a debug hook that was removed afterwards. Nightly is covered by CI, where the style screenshots run on every Grafana version.
+Checked on Grafana 13.2.4 with a temporary dashboard of three queries (buildings, cables, splice cases) and a debug hook that was removed afterwards. Nightly is covered by CI, where the style screenshots run on every Grafana version: they matched on 13.2.5, 13.3.0 and nightly.
 
 | Check | Result |
 |---|---|
