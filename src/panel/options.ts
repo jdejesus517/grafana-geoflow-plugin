@@ -1,3 +1,4 @@
+import { MapStyleConfig } from '../adapter';
 import { BasemapSpec, ViewState } from '../engine';
 
 export type BasemapKind = BasemapSpec['kind'];
@@ -20,8 +21,11 @@ export interface GeoFlowOptions {
   showSummary: boolean;
 }
 
-/** Per-field options GeoFlow adds to Grafana's standard ones, usable as defaults and in overrides. */
-export interface GeoFlowFieldConfig {
+/**
+ * Per-field options GeoFlow adds to Grafana's standard ones, usable as defaults and in overrides.
+ * The Map style options are read from each query's geometry field (docs/phase_5.md).
+ */
+export interface GeoFlowFieldConfig extends MapStyleConfig {
   /** Leave the field out of tooltips. Its data links still show. */
   hideInTooltip?: boolean;
 }
@@ -72,7 +76,7 @@ export function styleUrlProblem(url: string | undefined): string | undefined {
 
 /**
  * The engine basemap for the panel options. Incomplete or invalid settings fall back to `none`
- * rather than a broken style; the options pane shows why (see UrlEditor.tsx).
+ * rather than a broken style; the options pane shows why (see CheckedTextEditor.tsx).
  */
 export function basemapFromOptions(basemap: GeoFlowOptions['basemap'] | undefined): BasemapSpec {
   switch (basemap?.kind ?? DEFAULT_OPTIONS.basemap.kind) {
