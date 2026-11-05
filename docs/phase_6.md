@@ -1,6 +1,6 @@
 # Phase 6: Data-driven styling
 
-Status: **Approved** (2026-11-05). Decisions 1–9 accepted as proposed.
+Status: **Implemented** (2026-11-05). Decisions 1–9 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §2.3 (adapter), §2.4 (engine layer, styling), §5.3 (Phase 6 row), §7 (features considered for later).
 
 ## Goal
@@ -238,7 +238,54 @@ Accepted as proposed (2026-11-05):
 
 ## Outcome
 
-To be filled in when the phase is done.
+Implemented on branch `phase-6` in eight commits: one per step, and one that keeps `@grafana/schema` out of the bundle (see Findings):
+- 395 unit and component tests pass, and 44 e2e tests (plus the login setup). Locally, `basemap.spec.ts`'s zoom control test failed in some runs, as it did in Phase 5 (see Findings).
+- the new data-driven e2e tests compare four stored screenshots. The Phase 3 geometry and Phase 5 style screenshots still match, so layers without Color by and Size by draw as before.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Color by: thresholds, by-value schemes, value mappings | Met. Colors match Grafana's display processor (unit test across schemes), from the column's own range (see Differences). |
+| 2 | Size by | Met: linear diameters between Min and Max point size, clamped, the middle size when every value is the same. |
+| 3 | Per query, with overrides | Met. The `07 Data-driven` dashboard sets Color by and Size by with **Fields returned by query** overrides. |
+| 4 | Missing values | Met. Empty values keep the layer's color and size; a Null mapping with a color colors them (unit tests). |
+| 5 | Legend | Met. Mappings and threshold steps as `VizLegend` items, gradients as a bar between the formatted Min and Max; the Legend option turns it off. |
+| 6 | Tooltips | Met. The marker is the feature's color (component and e2e tests). |
+| 7 | Highlights | Met. Hovered and selected points grow from their own radius, and keep their own color (unit tests on the paint). |
+| 8 | Responsive | Met. On 100k points with the GPU, threshold changes in the panel editor caused no task over 62 ms when recoloring 20% of the points, and 130 ms when recoloring 80%. The data isn't converted or loaded again. |
+| 9 | Phase 5 unchanged | Met. Layers without per-feature styles keep plain paint values, and the Phase 3 and Phase 5 screenshots match. |
+| 10 | Engine boundary | Met. The engine gets colors and numbers in `LayerSpec.featureStyles`. |
+| 11 | Tests | Met locally; CI to be filled in. |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Change from Phase 5 |
+|---|---|---|---|
+| `module.js` | 48.4 KiB | 14.7 KiB | +11.3 KiB: per-feature colors and sizes, the legend, the new options |
+| `maplibre.js` (engine and MapLibre CSS) | 41.6 KiB | 11.7 KiB | +1.4 KiB: feature-state paint and the feature-state diff |
+| `36.js` (MapLibre) | 1139 KiB | 295 KiB | none |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| Ranges from the column's `state.range` | The column's own range: its Min and Max, or its data's (`getMinMaxAndDelta`) | Without Min and Max, Grafana's `state.range` spans every number column of every query (step 6.3): an `id` column up to 5000 squashed a 0–100 gradient and every size. The plan's exit criteria asked for the column's own range. **Field min/max** stays hidden, since it has no effect. |
+| `display(value).color` for every feature | The same colors, worked out faster: Grafana's scale calculator for number columns without mappings, gradients in 1024 steps, the display processor once per distinct value otherwise | `display()` formats each value's text too: 193 ms for thresholds and 346 ms for a gradient on 100k features. Now 67 and 71 ms. Gradient colors come as `rgb()` where Grafana's panels show hex; they're the same colors. |
+| Empty values recognized by "a display result without a color" | Checked directly, and against the column's Special value mappings | `display(null)` gives the base threshold color (step 6.1). `getValueMappingResult` isn't exported from `@grafana/data`, so the Special value mappings, the only ones that match an empty value, are checked by GeoFlow. |
+| Feature-state paint on every layer | Only on layers with per-feature styles | Plain values keep Phase 5's layers exactly as they were, and a style change on them stays a cheap uniform update. Getting or losing per-feature styles repaints the layer. |
+| Legend scrolls past a third of the map | Past half of it | In the `By value` panel, a third showed only the first of two entries. |
+| A missing column noted in the data summary | Also a number check: Size by on a text column says so | The picker only offers number columns, but a saved name can point at a column that changed type. |
+| Screenshots like Phase 5's, 300 × 200 px | 300 × 240 px at zoom 13.2, with the legend hidden (`stylePath`) | Every feature of the fixture network fits, inside the panel editor's map too. Masking the legend hid a third of the features in the By value panel. |
+
+### Findings for later phases
+
+- **Grafana's default range is global.** Without Min and Max, `applyFieldOverrides` gives every number column one range across all number columns of all queries. Anything else that scales by a column's value (Phase 11's per-value colors, a future line width by value) should use the column's own range, as `featureStyles` does.
+- **`@grafana/schema` is bundled,** not provided by Grafana. Importing its enums (such as `LegendDisplayMode`) adds them to `module.js`; prefer defaults or string literals.
+- **The field name picker is a Combobox** in Grafana 13.2, and lists display names from every query. `@grafana/plugin-e2e`'s `getSelect` looks for the Select menu, so tests click its option by role.
+- **The counting test hook is expensive at 100k points:** `renderedFeatureCounts` took one 323 ms task on its own. Performance measurements (Phase 9) shouldn't count features while measuring.
+- **Local e2e flakiness** in `basemap.spec.ts` (real OpenStreetMap tile requests) continues from Phase 5.
 
 ### Step 6.1 findings
 
@@ -258,3 +305,10 @@ The display processor was checked with `applyFieldOverrides` and `@grafana/data`
 | Feature-state across a basemap change | Dropped by a style loaded from scratch, so the engine sets it again on `style.load`, as planned. |
 
 Exit criterion 8 (no task over 200 ms) holds for changes that recolor up to about half the features. A change that recolors every one of 100k points costs about 170 ms after the first, and 230 ms the first time, which comes with loading the layer anyway.
+
+**Options pane checks** (step 6.4, Grafana 13.2.4):
+
+| Check | Result |
+|---|---|
+| `addFieldNamePicker` | A Combobox listing the display names of every query's columns (`id`, `name`, `geometry`, `cable_type`, `mount` on the 06 Style dashboard). With a `filter` on number fields, Size by listed only `id`. Saved in **Fields returned by query** overrides, both apply to that query's layer (the `07 Data-driven` dashboard). |
+| Thresholds, Min and Max on the text geometry column | Shown with Grafana's defaults (Base green, 80 red) on every field, as in Grafana's other panels. They have no effect on the geometry column. Min's help text is Grafana's ("Leave empty to calculate based on all values"); GeoFlow uses the column's own data instead, which the README explains. |

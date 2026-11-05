@@ -145,6 +145,7 @@ This is the only place that knows about both `DataFrame` and GeoJSON. Its functi
 - `detectGeometryField(frame)`: picks the geometry column (see §3).
 - `frameToFeatureCollection(frame, mapping) → { fc, warnings }`.
 - `buildLayerSpecs(frames, options, theme) → LayerSpec[]`: joins the layer configuration with frames by `refId` and resolves style defaults from the Grafana theme. Tooltip values are formatted with Grafana's field display processor when a feature is hovered or clicked (Phase 4), so the engine never needs Grafana formatting code.
+- `featureStyles(frame, result, theme)` and `legendEntries(results, frames, theme)` (Phase 6): per-feature colors and sizes from a column's values, and the legend of those colors, both from Grafana's field config. The engine gets plain colors and numbers.
 
 ### 2.4 Engine layer (`src/engine`, Grafana-independent)
 
@@ -168,6 +169,7 @@ interface LayerSpec {
   visible: boolean;
   data: FeatureCollection;
   style: LayerStyle;           // color, opacity, radius, lineWidth, fillOpacity…
+  featureStyles?: FeatureStyles; // per-feature colors and radii, in feature order (Phase 6)
   interactive: boolean;        // hover and click tooltips; per-layer tooltip fields in Phase 7
 }
 ```
@@ -229,6 +231,15 @@ How layers are styled, as built ([phase_5.md](phase_5.md)):
 - **Colors:** the classic palette goes by layer position, as in Phase 3. Single color and shades use Grafana's color calculator. By name hashes the layer's name (frame name or refId), because every query's geometry column may share one name.
 - **Engine:** `paintFor` adds the layer's opacity to every paint property and the dash array to lines (in line widths: dashed `[3, 3]`, dotted `[0, 2]`, custom patterns converted from pixels). `layoutFor` gives custom patterns flat line ends, so their lengths come out as typed. A style change diffs paint and layout properties, and resets a property the new style no longer sets.
 - **No redraw of data:** Grafana applies field config by building new frames around the same `values` arrays, so the conversion cache is keyed on those arrays, not on frames. A style change reuses the FeatureCollection, and the engine only repaints.
+
+#### Data-driven styling (Phase 6)
+
+How features are colored and sized by a column's value, as built ([phase_6.md](phase_6.md)):
+- **Options:** **Color by** and **Size by** (field name pickers) and the size range, in Map style on the geometry field, so a **Fields returned by query** override sets them per layer. The driving column's own Thresholds, by-value Color scheme, Min, Max and value mappings set the colors, as in Grafana's other panels.
+- **Colors:** `featureStyles` (adapter) gives each feature the color Grafana's display processor would give its value, from the column's own range rather than Grafana's default range across every number column. For speed, number columns without mappings go straight to Grafana's scale calculator, gradients in 1024 steps, and other columns through the display processor once per distinct value: under 75 ms for 100k features. Results are cached on the column's `values` array and the config's content, since Grafana clones every config on each change.
+- **Sizes:** point diameter linear between Min and Max point size across the column's range, clamped; features without a number keep the layer's size.
+- **Engine:** `LayerSpec.featureStyles` holds colors and radii in feature order. The engine sets them as feature-state (`color`, `radius`), and the paint of a layer that has them reads `['coalesce', ['feature-state', …], layerValue]`; layers without them keep plain values. A change calls MapLibre only for features whose values changed (`featureStateChanges`), matching features by id when the data changed. States are set again when a style loaded from scratch brings new sources. On 100k points with the GPU, a threshold change that recolors 80% of them causes no task over 130 ms.
+- **Legend:** `legendEntries` (adapter) lists each colored layer's value mappings and threshold steps, or its gradient; `MapLegend` (panel) renders them with Grafana's `VizLegend`, bottom left.
 
 ---
 
