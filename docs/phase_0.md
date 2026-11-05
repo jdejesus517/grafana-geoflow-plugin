@@ -156,7 +156,7 @@ docker/postgres/
   | `geoflow.fiber_cables` | LineString, MultiLineString | ~12 cables: backbone (144F), distribution (48F/24F), drops (12F). One MultiLineString cable whose route has an aerial span and an underground span that are recorded separately. | `fiber_count`, `cable_type` (backbone / distribution / drop), `placement` (aerial / underground), `length_m` (computed with `ST_Length(geom::geography)`), `from_asset`, `to_asset` |
   | `geoflow.splice_cases` | Point | ~6 enclosures at branch points along the backbone | `enclosure_type` (dome / inline), `mount` (pole / handhole / vault), `splice_capacity`, `splices_used` |
   | `geoflow.patch_panels` | Point, MultiPoint | ~10 panels, one or more per building. The data center's panel group spans several racks and is stored as one MultiPoint. | `building_id`, `rack`, `port_count`, `ports_used`, `utilization_pct` (computed) |
-  | `geoflow.network_assets` (view) | All six types | `UNION ALL` of the four tables above, with an `asset_type` column | Mixed-geometry test (Phase 3). `asset_type` / `status` are the natural split columns for `byColumn` mode (Phase 10). |
+  | `geoflow.network_assets` (view) | All six types | `UNION ALL` of the four tables above, with an `asset_type` column | Mixed-geometry test (Phase 3). `asset_type` / `status` are the natural split columns for `byColumn` mode (Phase 11). |
   | `geoflow.fiber_cables_stateplane` | LineString | Copy of `fiber_cables` stored in **NAD83 / North Carolina (ftUS), EPSG:2264**, the coordinate system local NC GIS data commonly uses | `ST_Transform` documentation, out-of-range coordinate warning |
   | `geoflow.edge_cases` | mixed | A NULL geometry, `POINT EMPTY`, a GeometryCollection, and a `geojson_text` column containing malformed GeoJSON | Phase 1 / 8 warnings |
 
@@ -168,7 +168,7 @@ docker/postgres/
   - `updated_at` (timestamptz, for `$__timeFilter`)
   - `geom` (SRID 4326, except the state plane table)
   - a GiST index on `geom`
-- **Large data** (`04_seed_large.sql`): `geoflow.service_locations_large` holds 100k Point "customer premises" generated with `generate_series` and `random()` inside a bounding box covering Cary. A fixed `setseed()` makes it reproducible. Attributes are `service_tier` and `status`. This is used for the Phase 8 benchmarks.
+- **Large data** (`04_seed_large.sql`): `geoflow.service_locations_large` holds 100k Point "customer premises" generated with `generate_series` and `random()` inside a bounding box covering Cary. A fixed `setseed()` makes it reproducible. Attributes are `service_tier` and `status`. This is used for the Phase 9 benchmarks.
 - **When scripts run:** init scripts run only on first start with an empty volume. `docker compose down -v` resets the database.
 
 **Done when:** the container starts healthy and `verify.sql` returns the expected row counts per table.

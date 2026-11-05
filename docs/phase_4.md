@@ -47,7 +47,7 @@ This phase adds:
 ## Out of scope
 
 - **Actions** (Grafana's buttons that send an HTTP request) in tooltips. Plugins have no supported way to build them yet. See [architecture.md §7](architecture.md#7-features-considered-for-later).
-- **Per-layer tooltip settings,** such as fields per layer or tooltips off for one layer. These come with the layer editor in Phase 6. Phase 4's option covers the whole panel, and **Hide in tooltip** works per field.
+- **Per-layer tooltip settings,** such as fields per layer or tooltips off for one layer. These come with the layer editor in Phase 7. Phase 4's option covers the whole panel, and **Hide in tooltip** works per field.
 - **Keyboard selection** of features on the map. See [architecture.md §7](architecture.md#7-features-considered-for-later).
 - **Data links in the hover tooltip.** The hover tooltip lets the pointer through and moves with it, so its links couldn't be clicked. Links are in the pinned tooltip (exit criterion 2).
 - **One-click data links.** Grafana's link editor has an **Open with one click** setting, which in Grafana's own panels makes a click open the link instead of the tooltip. In Phase 4 a click always pins the tooltip, and the link is in its footer. Where this would fit is in [architecture.md §7](architecture.md#7-features-considered-for-later).
@@ -105,7 +105,7 @@ Phase 1 uses one id for two different jobs. Phase 4 separates them:
 
 | | MapLibre feature id | Feature key |
 |---|---|---|
-| Used for | Hover and click results (`queryRenderedFeatures`) and the highlights (feature-state) | Following a feature through a refresh (exit criterion 9), and later Phase 7's refresh handling |
+| Used for | Hover and click results (`queryRenderedFeatures`) and the highlights (feature-state) | Following a feature through a refresh (exit criterion 9), and later Phase 8's refresh handling |
 | Must be | A number MapLibre keeps exactly | Unique within the layer; numbers or strings |
 | Comes from | The `id` column when its values qualify (below); otherwise the row index | The `id` column's value, whatever its type, when every value is present and unique; otherwise no key |
 
@@ -115,7 +115,7 @@ Phase 1 uses one id for two different jobs. Phase 4 separates them:
 
 **What the adapter adds to `ConversionResult`:**
 - `featureRows: number[]`: the row index of each feature, in feature order. Features skip invalid rows, so feature *i* isn't always row *i*.
-- `keyField?: string`: the column the keys come from, when it qualifies. The id column is the one named `id` (case-insensitive), as in Phase 1; Phase 6 lets a layer pick another.
+- `keyField?: string`: the column the keys come from, when it qualifies. The id column is the one named `id` (case-insensitive), as in Phase 1; Phase 7 lets a layer pick another.
 - `featureRow(result, featureId) → number | undefined`: finds the row for a feature's MapLibre id.
 - `featureKey(result, featureId)` and `featureByKey(result, key)`: go between MapLibre ids and keys.
 
@@ -376,10 +376,10 @@ Confirmed 2026-11-03, as proposed.
 | 1 | How the tooltip is built | **The engine anchors a MapLibre `Popup`; the panel renders the content with React and Grafana's tooltip components into a DOM element it hands over.** The tooltip stays anchored while panning, the engine stays Grafana-free, values are escaped by React, and data links come with Grafana's footer. | The architecture's plan: the engine builds the popup from text nodes. Simpler engine, but no Grafana components, no data links, and theme styling is all CSS. Or a React overlay positioned by the panel, which must then follow every map movement itself. |
 | 2 | Hover and click | **Grafana's pattern: hover shows a compact tooltip, click pins the full one.** | Click popups only, with hover added later. The interaction model and tooltip code would then be built twice. |
 | 3 | Several features under the pointer | **Hover shows the topmost and "+2 more"; the pinned tooltip pages through all of them, topmost first.** Points sit on cable ends throughout the fixture data, so this is common. | Only the topmost, even when pinned. Simpler, but a feature under another can't be reached. |
-| 4 | Choosing tooltip fields | **Every column, with a Grafana field override "Hide in tooltip".** It works per field, including through regex and type matchers, which is how Grafana users already work. | A field list in the panel options. It's per panel rather than per field, and Phase 6 brings per-layer settings anyway. |
+| 4 | Choosing tooltip fields | **Every column, with a Grafana field override "Hide in tooltip".** It works per field, including through regex and type matchers, which is how Grafana users already work. | A field list in the panel options. It's per panel rather than per field, and Phase 7 brings per-layer settings anyway. |
 | 5 | Standard field options | **Unit, Decimals, Display name, No value, Value mappings and Data links.** Min, Max, Color, Thresholds and Actions are hidden until something uses them. | Also show Actions. Plugins can't build them with Grafana's supported API yet ([architecture.md §7](architecture.md#7-features-considered-for-later)). |
 | 6 | Highlights | **Highlight the hovered and the pinned feature**, plus a hand pointer over features that can be hovered. | Only the pinned feature. Hover then has no visual link to the tooltip on dense data. |
-| 7 | Tooltip option | **Hover and click (default), Click only, Off**, panel-wide. Per-layer settings come in Phase 6. | An on/off switch only. Dense maps then can't keep click tooltips without hover ones. |
+| 7 | Tooltip option | **Hover and click (default), Click only, Off**, panel-wide. Per-layer settings come in Phase 7. | An on/off switch only. Dense maps then can't keep click tooltips without hover ones. |
 | 8 | Tooltip components | **Grafana's `VizTooltip*` components**, so tooltips look like every other Grafana tooltip, with the panel's own components as the fallback if step 4.1 or CI finds differences between versions. | The panel's own components from the start. No dependency on `@alpha` APIs, but more styling work and a look that drifts from Grafana's. |
 | 9 | Following a feature through a refresh | **By a key from the `id` column, numbers or strings**, kept apart from MapLibre's numeric id. Text keys such as `asset_id` work. | Use MapLibre's id, which is only stable when the `id` column is numeric; tooltips on layers with text keys would close on every refresh. Or MapLibre's `promoteId` with a string property as the id, which makes following a feature depend on how MapLibre stores and encodes ids. |
 
@@ -434,13 +434,13 @@ All exit criteria were met locally against Grafana 13.2.4:
 
 - **API compatibility check (Levitate).** It reports `PanelPlugin.useFieldConfig` as changed between `@grafana/data` 13.2.0 and 13.3.0. 13.3 adds a second type parameter, `SetFieldConfigOptionsArgs<TFieldConfigOptions, TContextOptions = unknown>`. With its default, code written for 13.2 compiles unchanged, nothing changes at runtime, and the e2e tests pass on 13.3.0 and nightly. Levitate flags any change to an API a plugin calls, between the minimum (`plugin.json`) and latest Grafana. Upgrading the Grafana packages wouldn't clear it, and they're pinned to the minimum on purpose. The check now reports instead of failing, as in Grafana's own examples and the action's defaults: it keeps one comment on the PR up to date with its report (`fail-if-incompatible: 'no'`, `comment-pr: 'yes'`). Commenting only when something is found isn't possible: in `is-compatible/v1.1.0`, `skip-comment-if-compatible: 'yes'` never comments, because the comment steps read an output the action doesn't set. The e2e tests on 13.2, 13.3 and nightly remain the gate. A `create-plugin update` may restore the scaffold's stricter setting; that would show in its PR.
 
-- **Software rendering in headless Chromium.** By default, Playwright's Chromium draws WebGL with SwiftShader on the CPU, where redrawing 100k points takes 100 ms or more. Panning that layer took about 340 ms per move. On this machine's GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), panning and hovering 100k points both ran with no main-thread task over 50 ms. Phase 8's performance work has to use the GPU; e2e timings in CI say nothing about real performance.
+- **Software rendering in headless Chromium.** By default, Playwright's Chromium draws WebGL with SwiftShader on the CPU, where redrawing 100k points takes 100 ms or more. Panning that layer took about 340 ms per move. On this machine's GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), panning and hovering 100k points both ran with no main-thread task over 50 ms. Phase 9's performance work has to use the GPU; e2e timings in CI say nothing about real performance.
 - **Highlight method.** Because of the slow software rendering, hover at first looked slow with feature-state highlights. An overlay source for highlighted features was built and measured, then dropped: on the GPU, feature-state and the overlay performed the same, and feature-state is simpler and is what the plan specified.
 - **Tooltip placement.** MapLibre anchors a pinned tooltip below its feature when there's no room above, so the tooltip can cover the map just south of the feature. The e2e tests click empty map at the canvas's edge for that reason.
 - **Tooltips overflowing the map** (found after Phase 4). MapLibre only picks the side a popup opens on; a tooltip taller or wider than the room on either side was cut off by the panel. Fixed in the follow-up (see Differences from the plan, and Design §4 and §5).
 - **Unpinning while over a feature** brings back its hover tooltip straight away. That's intended, and the e2e tests check the pinned tooltip's close button rather than the absence of any tooltip.
 - **Grafana's `suffix:` units** keep the space after the colon, so `suffix: floors` formats as "4  floors". HTML collapses it on screen.
-- **`module.js` is 32.4 KiB.** The tooltip code is only needed once a map exists, so it could move into the lazily loaded chunk if size becomes a concern (Phase 8).
+- **`module.js` is 32.4 KiB.** The tooltip code is only needed once a map exists, so it could move into the lazily loaded chunk if size becomes a concern (Phase 9).
 - **Basemap option labels** ("OpenStreetMap", "Custom tiles", "Style URL") are cut off in the options pane, as the Tooltip labels were. Phase 5, which adds more options, should switch them to shorter labels or a select.
 
 ### Step 4.1 findings

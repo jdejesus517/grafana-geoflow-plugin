@@ -26,10 +26,10 @@ Everything later depends on this: the engine (Phase 2+) renders what the adapter
 ## Out of scope
 
 - Rendering anything on a map (Phase 2–3).
-- Panel options for choosing the geometry or id field. The adapter accepts a `mapping` argument now; the UI for it comes with layer configuration in Phase 6. Until then, auto-detection is used.
+- Panel options for choosing the geometry or id field. The adapter accepts a `mapping` argument now; the UI for it comes with layer configuration in Phase 7. Until then, auto-detection is used.
 - Display formatting for popups (`field.display`), Phase 4.
 - Parsing WKB/EWKB hex. It is detected and reported with a hint, not converted.
-- Moving conversion into a web worker (Phase 8, only if benchmarks call for it).
+- Moving conversion into a web worker (Phase 9, only if benchmarks call for it).
 
 ---
 
@@ -110,7 +110,7 @@ This follows the algorithm in architecture §3.3, with these refinements:
 
 ### 4. Multiple frames
 
-`framesToFeatureCollections(frames, mapping?)` maps each frame by `refId` to a `ConversionResult`. That covers the placeholder panel now, and `buildLayerSpecs` builds on it in Phase 6.
+`framesToFeatureCollections(frames, mapping?)` maps each frame by `refId` to a `ConversionResult`. That covers the placeholder panel now, and `buildLayerSpecs` builds on it in Phase 7.
 
 ---
 
@@ -195,7 +195,7 @@ Synthetic tests built with `toDataFrame` for cases the database can't easily pro
 
 ### 1.7 Benchmark sanity check
 
-`scripts/bench-adapter.mjs` builds a 100k-row frame, half Points and half 5-vertex LineStrings, converts it, and prints the time. Results go in the Phase 1 outcome section. It isn't run in CI, because timings on shared runners are noisy. Phase 8 does the real performance work.
+`scripts/bench-adapter.mjs` builds a 100k-row frame, half Points and half 5-vertex LineStrings, converts it, and prints the time. Results go in the Phase 1 outcome section. It isn't run in CI, because timings on shared runners are noisy. Phase 9 does the real performance work.
 
 **Done when:** the run completes in under 1 s locally and the number is recorded.
 
@@ -260,7 +260,7 @@ CI runs on the pull request.
 | GeoJSON text (`ST_AsGeoJSON`) | 294 ms | < 1 s |
 | Parsed objects (`jsonb`) | 144 ms | < 1 s |
 
-About half the time for text input is `JSON.parse`. Moving conversion into a web worker isn't needed at this size; Phase 8 revisits it with rendering included.
+About half the time for text input is `JSON.parse`. Moving conversion into a web worker isn't needed at this size; Phase 9 revisits it with rendering included.
 
 ### Differences from the plan
 

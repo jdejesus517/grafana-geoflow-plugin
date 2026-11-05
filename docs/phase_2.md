@@ -29,8 +29,8 @@ No data is drawn yet; features arrive in Phase 3. This phase gets the hard plumb
 
 ## Out of scope
 
-- Drawing features (Phase 3), popups (Phase 4), styling options (Phase 5), multiple layers (Phase 6).
-- Fit-to-data and saving the map view (Phase 7). Phase 2 uses a configured initial view only.
+- Drawing features (Phase 3), popups (Phase 4), styling options (Phase 5), multiple layers (Phase 7).
+- Fit-to-data and saving the map view (Phase 8). Phase 2 uses a configured initial view only.
 - Vector-tile basemaps beyond accepting a style URL: no bundled vector style, glyphs or sprites.
 
 ---

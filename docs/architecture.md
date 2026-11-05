@@ -136,7 +136,7 @@ The Grafana and Postgres directories don't depend on each other. Each one can be
   - On theme change (`useTheme2()`): call `engine.setBasemap()` if a light/dark style pair is configured.
   - On unmount: call `engine.destroy()`.
   - Shows conversion warnings (for example "12 rows had invalid geometry") through Grafana's panel notice mechanism. Shows "No data" or a configuration hint when no geometry field is found.
-- **`LayersEditor.tsx`**: A custom option editor for the ordered list of spatial layers (add, remove, reorder, per-layer settings).
+- **`LayersEditor.tsx`**: A custom option editor for the ordered list of spatial layers (add, remove, reorder, per-layer settings). Style isn't among them: it lives in field config (Phase 5).
 
 ### 2.3 Adapter layer (`src/adapter`)
 
@@ -168,7 +168,7 @@ interface LayerSpec {
   visible: boolean;
   data: FeatureCollection;
   style: LayerStyle;           // color, opacity, radius, lineWidth, fillOpacity…
-  interactive: boolean;        // hover and click tooltips; per-layer tooltip fields in Phase 6
+  interactive: boolean;        // hover and click tooltips; per-layer tooltip fields in Phase 7
 }
 ```
 
@@ -200,7 +200,7 @@ MapLibre GL JS 6 shapes how the engine is built and shipped:
 #### Drawing data (Phase 3)
 
 How the engine draws `LayerSpec`s, as built:
-- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`. `interactive` arrives with Phase 4 (tooltips), and `name` and `visible` with Phase 6.
+- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`. `interactive` arrives with Phase 4 (tooltips), and `name` and `visible` with Phase 7.
 - **Ids:** sources and style layers are prefixed `geoflow-layer:` (for example `geoflow-layer:A:fill`). The prefix keeps them apart from the basemap and from layers in a user's style URL. Layer ids come from refIds and are never parsed back out of these strings.
 - **Geometry filters:** in MapLibre 6, `['geometry-type']` reports Multi* features as their simple type (MultiPolygon as Polygon). The filters list both forms, which is correct in every version.
 - **Basemap changes:** `transformStyle`, passed to the `Map` constructor, appends the data sources and layers to every style MapLibre loads afterwards, inline or from a URL. MapLibre fires `style.load` both after a full style load and after a style it applied in place. The engine tracks readiness with `styledataloading` and `style.load`, and applies any `setLayers` call made in between on `style.load`.
@@ -302,8 +302,8 @@ How data frames become map layers is a panel option, `layerBinding.mode`:
 
 | Mode | Behavior | Delivered in |
 |---|---|---|
-| `perFrame` (default) | Each data frame (one per query refId) becomes one layer. Layer id = `refId`. Layer config can override the geometry field, id field, style and tooltip fields. | MVP (Phases 3–6) |
-| `byColumn` | The user picks a source frame and a **split column**. Each distinct value of that column becomes its own layer with id `${refId}:${value}`. Layer names come from the values. | Phase 10 |
+| `perFrame` (default) | Each data frame (one per query refId) becomes one layer. Layer id = `refId`. Layer config can override the geometry field, id field and tooltip fields. Style comes from field config, per query through overrides (Phase 5, decision 1). | MVP (Phases 3–7) |
+| `byColumn` | The user picks a source frame and a **split column**. Each distinct value of that column becomes its own layer with id `${refId}:${value}`. Layer names come from the values. | Phase 11 |
 
 Design rules that keep later modes cheap to add:
 
@@ -317,7 +317,7 @@ Design rules that keep later modes cheap to add:
 
   Saved MVP dashboards stay valid when `byColumn` ships, because no migration is needed. Until then the editor offers only `perFrame`.
 - Binding is resolved in `buildLayerSpecs` (adapter) through a small strategy per mode: `bindPerFrame` and later `bindByColumn`. Each strategy returns the same `LayerSpec[]`. The engine is unaffected, which is the payoff of requirement 7.
-- `byColumn` specifics, scoped for Phase 10:
+- `byColumn` specifics, scoped for Phase 11:
   - **Stable ids across refresh.** Per-layer settings such as visibility and style overrides survive a refresh, and new values get defaults.
   - **Layer cap.** `maxLayers`, default 50, guards against splitting on a high-cardinality column. Values beyond the cap are grouped into an "Other" layer and reported as a panel warning.
   - **Per-value colors.** Values get colors from the Grafana theme's classic palette, overridable through standard Grafana value mappings.
@@ -347,9 +347,9 @@ Design rules that keep later modes cheap to add:
 | Concern | Approach |
 |---|---|
 | **Payload size.** GeoJSON text is verbose. | Recommend `ST_AsGeoJSON(geom, 6)`. For detailed polygons, recommend `ST_SimplifyPreserveTopology`. Mention the data source row limit (`row_limit` in Grafana config). |
-| **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 8. If 100k blocks too long, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. A first measurement in Phase 3: 100k points draw about 2.5 s after the query returns, with main-thread tasks of up to about 0.5 s. |
+| **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 9. If 100k blocks too long, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. A first measurement in Phase 3: 100k points draw about 2.5 s after the query returns, with main-thread tasks of up to about 0.5 s. |
 | **Hover on large data.** Hit testing runs on every pointer move, and a highlight changes feature-state on a large source. | Measured on 100k points in Phase 4 with the machine's GPU: hover is as fast as plain panning, with no main-thread task over 50 ms. Headless Chromium's default software rendering (SwiftShader) is far slower for anything that redraws a large layer, including panning, so performance has to be judged with the GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), not in the default e2e browser. |
-| **Redundant work on refresh.** | Conversion is cached per frame object (Phase 3), so a frame Grafana didn't replace keeps its data and the engine skips `setData`. Skipping frames that are new objects with the same content (structural hash) and keeping the viewport across refreshes unless "fit to data on refresh" is on come in Phase 7. |
+| **Redundant work on refresh.** | Conversion is cached per frame object (Phase 3), so a frame Grafana didn't replace keeps its data and the engine skips `setData`. Skipping frames that are new objects with the same content (structural hash) and keeping the viewport across refreshes unless "fit to data on refresh" is on come in Phase 8. |
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
 | **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` stays about 19 KiB. The Bundle Stats workflow reports size changes on every PR. |
 | **Beyond about 100k features.** | Out of scope for the MVP. The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |
@@ -388,17 +388,20 @@ Each phase ends with something demonstrable and its own tests. I will stop for r
 | 2 | Engine skeleton: `MapEngine`, `MapLibreEngine` with basemap only, mount/resize/destroy; panel shows interactive basemap | Component test + e2e "map canvas visible" |
 | 3 | Single-layer rendering of all six geometry types with default style | Style-builder unit tests + e2e on mixed-geometry dashboard |
 | 4 | Tooltips: hover highlight and tooltip, click to pin, feature attributes formatted via field config, data links | e2e hover and click → tooltip content and links |
-| 5 | Basic styling options (color, opacity, point radius, line width, fill opacity) | Unit tests + e2e option change |
-| 6 | Multiple layers in `perFrame` mode: layer list editor, `LayerBinding` option (only `perFrame` exposed), ordering, visibility | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
-| 7 | Refresh behavior: in-place `setData`, viewport preservation, fit-to-data option, theme switching | Component tests + e2e refresh |
-| 8 | Hardening: warnings/notices, WebGL detection, CSP docs, performance benchmark and any resulting optimization | Perf dashboard results recorded in docs |
-| 9 | Dependency license compatibility review (§5.4) | `docs/licenses.md` report; CI license gate passing |
+| 5 | Basic styling options (color, opacity, point size, line width, line style, fill opacity) in field config, per query through overrides | Unit tests + e2e option change |
+| 6 | Data-driven styling: color, size and line style from a column's value, with Grafana's color schemes (thresholds, gradients, value mappings), and a legend | Unit tests on per-feature styles + e2e dashboard styled by value |
+| 7 | Multiple layers in `perFrame` mode: layer list editor (names, geometry and id columns; style stays in field config), `LayerBinding` option (only `perFrame` exposed), ordering, visibility | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
+| 8 | Refresh behavior: in-place `setData`, viewport preservation, fit-to-data option, theme switching | Component tests + e2e refresh |
+| 9 | Hardening: warnings/notices, WebGL detection, CSP docs, performance benchmark and any resulting optimization | Perf dashboard results recorded in docs |
+| 10 | Dependency license compatibility review (§5.4) | `docs/licenses.md` report; CI license gate passing |
 
-Phases 0–9 make up the **MVP**. Post-MVP phases each add one capability:
+Phase 6 comes straight after Phase 5 because it extends Phase 5's field config styling, needs no layer editor, and should be in place before the refresh (Phase 8) and performance (Phase 9) work, which have to account for per-feature styles. Its value-mapping colors are what `byColumn`'s per-value colors reuse in Phase 11.
+
+Phases 0–10 make up the **MVP**. Post-MVP phases each add one capability:
 
 | Phase | Deliverable | Verified by |
 |---|---|---|
-| 10 | `byColumn` layer binding (§3.4): split column picker, layer cap + "Other", per-value colors, stable ids across refresh | Unit tests on `bindByColumn` (cardinality, nulls, id stability) + e2e dashboard split by a category column |
+| 11 | `byColumn` layer binding (§3.4): split column picker, layer cap + "Other", per-value colors (reusing Phase 6's value mappings), stable ids across refresh | Unit tests on `bindByColumn` (cardinality, nulls, id stability) + e2e dashboard split by a category column |
 
 ### 5.4 License compliance
 
@@ -413,7 +416,7 @@ The project is licensed under **Apache-2.0**. Every dependency that ends up in t
   1. From Phase 0, a license scanner (for example `license-checker-rseidelsohn` or `license-report`) runs in CI over production dependencies.
   2. An allow-list (Apache-2.0, MIT, BSD-2/3-Clause, ISC, 0BSD, CC0-1.0) passes automatically.
   3. Anything else, especially GPL/AGPL/LGPL, SSPL or unknown, fails the build until it's reviewed.
-  4. The Phase 9 review produces `docs/licenses.md` and a populated `NOTICE` file before the first public release.
+  4. The Phase 10 review produces `docs/licenses.md` and a populated `NOTICE` file before the first public release.
 
 ---
 
@@ -425,7 +428,7 @@ All open items are resolved.
 |---|---|
 | Plugin name | GeoFlow |
 | Plugin id | `jdejesusio-geoflow-panel` (org slug `jdejesusio`) |
-| Layer binding | Selectable mode: `perFrame` in the MVP, `byColumn` in Phase 10 |
+| Layer binding | Selectable mode: `perFrame` in the MVP, `byColumn` in Phase 11 |
 | Grafana version | 13.2+ |
 | PostgreSQL version | 16+ (PostGIS 3.x) |
 | Default basemap | OpenStreetMap standard raster tiles, with attribution |
@@ -447,4 +450,5 @@ Features that have come up but aren't in a phase yet. Each one would get its own
 | **Raw WKB/EWKB geometry** | §3.3. Hex WKB from a raw `geom` column is detected, and the panel asks for `ST_AsGeoJSON(geom)` instead. | A WKB parser in the adapter, which is a new bundled dependency (license review, §5.4) and main-thread cost. |
 | **GeometryCollection** | §3.3. Rows are skipped and reported as `unsupported`. | Splitting a collection into its parts in the adapter, with a decision on how the parts share one feature's tooltip and id. |
 | **Vector tiles for very large data** | §4.2. Beyond about 100k features, GeoJSON through the data source gets slow. | Vector tiles from PostGIS (`ST_AsMVT` through Martin or pg_tileserv). This is a deliberate exception to "Grafana data source only" and needs separate approval. |
+| **Point symbols** | Points are drawn as circles (Phase 3), sized and colored by Phase 5's options. Shapes (square, triangle, star…) and icons were considered alongside data-driven styling and left out of the MVP. | A MapLibre `symbol` layer with images in place of the `circle` layer: built-in shapes drawn in the browser as SDF images, so they can be tinted per layer and per value. The engine re-adds the images after every basemap change, since `transformStyle` carries layers but not images. `icon-size` can't read feature-state, so highlights need a halo or a circle beneath. Symbols must allow overlap, and cost more than circles at 100k points, so the performance benchmark has to cover them. Shape by value reuses Phase 6's per-feature styles. Custom icon URLs raise CSP and CORS questions. |
 | **Antimeridian-crossing geometries** | §4.1. Documented rather than solved. | Splitting or unwrapping geometries that cross ±180° in the adapter. |

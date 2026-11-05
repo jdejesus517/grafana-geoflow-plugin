@@ -12,7 +12,7 @@ This phase connects the Phase 1 adapter to the Phase 2 engine. It adds:
 - pure style builders
 - keeping features through basemap and theme changes and through the off-screen release from Phase 2
 
-Users can't change styles until Phase 5, and there's no layer editor until Phase 6. Phase 3 only gets the drawing pipeline right.
+Users can't change styles until Phase 5, and there's no layer editor until Phase 7. Phase 3 only gets the drawing pipeline right.
 
 ## Exit criteria
 
@@ -35,9 +35,9 @@ Users can't change styles until Phase 5, and there's no layer editor until Phase
 
 - Popups and hover (Phase 4).
 - Style options in the panel editor (Phase 5). Phase 3's `LayerStyle` already has every field that Phase 5 will expose, filled with defaults.
-- Layer editor, the `LayerBinding` option, reordering and hiding layers (Phase 6).
-- Fit-to-data, skipping unchanged data on refresh, keeping the view through a refresh (Phase 7). Phase 3 replaces the data on every new frame and keeps the configured view.
-- Panel notices for conversion warnings, and the performance benchmark (Phase 8). Phase 3 records a rough timing at 100k points only to find any problem early.
+- Layer editor, the `LayerBinding` option, reordering and hiding layers (Phase 7).
+- Fit-to-data, skipping unchanged data on refresh, keeping the view through a refresh (Phase 8). Phase 3 replaces the data on every new frame and keeps the configured view.
+- Panel notices for conversion warnings, and the performance benchmark (Phase 9). Phase 3 records a rough timing at 100k points only to find any problem early.
 
 ---
 
@@ -126,7 +126,7 @@ The engine keeps the current `LayerSpec[]` and compares each new array with it b
 | Order changed | `moveLayer` so the style layers follow the new order |
 | Nothing changed | nothing |
 
-Data is compared by reference, not by content. The panel only hands over a new object when a frame changed (Design §5); skipping identical data after a refresh is Phase 7.
+Data is compared by reference, not by content. The panel only hands over a new object when a frame changed (Design §5); skipping identical data after a refresh is Phase 8.
 
 **Basemap changes.** `setBasemap` calls `setStyle(style, { transformStyle })`, where `transformStyle` appends the engine's current sources and style layers to the next style. The user's data therefore always draws on top of the basemap, including above the labels in a style URL (decision 3). The same function runs for the initial style at mount, so `mount` with `options.layers` draws them as soon as the style loads.
 
@@ -151,7 +151,7 @@ interface LayerDefaults {
 - **Colors** go by position among the frames that have geometry: `colors[i % colors.length]`.
 - The function is pure; the panel resolves the theme into `LayerDefaults`. That keeps Grafana's theme object out of the adapter's tests.
 
-This is the first piece of the binding strategy in architecture §3.4. Phase 6 renames it `bindPerFrame` and adds the layer settings.
+This is the first piece of the binding strategy in architecture §3.4. Phase 7 renames it `bindPerFrame` and adds the layer settings.
 
 ### 5. Panel (`MapPanel.tsx`)
 
@@ -243,7 +243,7 @@ Implement Design §5 with component tests: per-frame memoized conversion, theme 
 ### 3.6 Real-browser check and the two test methods
 
 - **Problem shapes:** render every fixture in the dev stack and watch the console. Phase 1 passes degenerate shapes, such as a polygon with an empty ring, through as valid. If MapLibre rejects any of them, `parseGeometry` gets a rule that skips them as `invalid`, with an adapter test.
-- **Large data:** open a panel on `service_locations_large` (100k points) and record the conversion time and the `setData` time. The formal benchmark is Phase 8; this step just records the numbers.
+- **Large data:** open a panel on `service_locations_large` (100k points) and record the conversion time and the `setData` time. The formal benchmark is Phase 9; this step just records the numbers.
 - **Test methods:**
   - write the `renderedFeatures` helper and one count test
   - write the screenshot test and generate its image locally
@@ -292,7 +292,7 @@ Implement Design §5 with component tests: per-frame memoized conversion, theme 
 | Drawn-feature counts are affected by timing, for example counting before tiles finish loading. | `renderedFeatureCounts` waits for MapLibre's `idle` event, which fires only after all tiles are loaded and drawn. The test dashboards use a view that holds every fixture feature, so none is outside the view. |
 | `transformStyle` doesn't carry layers across a style URL that loads slowly or fails to load. | Unit-tested with the fake map; the e2e basemap-switch test covers the real browser. If a style URL fails, the basemap error notice from Phase 2 shows, and the features are put back by the next successful `setStyle`. |
 | MapLibre rejects geometry the adapter accepts. | Found in step 3.6 against all fixtures, and fixed in the adapter, which already reports skipped rows. |
-| Converting large frames on every refresh blocks the main thread. | Memoizing per frame avoids converting unchanged frames. Step 3.6 records times at 100k points; the fix, if needed (a web worker), is Phase 8 as planned. |
+| Converting large frames on every refresh blocks the main thread. | Memoizing per frame avoids converting unchanged frames. Step 3.6 records times at 100k points; the fix, if needed (a web worker), is Phase 9 as planned. |
 | Data on top of a style URL's labels hides place names. | Accepted for now (decision 3). Phase 5 or 6 can add a "below labels" option if users want it. |
 
 ## Decisions
@@ -301,10 +301,10 @@ Confirmed 2026-11-03, as proposed.
 
 | # | Topic | Decision | Alternative considered |
 |---|---|---|---|
-| 1 | Which frames are drawn | **Every frame with geometry, one layer each**, colored from the palette in query order. This is `perFrame` binding without the editor, so Phase 6 adds settings to layers that already exist instead of changing what's drawn. | Only the first frame with geometry, as a literal "single layer". Simpler now, but dashboards like `01-adapter` would draw half their data until Phase 6. |
+| 1 | Which frames are drawn | **Every frame with geometry, one layer each**, colored from the palette in query order. This is `perFrame` binding without the editor, so Phase 7 adds settings to layers that already exist instead of changing what's drawn. | Only the first frame with geometry, as a literal "single layer". Simpler now, but dashboards like `01-adapter` would draw half their data until Phase 7. |
 | 2 | Default colors | **One color per layer** from Grafana's classic palette (green, yellow, blue, ...), the same for all geometry types in that layer. | One color per geometry type. This would make the layers in decision 1 indistinguishable. |
 | 3 | Where data is drawn | **On top of the whole basemap**, including a style URL's labels. | Below the first symbol layer of a style URL. This keeps labels readable but depends on how each style is built. |
-| 4 | Initial view | **Keep Phase 2's configured view.** Fit-to-data stays in Phase 7. | Bring a one-time fit-to-data forward. New panels start at the whole world (zoom 1), where Cary's features are a dot; the dev dashboards set their view, but new users have to set it themselves until Phase 7. |
+| 4 | Initial view | **Keep Phase 2's configured view.** Fit-to-data stays in Phase 8. | Bring a one-time fit-to-data forward. New panels start at the whole world (zoom 1), where Cary's features are a dot; the dev dashboards set their view, but new users have to set it themselves until Phase 8. |
 | 5 | How e2e tests prove drawing | **Drawn-feature counts from MapLibre for most tests, plus one screenshot comparison** for how it looks (Design §6). These are the established methods: MapLibre tests its own rendering against expected images, and Playwright recommends screenshot comparison for canvas content. | Screenshots only: every test would need a stored image to update whenever styles change. Or counting pixels of a color: no stored images and no test hook, but a weak check that no project uses as a standard method. |
 
 ## Outcome
@@ -351,8 +351,8 @@ All exit criteria were met locally against Grafana 13.2.4:
 ### Findings for later phases
 
 - **Degenerate shapes.** The adapter passes empty rings, two-point and unclosed rings, one-point lines and empty Multi* parts. MapLibre draws none of them except the unclosed ring, which it closes into a triangle, and reports no error. No adapter rule was needed.
-- **100k points** (`service_locations_large`, measured in the dev stack): about 2.5 s from the query response until the map reports all 100,000 points drawn, with main-thread tasks of up to about 0.5 s. Usable; Phase 8 measures it properly.
-- **Basemap switches copy the data.** MapLibre applies inline style changes in place, but it deep-copies the whole next style, including every GeoJSON source the `transformStyle` adds. On large data this makes a basemap switch slower. Worth measuring in Phase 8.
+- **100k points** (`service_locations_large`, measured in the dev stack): about 2.5 s from the query response until the map reports all 100,000 points drawn, with main-thread tasks of up to about 0.5 s. Usable; Phase 9 measures it properly.
+- **Basemap switches copy the data.** MapLibre applies inline style changes in place, but it deep-copies the whole next style, including every GeoJSON source the `transformStyle` adds. On large data this makes a basemap switch slower. Worth measuring in Phase 9.
 - **Map scale.** MapLibre's zoom levels use 512 px: at zoom *z*, one degree of longitude is 512 · 2^*z* / 360 px. Plan dashboard views with that.
 - **Counting drawn features.** `queryRenderedFeatures` returns a feature once per tile it touches and once per style layer it's drawn in (a polygon's fill and outline), so counts use distinct feature ids.
 - **Test-only code** is limited to `src/panel/testHook.ts`, one effect in `MapPanel` and `renderedFeatureCounts` in the engine, all marked `// Test hook:`.
