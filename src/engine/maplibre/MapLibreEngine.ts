@@ -372,7 +372,7 @@ export class MapLibreEngine implements MapEngine {
         if (current.data !== spec.data) {
           map.getSource<GeoJSONSource>(dataSourceId(spec.id))?.setData(spec.data);
         }
-        if (current.style !== spec.style || !samePerFeature(current, spec)) {
+        if (current.style !== spec.style || current.visible !== spec.visible || !samePerFeature(current, spec)) {
           this.repaint(map, current, spec);
         }
       }
@@ -393,7 +393,7 @@ export class MapLibreEngine implements MapEngine {
 
   private repaint(map: MapLibreMap, from: LayerSpec, to: LayerSpec): void {
     const paint = [paintFor(from.style, perFeature(from)), paintFor(to.style, perFeature(to))] as const;
-    const layout = [layoutFor(from.style), layoutFor(to.style)] as const;
+    const layout = [layoutFor(from.style, from.visible), layoutFor(to.style, to.visible)] as const;
     for (const kind of STYLE_LAYER_KINDS) {
       const layerId = styleLayerId(to.id, kind);
       for (const [property, value] of changed(paint[0][kind], paint[1][kind])) {
@@ -439,7 +439,7 @@ export class MapLibreEngine implements MapEngine {
     const map = this.map!;
     const hit: PointerHit = { lngLat: [lngLat.lng, lngLat.lat], features: [] };
     const layers = this.layers
-      .filter((spec) => spec.interactive)
+      .filter((spec) => spec.interactive && spec.visible)
       .flatMap(({ id }) => styleLayerIds(id))
       .filter((id) => map.getLayer(id));
     if (layers.length === 0) {

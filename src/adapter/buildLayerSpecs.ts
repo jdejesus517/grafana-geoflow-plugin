@@ -27,6 +27,8 @@ export function buildLayerSpecs(
       const styles = featureStyles(frame, result, theme);
       return {
         id: result.refId,
+        name: frame.name || `Query ${result.refId}`,
+        visible: true,
         data: result.featureCollection,
         style: layerStyle(frame, result, layerIndex, theme),
         ...(styles && { featureStyles: styles }),

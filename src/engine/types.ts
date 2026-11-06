@@ -58,11 +58,18 @@ export interface FeatureStyles {
 export interface LayerSpec {
   /** Stable across refreshes, so the engine updates the layer instead of replacing it. */
   id: string;
+  /** What the user calls the layer. The engine doesn't use it; it travels with the spec. */
+  name: string;
+  /** A hidden layer keeps its data and feature-state, so showing it again reloads nothing. */
+  visible: boolean;
   data: FeatureCollection<SupportedGeometry>;
   style: LayerStyle;
   /** Colors and sizes from data (Phase 6), applied without reloading `data`. */
   featureStyles?: FeatureStyles;
-  /** Hover and click report this layer's features, and the pointer turns into a hand over them. */
+  /**
+   * Hover and click report this layer's features, and the pointer turns into a hand over them.
+   * Hidden layers never do.
+   */
   interactive: boolean;
 }
 
