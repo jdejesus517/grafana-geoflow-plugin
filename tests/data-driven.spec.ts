@@ -110,10 +110,11 @@ test('recolors and resizes the map as options change in the panel editor', async
   const legend = panel.getByTestId('geoflow-legend-A');
   await expect(legend).toContainText('80+');
 
-  // Lower the red threshold from 80 to 30: more patch panels turn red.
-  const threshold = panelEditPage.getCustomOptions('Thresholds').element.locator('input[value="80"]');
-  await threshold.fill('30');
-  await threshold.blur();
+  // Lower the red threshold from 80 to 30: more patch panels turn red. From Grafana 13.3 the
+  // input's value attribute follows what is typed, so the locator no longer matches after fill:
+  // leave the input with the keyboard instead.
+  await panelEditPage.getCustomOptions('Thresholds').element.locator('input[value="80"]').fill('30');
+  await page.keyboard.press('Tab');
   await expect(legend).toContainText('30+');
   await expectMap(page, panel, 'editor-threshold.png');
 
