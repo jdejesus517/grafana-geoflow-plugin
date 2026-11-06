@@ -136,7 +136,7 @@ The Grafana and Postgres directories don't depend on each other. Each one can be
   - On theme change (`useTheme2()`): call `engine.setBasemap()` if a light/dark style pair is configured.
   - On unmount: call `engine.destroy()`.
   - Shows conversion warnings (for example "12 rows had invalid geometry") through Grafana's panel notice mechanism. Shows "No data" or a configuration hint when no geometry field is found.
-- **`LayersEditor.tsx`**: A custom option editor for the ordered list of spatial layers (add, remove, reorder, per-layer settings). Style isn't among them: it lives in field config (Phase 5).
+- **`LayersEditor.tsx`**: A custom option editor for the ordered list of spatial layers (reorder, show and hide, per-layer settings). In `perFrame` mode the list follows the queries, so it has no Add button; settings of a query that has gone can be removed (Phase 7). Style isn't among them: it lives in field config (Phase 5).
 
 ### 2.3 Adapter layer (`src/adapter`)
 
@@ -170,7 +170,7 @@ interface LayerSpec {
   data: FeatureCollection;
   style: LayerStyle;           // color, opacity, radius, lineWidth, fillOpacity…
   featureStyles?: FeatureStyles; // per-feature colors and radii, in feature order (Phase 6)
-  interactive: boolean;        // hover and click tooltips; per-layer tooltip fields in Phase 7
+  interactive: boolean;        // hover and click tooltips, per layer from Phase 7; tooltip fields through field overrides (Phase 4)
 }
 ```
 
@@ -321,7 +321,7 @@ How data frames become map layers is a panel option, `layerBinding.mode`:
 
 | Mode | Behavior | Delivered in |
 |---|---|---|
-| `perFrame` (default) | Each data frame (one per query refId) becomes one layer. Layer id = `refId`. Layer config can override the geometry field, id field and tooltip fields. Style comes from field config, per query through overrides (Phase 5, decision 1). | MVP (Phases 3–7) |
+| `perFrame` (default) | Each data frame becomes one layer. Layer id = `refId`, or `${refId}:${frame name}` for each frame when a query returns several (Phase 7). Layer config, keyed by layer id, can override the geometry field and id field; tooltip fields come from field overrides. Style comes from field config, per query through overrides (Phase 5, decision 1). | MVP (Phases 3–7) |
 | `byColumn` | The user picks a source frame and a **split column**. Each distinct value of that column becomes its own layer with id `${refId}:${value}`. Layer names come from the values. | Phase 11 |
 
 Design rules that keep later modes cheap to add:
@@ -410,7 +410,7 @@ Each phase ends with something demonstrable and its own tests. I will stop for r
 | 4 | Tooltips: hover highlight and tooltip, click to pin, feature attributes formatted via field config, data links | e2e hover and click → tooltip content and links |
 | 5 | Basic styling options (color, opacity, point size, line width, line style, fill opacity) in field config, per query through overrides | Unit tests + e2e option change |
 | 6 | Data-driven styling: feature color and point size from a column's value, with Grafana's color schemes (thresholds, gradients, value mappings), and a legend | Unit tests on per-feature styles + e2e dashboard styled by value |
-| 7 | Multiple layers in `perFrame` mode: layer list editor (names, geometry and id columns; style stays in field config), `LayerBinding` option (only `perFrame` exposed), ordering, visibility | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
+| 7 | Multiple layers in `perFrame` mode: a layer list that follows the queries (names, geometry and id columns, tooltips per layer; style stays in field config), ordering, visibility, a layer per frame when a query returns several, settings keyed by layer id, `LayerBinding` option (saved as `perFrame`, not shown yet) | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
 | 8 | Refresh behavior: in-place `setData`, viewport preservation, fit-to-data option, theme switching | Component tests + e2e refresh |
 | 9 | Hardening: warnings/notices, WebGL detection, CSP docs, performance benchmark and any resulting optimization | Perf dashboard results recorded in docs |
 | 10 | Dependency license compatibility review (§5.4) | `docs/licenses.md` report; CI license gate passing |
@@ -473,3 +473,4 @@ Features that have come up but aren't in a phase yet. Each one would get its own
 | **Point symbols** | Points are drawn as circles (Phase 3), sized and colored by Phase 5's options. Shapes (square, triangle, star…) and icons were considered alongside data-driven styling and left out of the MVP. | A MapLibre `symbol` layer with images in place of the `circle` layer: built-in shapes drawn in the browser as SDF images, so they can be tinted per layer and per value. The engine re-adds the images after every basemap change, since `transformStyle` carries layers but not images. `icon-size` can't read feature-state, so highlights need a halo or a circle beneath. Symbols must allow overlap, and cost more than circles at 100k points, so the performance benchmark has to cover them. Shape by value reuses Phase 6's per-feature styles. Custom icon URLs raise CSP and CORS questions. |
 | **Line width by value** | Phase 6 sizes points by a column's value. Lines keep the layer's Line width. | A Size by for lines, scaling `line-width` through feature-state between a minimum and maximum width, like point size. |
 | **Antimeridian-crossing geometries** | §4.1. Documented rather than solved. | Splitting or unwrapping geometries that cross ±180° in the adapter. |
+| **Zoom ranges per layer** | Show a layer only within a zoom range: splice cases from zoom 14, a service-area outline only when zoomed out. Left out of Phase 7, which adds the layer list. | **Min zoom** and **Max zoom** in a layer's settings in the Phase 7 layer list, passed in `LayerSpec` to the style layers' `minzoom` and `maxzoom`. The data still loads at every zoom, so it saves drawing, not query or transfer time. Needs a decision on whether the legend shows a layer outside its range. |
