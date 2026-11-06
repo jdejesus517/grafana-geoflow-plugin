@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
-import { GrafanaTheme2, PanelProps } from '@grafana/data';
+import { DataFrame, GrafanaTheme2, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
+import { BoundLayer, bindLayers, buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
 import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { convertFrames } from './convertFrames';
@@ -167,17 +167,21 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   const { lat, lon, zoom } = options.view ?? {};
   const view = useMemo(() => viewFromOptions({ lat, lon, zoom }), [lat, lon, zoom]);
 
-  const results = useMemo(() => convertFrames(data.series), [data.series]);
+  const bound = useMemo(
+    () => bindLayers(data.series, options.layers, options.layerBinding),
+    [data.series, options.layers, options.layerBinding]
+  );
+  const results = useMemo(() => convertFrames(data.series, bound), [data.series, bound]);
   const mode = tooltipMode(options);
   const interactive = mode !== 'off';
   const layers = useMemo(
-    () => buildLayerSpecs(results, data.series, theme, { interactive }),
-    [results, data.series, theme, interactive]
+    () => buildLayerSpecs(bound, results, data.series, theme, { interactive }),
+    [bound, results, data.series, theme, interactive]
   );
   const showLegend = options.legend?.show !== false && width >= LEGEND_MIN_WIDTH;
   const legend = useMemo(
-    () => (showLegend ? legendEntries(results, data.series, theme) : []),
-    [showLegend, results, data.series, theme]
+    () => (showLegend ? legendEntries(layers, results, data.series, theme) : []),
+    [showLegend, layers, results, data.series, theme]
   );
   // Data arrived, but no frame has a geometry column: say why instead of showing an empty map.
   const noGeometry = layers.length === 0 ? results.find((result) => result.noGeometry)?.noGeometry : undefined;
@@ -316,10 +320,21 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         <div className={styles.overlay} data-testid="geoflow-summary">
           {results.map((result, i) => {
             const warning = firstWarning(result);
-            const styleProblems = result.noGeometry ? [] : dataStyleFields(data.series[i], result).problems;
+            const layer = bound.find(({ frameIndex }) => frameIndex === i);
+            const styleProblems = [
+              ...layerProblems(layer, data.series[i]),
+              ...(result.noGeometry ? [] : dataStyleFields(data.series[i], result).problems),
+            ];
+            const named = layer && (layer.name !== `Query ${result.layerId}` || !layer.visible);
             return (
-              <div key={result.refId} className={styles.frame} data-testid={`geoflow-frame-${result.refId}`}>
-                <div data-testid={`geoflow-summary-${result.refId}`}>{conversionSummary(result)}</div>
+              <div key={result.layerId} className={styles.frame} data-testid={`geoflow-frame-${result.layerId}`}>
+                <div data-testid={`geoflow-summary-${result.layerId}`}>{conversionSummary(result)}</div>
+                {named && (
+                  <div className={styles.secondary} data-testid={`geoflow-summary-layer-${result.layerId}`}>
+                    {layer.name}
+                    {!layer.visible && ' · hidden'}
+                  </div>
+                )}
                 {warning && <div className={styles.secondary}>{warning}</div>}
                 {styleProblems.map((problem) => (
                   <div key={problem} className={styles.secondary}>
@@ -337,6 +352,12 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     </div>
   );
 };
+
+/** What's wrong with a layer's settings for its frame, as data summary lines. */
+function layerProblems(layer: BoundLayer | undefined, frame: DataFrame): string[] {
+  const missing = layer?.idField && !frame.fields.some(({ name }) => name === layer.idField);
+  return missing ? [`ID column: no column named ${layer.idField}`] : [];
+}
 
 function mapFailureMessage(error: unknown): string {
   if (error instanceof WebGLUnavailableError) {

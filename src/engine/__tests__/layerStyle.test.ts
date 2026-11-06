@@ -28,7 +28,14 @@ const style: LayerStyle = {
   pointRadius: 5,
   outlineColor: '#ffffff',
 };
-const spec: LayerSpec = { id: 'A', data: { type: 'FeatureCollection', features: [] }, style, interactive: true };
+const spec: LayerSpec = {
+  id: 'A',
+  name: 'A',
+  visible: true,
+  data: { type: 'FeatureCollection', features: [] },
+  style,
+  interactive: true,
+};
 
 describe('ids', () => {
   it('prefixes sources and style layers', () => {
@@ -207,6 +214,19 @@ describe('layoutFor', () => {
     for (const kind of ['solid', 'dash', 'dot'] as const) {
       expect(layoutFor({ ...style, lineStyle: { kind } }).line['line-cap']).toBe('round');
     }
+  });
+
+  it('hides every style layer of a hidden layer, and sets no visibility on a visible one', () => {
+    for (const kind of ['fill', 'outline', 'line', 'circle'] as const) {
+      expect(layoutFor(style, false)[kind].visibility).toBe('none');
+      expect(layoutFor(style)[kind]).not.toHaveProperty('visibility');
+    }
+    expect(styleLayers({ ...spec, visible: false }).map((layer) => layer.layout?.visibility)).toEqual([
+      'none',
+      'none',
+      'none',
+      'none',
+    ]);
   });
 
   it('matches what styleLayers lays out', () => {

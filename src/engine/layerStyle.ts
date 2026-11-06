@@ -167,14 +167,16 @@ export function paintFor(style: LayerStyle, { color: colorPerFeature, radius: ra
 
 /**
  * Layout properties per style layer kind, diffed like paint. Lines have round ends, except custom
- * patterns: flat ends keep their dashes and gaps at the lengths typed.
+ * patterns: flat ends keep their dashes and gaps at the lengths typed. A hidden layer sets
+ * `visibility`, which keeps its source and feature-state (docs/phase_7.md, Design §5).
  */
-export function layoutFor(style: LayerStyle): Record<StyleLayerKind, Properties> {
+export function layoutFor(style: LayerStyle, visible = true): Record<StyleLayerKind, Properties> {
+  const hidden: Properties = visible ? {} : { visibility: 'none' };
   return {
-    fill: {},
-    outline: { 'line-join': 'round' },
-    line: { 'line-join': 'round', 'line-cap': style.lineStyle.kind === 'custom' ? 'butt' : 'round' },
-    circle: {},
+    fill: { ...hidden },
+    outline: { 'line-join': 'round', ...hidden },
+    line: { 'line-join': 'round', 'line-cap': style.lineStyle.kind === 'custom' ? 'butt' : 'round', ...hidden },
+    circle: { ...hidden },
   };
 }
 
@@ -186,7 +188,7 @@ export function layoutFor(style: LayerStyle): Record<StyleLayerKind, Properties>
 export function styleLayers(spec: LayerSpec): LayerSpecification[] {
   const source = dataSourceId(spec.id);
   const paint = paintFor(spec.style, perFeature(spec));
-  const layout = layoutFor(spec.style);
+  const layout = layoutFor(spec.style, spec.visible);
   const id = (kind: StyleLayerKind) => styleLayerId(spec.id, kind);
   const layer = (kind: StyleLayerKind, type: 'fill' | 'line' | 'circle') =>
     ({

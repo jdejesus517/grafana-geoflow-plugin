@@ -57,13 +57,30 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
   const [pinned, setPinned] = useState<Pinned>();
   const [hover, setHover] = useState<Hover>();
 
-  const pinnedShown = useMemo(
-    () => (mode === 'off' ? undefined : resolvePinned(pinned, engine, basemap, results)),
-    [pinned, engine, basemap, results, mode]
+  // Layers whose features can have a tooltip: hiding a layer, or turning its tooltips off, closes
+  // the tooltips on its features (docs/phase_7.md, Design §6).
+  const reachable = useMemo(
+    () => new Set(layers.filter((layer) => layer.visible && layer.interactive).map(({ id }) => id)),
+    [layers]
   );
+  const pinnedShown = useMemo(
+    () => (mode === 'off' ? undefined : resolvePinned(pinned, engine, basemap, results, reachable)),
+    [pinned, engine, basemap, results, mode, reachable]
+  );
+  // A pinned tooltip that closed stays closed, rather than coming back with its layer. Adjusted
+  // during render, as React suggests for state that follows other state.
+  if (pinned && !pinnedShown) {
+    setPinned(undefined);
+  }
   // New data or another map drops the hover; the next pointer move brings it back.
   const hoverShown =
-    hover && hover.engine === engine && hover.results === results && mode !== 'off' ? hover : undefined;
+    hover &&
+    hover.engine === engine &&
+    hover.results === results &&
+    mode !== 'off' &&
+    hover.refs.every((ref) => reachable.has(ref.layerId))
+      ? hover
+      : undefined;
 
   const handlers = useRef({ click: (_: PointerHit) => {}, hover: (_: PointerHit) => {} });
   useEffect(() => {
@@ -73,7 +90,7 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
           return;
         }
         const refs = hit.features.flatMap((ref) => {
-          const result = results.find(({ refId }) => refId === ref.layerId);
+          const result = results.find(({ layerId }) => layerId === ref.layerId);
           return result ? [{ ...ref, result, key: featureKey(result, ref.featureId) }] : [];
         });
         // A click on empty map unpins.
@@ -175,13 +192,15 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
 /**
  * The pinned features as they are in the current data, or undefined when the tooltip should
  * close (docs/phase_4.md, Design §5). A feature whose layer's data changed is found again by its
- * key; without keys, row positions may now be other features, so the tooltip closes.
+ * key; without keys, row positions may now be other features, so the tooltip closes. Features of
+ * layers no longer `reachable` (hidden, or without tooltips) are left out.
  */
 function resolvePinned(
   pinned: Pinned | undefined,
   engine: MapEngine | undefined,
   basemap: BasemapSpec,
-  results: ConversionResult[]
+  results: ConversionResult[],
+  reachable: Set<string>
 ): Pick<Pinned, 'lngLat' | 'space' | 'refs' | 'index'> | undefined {
   if (!pinned || pinned.engine !== engine || pinned.basemap !== basemap) {
     return undefined;
@@ -190,7 +209,10 @@ function resolvePinned(
   const refs: PinnedRef[] = [];
   let index = 0;
   for (const ref of pinned.refs) {
-    const result = results.find(({ refId }) => refId === ref.layerId);
+    if (!reachable.has(ref.layerId)) {
+      continue;
+    }
+    const result = results.find(({ layerId }) => layerId === ref.layerId);
     let found: PinnedRef | undefined;
     if (result === ref.result) {
       found = ref;
@@ -217,7 +239,7 @@ function tooltipFeatures(
   layers: LayerSpec[]
 ): TooltipFeature[] {
   return refs.flatMap((ref) => {
-    const i = results.findIndex(({ refId }) => refId === ref.layerId);
+    const i = results.findIndex(({ layerId }) => layerId === ref.layerId);
     const details = i >= 0 ? featureDetails(frames[i], results[i], ref.featureId) : undefined;
     if (!details) {
       return [];
@@ -230,7 +252,7 @@ function tooltipFeatures(
       {
         layerId: ref.layerId,
         featureId: ref.featureId,
-        title: frames[i].name || `Query ${ref.layerId}`,
+        title: layer?.name ?? ref.layerId,
         color,
         details,
       },

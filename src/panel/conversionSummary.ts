@@ -10,7 +10,7 @@ const WARNING_LABELS: Record<WarningKind, string> = {
 
 /** One line per frame, e.g. "A: 6 rows → 1 feature (geom) · empty 4, unsupported 1". */
 export function conversionSummary(result: ConversionResult): string {
-  const rows = `${result.refId}: ${plural(result.rowCount, 'row')}`;
+  const rows = `${result.layerId}: ${plural(result.rowCount, 'row')}`;
   if (result.noGeometry) {
     return `${rows} → no geometry: ${result.noGeometry.detail}`;
   }

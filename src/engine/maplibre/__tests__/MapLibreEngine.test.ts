@@ -169,7 +169,15 @@ const style: LayerStyle = {
 };
 
 function layer(id: string, overrides: Partial<LayerSpec> = {}): LayerSpec {
-  return { id, data: { type: 'FeatureCollection', features: [] }, style, interactive: true, ...overrides };
+  return {
+    id,
+    name: id,
+    visible: true,
+    data: { type: 'FeatureCollection', features: [] },
+    style,
+    interactive: true,
+    ...overrides,
+  };
 }
 
 let getContext: jest.SpyInstance;
@@ -457,6 +465,34 @@ describe('MapLibreEngine', () => {
       expect(map.setLayoutProperty.mock.calls).toEqual([['geoflow-layer:A:line', 'line-cap', 'round']]);
     });
 
+    it('hides a layer through visibility, keeping its source and data, and shows it again', async () => {
+      const spec = layer('A');
+      const { engine, map } = await mounted({ ...options, layers: [spec, layer('B')] });
+      engine.setLayers([{ ...spec, visible: false }, layer('B')]);
+
+      expect(map.setLayoutProperty.mock.calls).toEqual(styleLayerIds('A').map((id) => [id, 'visibility', 'none']));
+      expect(map.removeLayer).not.toHaveBeenCalled();
+      expect(map.removeSource).not.toHaveBeenCalled();
+      expect(map.sources['geoflow-layer:A'].setData).not.toHaveBeenCalled();
+      expect(map.setPaintProperty).not.toHaveBeenCalled();
+
+      map.setLayoutProperty.mockClear();
+      engine.setLayers([spec, layer('B')]);
+      expect(map.setLayoutProperty.mock.calls).toEqual(styleLayerIds('A').map((id) => [id, 'visibility', undefined]));
+      expect(map.sources['geoflow-layer:A'].setData).not.toHaveBeenCalled();
+    });
+
+    it('adds a hidden layer hidden, and carries it hidden into a new basemap style', async () => {
+      const hidden = layer('A', { visible: false });
+      const { engine, map } = await mounted();
+      engine.setLayers([hidden]);
+
+      expect(map.addLayer.mock.calls.map(([added]) => added)).toEqual(styleLayers(hidden));
+      engine.setBasemap({ kind: 'none' });
+      const next = map.transform(basemapStyle({ kind: 'none' }, light) as never);
+      expect(next.layers.slice(-4)).toEqual(styleLayers(hidden));
+    });
+
     it('restacks the layers when their order changes', async () => {
       const { engine, map } = await mounted({ ...options, layers: [layer('A'), layer('B')] });
       engine.setLayers([layer('B'), layer('A')]);
@@ -705,6 +741,17 @@ describe('MapLibreEngine', () => {
       map.rendered = [drawn('A', 1), drawn('B', 2)];
       map.fire('click', pointer());
 
+      expect(listener.mock.calls[0][0].features).toEqual([{ layerId: 'B', featureId: 2 }]);
+    });
+
+    it('leaves out hidden layers', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [layer('A', { visible: false }), layer('B')] });
+      const listener = jest.fn();
+      engine.on('click', listener);
+      map.rendered = [drawn('A', 1), drawn('B', 2)];
+      map.fire('click', pointer());
+
+      expect(map.queryRenderedFeatures.mock.calls[0][1]).toEqual({ layers: styleLayerIds('B') });
       expect(listener.mock.calls[0][0].features).toEqual([{ layerId: 'B', featureId: 2 }]);
     });
 

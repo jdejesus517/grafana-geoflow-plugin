@@ -44,7 +44,10 @@ export async function editedPanel(panelEditPage: PanelEditPage): Promise<Locator
   return panel;
 }
 
-/** For expect.poll around renderedFeatures: the first count waits for the map to be created. */
+/**
+ * For expect.poll around renderedFeatures: the first count waits for the map to be created. Also
+ * for anything that waits for query results, which take longer while other tests run.
+ */
 export const DRAWN = { timeout: 30_000 };
 
 /**

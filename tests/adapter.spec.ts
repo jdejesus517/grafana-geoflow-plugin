@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures';
+import { DRAWN, test, expect } from './fixtures';
 
 // Expected adapter results for the seeded fixtures (docker/postgres/init/03_seed_fixtures.sql).
 const PANELS = [
@@ -24,7 +24,8 @@ for (const { title, summaries } of PANELS) {
     const panel = dashboardPage.getPanelByTitle(title);
 
     for (const [refId, summary] of Object.entries(summaries)) {
-      await expect(panel.locator.getByTestId(`geoflow-summary-${refId}`)).toHaveText(summary);
+      // The summary shows once the queries return, which takes longer while other tests run.
+      await expect(panel.locator.getByTestId(`geoflow-summary-${refId}`)).toHaveText(summary, DRAWN);
     }
   });
 }
@@ -35,6 +36,7 @@ test('adapter dashboard: projected rows name the fix', async ({ readProvisionedD
   const panel = dashboardPage.getPanelByTitle('State Plane without ST_Transform');
 
   await expect(panel.locator.getByTestId('geoflow-frame-A')).toContainText(
-    'row 1: EPSG:2264; transform to EPSG:4326 with ST_Transform(geom, 4326)'
+    'row 1: EPSG:2264; transform to EPSG:4326 with ST_Transform(geom, 4326)',
+    DRAWN
   );
 });

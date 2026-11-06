@@ -144,8 +144,9 @@ This is the only place that knows about both `DataFrame` and GeoJSON. Its functi
 
 - `detectGeometryField(frame)`: picks the geometry column (see §3).
 - `frameToFeatureCollection(frame, mapping) → { fc, warnings }`.
-- `buildLayerSpecs(frames, options, theme) → LayerSpec[]`: joins the layer configuration with frames by `refId` and resolves style defaults from the Grafana theme. Tooltip values are formatted with Grafana's field display processor when a feature is hovered or clicked (Phase 4), so the engine never needs Grafana formatting code.
-- `featureStyles(frame, result, theme)` and `legendEntries(results, frames, theme)` (Phase 6): per-feature colors and sizes from a column's values, and the legend of those colors, both from Grafana's field config. The engine gets plain colors and numbers.
+- `bindLayers(frames, configs, binding) → BoundLayer[]` (Phase 7): which layers there are, top first, with their ids, names, order, visibility and columns, from the frames and the Layers list's settings (§3.4).
+- `buildLayerSpecs(layers, results, frames, theme) → LayerSpec[]`: the engine's layers, bottom first, with style defaults resolved from the Grafana theme. Tooltip values are formatted with Grafana's field display processor when a feature is hovered or clicked (Phase 4), so the engine never needs Grafana formatting code.
+- `featureStyles(frame, result, theme)` and `legendEntries(layers, results, frames, theme)` (Phase 6): per-feature colors and sizes from a column's values, and the legend of those colors, both from Grafana's field config. The engine gets plain colors and numbers.
 
 ### 2.4 Engine layer (`src/engine`, Grafana-independent)
 
@@ -202,7 +203,7 @@ MapLibre GL JS 6 shapes how the engine is built and shipped:
 #### Drawing data (Phase 3)
 
 How the engine draws `LayerSpec`s, as built:
-- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values; Phase 5 adds `opacity` and `lineStyle`. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`, and from field config since Phase 5. `interactive` arrives with Phase 4 (tooltips), and `name` and `visible` with Phase 7.
+- **`LayerSpec` fields so far:** `id`, `data` and `style`. `style` is a `LayerStyle` with `color`, `fillOpacity`, `lineWidth`, `pointRadius` and `outlineColor`, all resolved values; Phase 5 adds `opacity` and `lineStyle`. The adapter fills them from the Grafana theme and `DEFAULT_LAYER_STYLE`, and from field config since Phase 5. `interactive` arrives with Phase 4 (tooltips), and `name` and `visible` with Phase 7 (below).
 - **Ids:** sources and style layers are prefixed `geoflow-layer:` (for example `geoflow-layer:A:fill`). The prefix keeps them apart from the basemap and from layers in a user's style URL. Layer ids come from refIds and are never parsed back out of these strings.
 - **Geometry filters:** in MapLibre 6, `['geometry-type']` reports Multi* features as their simple type (MultiPolygon as Polygon). The filters list both forms, which is correct in every version.
 - **Basemap changes:** `transformStyle`, passed to the `Map` constructor, appends the data sources and layers to every style MapLibre loads afterwards, inline or from a URL. MapLibre fires `style.load` both after a full style load and after a style it applied in place. The engine tracks readiness with `styledataloading` and `style.load`, and applies any `setLayers` call made in between on `style.load`.
@@ -240,6 +241,16 @@ How features are colored and sized by a column's value, as built ([phase_6.md](p
 - **Sizes:** point diameter linear between Min and Max point size across the column's range, clamped; features without a number keep the layer's size.
 - **Engine:** `LayerSpec.featureStyles` holds colors and radii in feature order. The engine sets them as feature-state (`color`, `radius`), and the paint of a layer that has them reads `['coalesce', ['feature-state', …], layerValue]`; layers without them keep plain values. A change calls MapLibre only for features whose values changed (`featureStateChanges`), matching features by id when the data changed. States are set again when a style loaded from scratch brings new sources. On 100k points with the GPU, a threshold change that recolors 80% of them causes no task over 130 ms.
 - **Legend:** `legendEntries` (adapter) lists each colored layer's value mappings and threshold steps, or its gradient; `MapLegend` (panel) renders them with Grafana's `VizLegend`, bottom left.
+
+#### Multiple layers (Phase 7)
+
+How queries become named, ordered layers, as built ([phase_7.md](phase_7.md)):
+- **Options:** `layers`, a list of `LayerConfig`s (`id`, `name`, `visible`, `tooltips`, `geometryField`, `idField`), top layer first, keyed by layer id, holding only what differs from the defaults. `layerBinding` is saved as `{ mode: 'perFrame' }` and not shown. Dashboards saved before Phase 7 have neither, and draw as before.
+- **Binding:** `bindLayers` (adapter) switches on the mode; `bindPerFrame` makes one layer per frame (§3.4). It runs before the conversion, which needs each layer's columns and id: `convertFrames` passes them to `frameToFeatureCollection`, and its cache also compares them, so a name, order or visibility change converts nothing. `ConversionResult.layerId` is the layer's id, beside the query's `refId`.
+- **Editor:** `LayersEditor` (panel) builds its rows with the same `bindLayers`, from the editor context's frames, and saves every layer in its current order on any change. The list follows the data: rows appear once queries have run.
+- **Order and colors:** layers draw in list order through the Phase 3 restacking. Classic palette colors go by frame position, not drawing order or visibility, so moving or hiding a layer recolors nothing. By name hashes a typed name, else what Phase 5 hashed.
+- **Engine:** `LayerSpec.name` travels with the spec for the panel; `visible: false` sets `visibility: none` on the layer's style layers, keeping its source and feature-state, and leaves it out of hit testing. On 100k points with the GPU, hiding causes no main-thread task over 50 ms and showing none over 140 ms.
+- **Tooltips:** `LayerSpec.interactive` combines the panel's Tooltip option and the layer's Tooltips switch. Tooltips on a layer that's hidden or loses its tooltips close, and a closed pinned tooltip stays closed.
 
 ---
 
@@ -335,7 +346,9 @@ Design rules that keep later modes cheap to add:
   ```
 
   Saved MVP dashboards stay valid when `byColumn` ships, because no migration is needed. Until then the editor offers only `perFrame`.
-- Binding is resolved in `buildLayerSpecs` (adapter) through a small strategy per mode: `bindPerFrame` and later `bindByColumn`. Each strategy returns the same `LayerSpec[]`. The engine is unaffected, which is the payoff of requirement 7.
+- Binding is resolved in `bindLayers` (adapter) through a small strategy per mode: `bindPerFrame` and later `bindByColumn`. Each strategy returns the same `BoundLayer[]`, which `buildLayerSpecs` turns into `LayerSpec`s. The engine is unaffected, which is the payoff of requirement 7.
+- **`perFrame` layer ids** (Phase 7): the refId when a query returns one frame. When it returns several, each frame's id is `${refId}:${key}`: the frame's name, else its fields' labels (`placement=aerial`), else `#n` by position. Layer settings are keyed by layer id, so `byColumn`'s `${refId}:${value}` layers can use the same settings.
+- **Partition by values** (checked in Phase 7, step 7.1), Grafana's transformation that splits a query into a frame per value, already gives `perFrame` one layer per value. Each split frame gets the refId `${refId}-${frame name}`. With its **As frame name** naming, frames are named by value, so a **Fields returned by query** override on `A-aerial` styles that value alone, line style included. With the default **As label**, frames keep the query's (often empty) name and share one refId, so GeoFlow tells them apart by their labels. Phase 11 should weigh this against splitting in the adapter: the transformation gives per-value styling through overrides today, while `byColumn` would add the layer cap, "Other", "(none)" and palette colors per value.
 - `byColumn` specifics, scoped for Phase 11:
   - **Stable ids across refresh.** Per-layer settings such as visibility and style overrides survive a refresh, and new values get defaults.
   - **Layer cap.** `maxLayers`, default 50, guards against splitting on a high-cardinality column. Values beyond the cap are grouped into an "Other" layer and reported as a panel warning.
@@ -473,4 +486,5 @@ Features that have come up but aren't in a phase yet. Each one would get its own
 | **Point symbols** | Points are drawn as circles (Phase 3), sized and colored by Phase 5's options. Shapes (square, triangle, star…) and icons were considered alongside data-driven styling and left out of the MVP. | A MapLibre `symbol` layer with images in place of the `circle` layer: built-in shapes drawn in the browser as SDF images, so they can be tinted per layer and per value. The engine re-adds the images after every basemap change, since `transformStyle` carries layers but not images. `icon-size` can't read feature-state, so highlights need a halo or a circle beneath. Symbols must allow overlap, and cost more than circles at 100k points, so the performance benchmark has to cover them. Shape by value reuses Phase 6's per-feature styles. Custom icon URLs raise CSP and CORS questions. |
 | **Line width by value** | Phase 6 sizes points by a column's value. Lines keep the layer's Line width. | A Size by for lines, scaling `line-width` through feature-state between a minimum and maximum width, like point size. |
 | **Antimeridian-crossing geometries** | §4.1. Documented rather than solved. | Splitting or unwrapping geometries that cross ±180° in the adapter. |
+| **Layer switcher on the map** | Phase 7 hides layers from the Layers list in the panel editor, a setting saved with the dashboard (Phase 7, decision 5). Viewers can't show or hide layers without editing the panel. | A toggle per layer on the map, for example in the legend or a control beside the zoom buttons, kept in the panel's state rather than the dashboard. Needs a decision on where it sits beside the legend, and whether a viewer's choice survives a refresh (Phase 8) or a page reload. |
 | **Zoom ranges per layer** | Show a layer only within a zoom range: splice cases from zoom 14, a service-area outline only when zoomed out. Left out of Phase 7, which adds the layer list. | **Min zoom** and **Max zoom** in a layer's settings in the Phase 7 layer list, passed in `LayerSpec` to the style layers' `minzoom` and `maxzoom`. The data still loads at every zoom, so it saves drawing, not query or transfer time. Needs a decision on whether the legend shows a layer outside its range. |

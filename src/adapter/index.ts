@@ -1,4 +1,6 @@
 // Grafana DataFrame → GeoJSON adapter (docs/architecture.md §2.3).
+export { DEFAULT_LAYER_BINDING, bindLayers, bindPerFrame } from './bindLayers';
+export type { BoundLayer, LayerBinding, LayerConfig } from './bindLayers';
 export { buildLayerSpecs } from './buildLayerSpecs';
 export { DASH_PATTERN_EXAMPLE, dashPatternProblem, parseDashPattern } from './dashPattern';
 export { LINE_STYLE_OPTIONS, MAP_STYLE_RANGES, layerStyle } from './layerStyle';
