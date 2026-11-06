@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
+import { bindLayers, buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
 import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { convertFrames } from './convertFrames';
@@ -167,17 +167,21 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   const { lat, lon, zoom } = options.view ?? {};
   const view = useMemo(() => viewFromOptions({ lat, lon, zoom }), [lat, lon, zoom]);
 
-  const results = useMemo(() => convertFrames(data.series), [data.series]);
+  const bound = useMemo(
+    () => bindLayers(data.series, options.layers, options.layerBinding),
+    [data.series, options.layers, options.layerBinding]
+  );
+  const results = useMemo(() => convertFrames(data.series, bound), [data.series, bound]);
   const mode = tooltipMode(options);
   const interactive = mode !== 'off';
   const layers = useMemo(
-    () => buildLayerSpecs(results, data.series, theme, { interactive }),
-    [results, data.series, theme, interactive]
+    () => buildLayerSpecs(bound, results, data.series, theme, { interactive }),
+    [bound, results, data.series, theme, interactive]
   );
   const showLegend = options.legend?.show !== false && width >= LEGEND_MIN_WIDTH;
   const legend = useMemo(
-    () => (showLegend ? legendEntries(results, data.series, theme) : []),
-    [showLegend, results, data.series, theme]
+    () => (showLegend ? legendEntries(layers, results, data.series, theme) : []),
+    [showLegend, layers, results, data.series, theme]
   );
   // Data arrived, but no frame has a geometry column: say why instead of showing an empty map.
   const noGeometry = layers.length === 0 ? results.find((result) => result.noGeometry)?.noGeometry : undefined;
@@ -318,8 +322,8 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
             const warning = firstWarning(result);
             const styleProblems = result.noGeometry ? [] : dataStyleFields(data.series[i], result).problems;
             return (
-              <div key={result.refId} className={styles.frame} data-testid={`geoflow-frame-${result.refId}`}>
-                <div data-testid={`geoflow-summary-${result.refId}`}>{conversionSummary(result)}</div>
+              <div key={result.layerId} className={styles.frame} data-testid={`geoflow-frame-${result.layerId}`}>
+                <div data-testid={`geoflow-summary-${result.layerId}`}>{conversionSummary(result)}</div>
                 {warning && <div className={styles.secondary}>{warning}</div>}
                 {styleProblems.map((problem) => (
                   <div key={problem} className={styles.secondary}>

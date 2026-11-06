@@ -73,7 +73,7 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
           return;
         }
         const refs = hit.features.flatMap((ref) => {
-          const result = results.find(({ refId }) => refId === ref.layerId);
+          const result = results.find(({ layerId }) => layerId === ref.layerId);
           return result ? [{ ...ref, result, key: featureKey(result, ref.featureId) }] : [];
         });
         // A click on empty map unpins.
@@ -190,7 +190,7 @@ function resolvePinned(
   const refs: PinnedRef[] = [];
   let index = 0;
   for (const ref of pinned.refs) {
-    const result = results.find(({ refId }) => refId === ref.layerId);
+    const result = results.find(({ layerId }) => layerId === ref.layerId);
     let found: PinnedRef | undefined;
     if (result === ref.result) {
       found = ref;
@@ -217,7 +217,7 @@ function tooltipFeatures(
   layers: LayerSpec[]
 ): TooltipFeature[] {
   return refs.flatMap((ref) => {
-    const i = results.findIndex(({ refId }) => refId === ref.layerId);
+    const i = results.findIndex(({ layerId }) => layerId === ref.layerId);
     const details = i >= 0 ? featureDetails(frames[i], results[i], ref.featureId) : undefined;
     if (!details) {
       return [];
@@ -230,7 +230,7 @@ function tooltipFeatures(
       {
         layerId: ref.layerId,
         featureId: ref.featureId,
-        title: frames[i].name || `Query ${ref.layerId}`,
+        title: layer?.name ?? ref.layerId,
         color,
         details,
       },

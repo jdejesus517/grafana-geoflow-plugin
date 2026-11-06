@@ -1,4 +1,5 @@
 import { DataFrame, FieldType, toDataFrame } from '@grafana/data';
+import { bindPerFrame } from '../adapter';
 import { convertFrames } from './convertFrames';
 
 const point = (lon: number) => `{"type":"Point","coordinates":[${lon},35.78]}`;
@@ -70,6 +71,46 @@ describe('convertFrames', () => {
     const { refId, ...noRefId } = frame();
 
     expect(convertFrames([frame('A'), noRefId as DataFrame]).map((result) => result.refId)).toEqual(['A', '#1']);
+  });
+
+  it("converts each frame for its layer: the layer's id, geometry column and id column", () => {
+    const source = toDataFrame({
+      refId: 'A',
+      name: 'aerial',
+      fields: [
+        { name: 'key', type: FieldType.number, values: [7] },
+        { name: 'footprint', type: FieldType.string, values: [point(-78.78)] },
+        { name: 'centroid', type: FieldType.string, values: [point(-78.77)] },
+      ],
+    });
+    const frames = [source, { ...source, name: 'underground' }];
+    const [result] = convertFrames(
+      frames,
+      bindPerFrame(frames, [{ id: 'A:aerial', geometryField: 'centroid', idField: 'key' }])
+    );
+
+    expect(result).toMatchObject({ layerId: 'A:aerial', refId: 'A', geometryField: 'centroid' });
+    expect(result.featureCollection.features[0].id).toBe(7);
+  });
+
+  it('reuses the conversion when only the name, order or visibility change', () => {
+    const frames = [frame('A'), frame('B')];
+    const [first] = convertFrames(frames, bindPerFrame(frames, []));
+    const configs = [{ id: 'B' }, { id: 'A', name: 'Buildings', visible: false }];
+
+    expect(convertFrames(frames, bindPerFrame(frames, configs))[0]).toBe(first);
+  });
+
+  it('converts again when the geometry or id column changes, and reports a missing one', () => {
+    const frames = [frame('A')];
+    const [first] = convertFrames(frames, bindPerFrame(frames, []));
+    const [named] = convertFrames(frames, bindPerFrame(frames, [{ id: 'A', geometryField: 'geometry' }]));
+    const [missing] = convertFrames(frames, bindPerFrame(frames, [{ id: 'A', geometryField: 'footprint' }]));
+
+    expect(named).not.toBe(first);
+    expect(named.featureCollection.features).toHaveLength(2);
+    expect(convertFrames(frames, bindPerFrame(frames, [{ id: 'A', idField: 'name' }]))[0]).not.toBe(named);
+    expect(missing.noGeometry).toEqual({ reason: 'fieldNotFound', detail: 'No column named "footprint"' });
   });
 
   it('copes with a frame without fields', () => {

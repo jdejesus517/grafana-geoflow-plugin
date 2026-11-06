@@ -12,6 +12,7 @@ import {
   getValueFormat,
   sortThresholds,
 } from '@grafana/data';
+import { LayerSpec } from '../engine';
 import { dataStyleFields } from './featureStyles';
 import { ConversionResult } from './frameToFeatureCollection';
 
@@ -23,7 +24,7 @@ export interface LegendItem {
 /** The legend of one layer colored by a column (docs/phase_6.md, Design §4). */
 export interface LegendEntry {
   layerId: string;
-  /** The query, as tooltips name it. */
+  /** The layer's name, as tooltips show it. */
   title: string;
   /** The Color by column's display name. */
   column: string;
@@ -34,15 +35,23 @@ export interface LegendEntry {
 }
 
 /**
- * Legend entries for the layers colored by a column, in drawing order. A layer gets one when its
- * colors have something to tell apart: colored value mappings, thresholds or a by-value scheme.
- * Single-color and palette schemes give every value the same color, so they show only their
- * mappings. `results` are the conversions of `frames`, in the same order.
+ * Legend entries for the visible layers colored by a column, top layer first, as in the Layers
+ * list (docs/phase_7.md, Design §6). A layer gets one when its colors have something to tell
+ * apart: colored value mappings, thresholds or a by-value scheme. Single-color and palette
+ * schemes give every value the same color, so they show only their mappings. `layers` are the
+ * engine's, bottom first; `results` are the conversions of `frames`, in the same order.
  */
-export function legendEntries(results: ConversionResult[], frames: DataFrame[], theme: GrafanaTheme2): LegendEntry[] {
-  return results.flatMap((result, i) => {
-    const frame = frames[i];
-    const field = !result.noGeometry && frame ? dataStyleFields(frame, result).colorField : undefined;
+export function legendEntries(
+  layers: LayerSpec[],
+  results: ConversionResult[],
+  frames: DataFrame[],
+  theme: GrafanaTheme2
+): LegendEntry[] {
+  return [...layers].reverse().flatMap((layer) => {
+    const i = results.findIndex((result) => result.layerId === layer.id);
+    const [frame, result] = [frames[i], results[i]];
+    const field =
+      layer.visible && result && !result.noGeometry && frame ? dataStyleFields(frame, result).colorField : undefined;
     if (!field) {
       return [];
     }
@@ -60,8 +69,8 @@ export function legendEntries(results: ConversionResult[], frames: DataFrame[], 
     }
     return [
       {
-        layerId: result.refId,
-        title: frame.name || `Query ${result.refId}`,
+        layerId: layer.id,
+        title: layer.name,
         column: getFieldDisplayName(field, frame),
         items,
         ...(gradient && { gradient }),

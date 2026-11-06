@@ -1,4 +1,4 @@
-import { MapStyleConfig } from '../adapter';
+import { DEFAULT_LAYER_BINDING, LayerBinding, LayerConfig, MapStyleConfig } from '../adapter';
 import { BasemapSpec, ViewState } from '../engine';
 
 export type BasemapKind = BasemapSpec['kind'];
@@ -21,6 +21,10 @@ export interface GeoFlowOptions {
   /** The legend of colors from Color by (docs/phase_6.md, Design §4). */
   legend: { show: boolean };
   showSummary: boolean;
+  /** Layer settings, top layer first (docs/phase_7.md, Design §1). Layers without any get defaults. */
+  layers: LayerConfig[];
+  /** Saved for Phase 11, which adds a second mode; not shown in the editor yet. */
+  layerBinding: LayerBinding;
 }
 
 /**
@@ -39,6 +43,8 @@ export const DEFAULT_OPTIONS: GeoFlowOptions = {
   tooltip: 'hover',
   legend: { show: true },
   showSummary: false,
+  layers: [],
+  layerBinding: DEFAULT_LAYER_BINDING,
 };
 
 const TOOLTIP_MODES: readonly TooltipMode[] = ['hover', 'click', 'off'];

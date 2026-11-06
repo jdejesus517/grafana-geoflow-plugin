@@ -1,38 +1,48 @@
 import { DataFrame, GrafanaTheme2 } from '@grafana/data';
 import { LayerSpec } from '../engine';
+import { BoundLayer } from './bindLayers';
 import { featureStyles } from './featureStyles';
 import { ConversionResult } from './frameToFeatureCollection';
 import { layerStyle } from './layerStyle';
 
 /**
- * One layer per frame with a geometry column, with the frame's refId as its id (the `perFrame`
- * binding, docs/architecture.md §3.4). Frames without a geometry column are left out. A frame
- * whose rows were all skipped still gets a layer, so its id is stable when a refresh brings
- * valid rows. Each layer is styled from its frame's field config (layerStyle); palette colors go
- * by position among the layers, so frames without geometry don't use one. Layers with Color by
- * or Size by also get per-feature styles (docs/phase_6.md, Design §2).
+ * The engine's layers, bottom first, for `layers` (from bindLayers, top first): one per layer
+ * whose frame has a geometry column (docs/architecture.md §3.4, docs/phase_7.md, Design §2). A
+ * frame whose rows were all skipped still gets a layer, so its id is stable when a refresh brings
+ * valid rows. Hidden layers are kept, so showing them reloads nothing.
+ *
+ * Each layer is styled from its frame's field config (layerStyle). Palette colors go by the
+ * frame's position among frames with a geometry column, so moving or hiding a layer doesn't
+ * recolor others (docs/phase_7.md, decision 7). Layers with Color by or Size by also get
+ * per-feature styles (docs/phase_6.md, Design §2).
  *
  * `results` are the conversions of `frames`, in the same order.
  */
 export function buildLayerSpecs(
+  layers: BoundLayer[],
   results: ConversionResult[],
   frames: DataFrame[],
   theme: GrafanaTheme2,
   { interactive }: { interactive: boolean } = { interactive: true }
 ): LayerSpec[] {
-  return results
-    .map((result, i) => ({ result, frame: frames[i] }))
-    .filter(({ result }) => !result.noGeometry)
-    .map(({ result, frame }, layerIndex) => {
+  const paletteIndex = new Map<number, number>();
+  results.forEach((result, i) => !result.noGeometry && paletteIndex.set(i, paletteIndex.size));
+
+  return layers
+    .filter((layer) => layer.frameIndex !== undefined && paletteIndex.has(layer.frameIndex))
+    .reverse()
+    .map((layer) => {
+      const i = layer.frameIndex!;
+      const [frame, result] = [frames[i], results[i]];
       const styles = featureStyles(frame, result, theme);
       return {
-        id: result.refId,
-        name: frame.name || `Query ${result.refId}`,
-        visible: true,
+        id: layer.id,
+        name: layer.name,
+        visible: layer.visible,
         data: result.featureCollection,
-        style: layerStyle(frame, result, layerIndex, theme),
+        style: layerStyle(frame, result, paletteIndex.get(i)!, theme, layer.colorName),
         ...(styles && { featureStyles: styles }),
-        interactive,
+        interactive: interactive && layer.tooltips,
       };
     });
 }

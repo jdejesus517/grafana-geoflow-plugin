@@ -45,13 +45,15 @@ export const MAP_STYLE_RANGES: Record<NumberOption, { min: number; max: number; 
  * The style of the layer drawn from `frame`, from its geometry field's config (docs/phase_5.md,
  * Design §2). Grafana applies the panel's field options and overrides to every field, so an
  * override on one query, or on the geometry column's name, styles that layer. Bad or missing
- * values fall back to the defaults, so old dashboards draw as before.
+ * values fall back to the defaults, so old dashboards draw as before. `colorName` is what By name
+ * hashes (BoundLayer.colorName): the frame's name or refId unless the layer has a typed name.
  */
 export function layerStyle(
   frame: DataFrame,
   result: ConversionResult,
   layerIndex: number,
-  theme: GrafanaTheme2
+  theme: GrafanaTheme2,
+  colorName = frame.name || frame.refId || ''
 ): LayerStyle {
   const field = frame.fields.find(({ name }) => name === result.geometryField);
   const custom: MapStyleConfig = field?.config.custom ?? {};
@@ -62,7 +64,7 @@ export function layerStyle(
   };
 
   return {
-    color: layerColor(frame, field, layerIndex, theme),
+    color: layerColor(colorName, field, layerIndex, theme),
     opacity: option('opacity') / 100,
     fillOpacity: option('fillOpacity') / 100,
     lineWidth: option('lineWidth'),
@@ -75,13 +77,13 @@ export function layerStyle(
 /**
  * Classic palette colors go by the layer's position among layers, as before Phase 5 (decision 2):
  * Grafana's own series index counts every column of every query. Other schemes use Grafana's
- * color calculator, so they behave as in its other panels. By name hashes the layer's name, the
- * frame's name or refId: Grafana would hash the field's, and every query's geometry column may
- * be called `geometry` (docs/phase_5.md, step 5.1). By-value schemes aren't offered (there's no
- * value to color by), and fall back to the palette if set by hand.
+ * color calculator, so they behave as in its other panels. By name hashes the layer's name
+ * (`colorName`): Grafana would hash the field's, and every query's geometry column may be called
+ * `geometry` (docs/phase_5.md, step 5.1). By-value schemes aren't offered (there's no value to
+ * color by), and fall back to the palette if set by hand.
  */
 function layerColor(
-  frame: DataFrame,
+  colorName: string,
   field: DataFrame['fields'][number] | undefined,
   layerIndex: number,
   theme: GrafanaTheme2
@@ -100,7 +102,7 @@ function layerColor(
   }
   const named =
     mode === FieldColorModeId.PaletteClassicByName
-      ? { ...field, state: { ...field.state, displayName: frame.name || frame.refId } }
+      ? { ...field, state: { ...field.state, displayName: colorName } }
       : field;
   return colorMode.getCalculator(named, theme)(0, 0);
 }

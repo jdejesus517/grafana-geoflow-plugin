@@ -9,6 +9,8 @@ import {
   createTheme,
   toDataFrame,
 } from '@grafana/data';
+import { LayerConfig, bindPerFrame } from '../bindLayers';
+import { buildLayerSpecs } from '../buildLayerSpecs';
 import { frameToFeatureCollection } from '../frameToFeatureCollection';
 import { MapStyleConfig } from '../layerStyle';
 import { legendEntries } from '../legend';
@@ -45,11 +47,13 @@ function query(refId: string, custom: MapStyleConfig, config: FieldConfig = {}, 
 }
 
 function entries(...frames: Array<ReturnType<typeof query>>) {
-  return legendEntries(
-    frames.map((frame) => frameToFeatureCollection(frame)),
-    frames,
-    theme
-  );
+  return entriesWith([], ...frames);
+}
+
+/** The legend of `frames` with the given layer settings. */
+function entriesWith(configs: LayerConfig[], ...frames: Array<ReturnType<typeof query>>) {
+  const results = frames.map((frame) => frameToFeatureCollection(frame));
+  return legendEntries(buildLayerSpecs(bindPerFrame(frames, configs), results, frames, theme), results, frames, theme);
 }
 
 describe('legendEntries', () => {
@@ -135,15 +139,26 @@ describe('legendEntries', () => {
     expect(entries(query('A', { sizeBy: 'pct' }), palette, fixed)).toEqual([]);
   });
 
-  it('names the query by its frame name when there is one, and keeps the layers in order', () => {
+  it('names each layer as the Layers list does, top layer first', () => {
     const config = { thresholds: THRESHOLDS, color: { mode: FieldColorModeId.Thresholds } };
     const named = { ...query('B', { colorBy: 'pct' }, config), name: 'Patch panels' };
 
     expect(
       entries(query('A', { colorBy: 'pct' }, config), named).map(({ layerId, title }) => [layerId, title])
     ).toEqual([
-      ['A', 'Query A'],
       ['B', 'Patch panels'],
+      ['A', 'Query A'],
+    ]);
+  });
+
+  it('follows the saved order and names, and leaves out hidden layers', () => {
+    const config = { thresholds: THRESHOLDS, color: { mode: FieldColorModeId.Thresholds } };
+    const frames = ['A', 'B', 'C'].map((refId) => query(refId, { colorBy: 'pct' }, config));
+    const configs = [{ id: 'A', name: 'Cables' }, { id: 'B', visible: false }, { id: 'C' }];
+
+    expect(entriesWith(configs, ...frames).map(({ layerId, title }) => [layerId, title])).toEqual([
+      ['A', 'Cables'],
+      ['C', 'Query C'],
     ]);
   });
 });

@@ -26,6 +26,9 @@ export interface ConversionWarnings {
 export type FeatureKey = string | number;
 
 export interface ConversionResult {
+  /** The layer drawn from this result (docs/phase_7.md, Design §2); the refId unless set otherwise. */
+  layerId: string;
+  /** The query the frame came from. */
   refId: string;
   rowCount: number;
   featureCollection: FeatureCollection<SupportedGeometry>;
@@ -51,8 +54,13 @@ export const MAX_WARNING_SAMPLES = 5;
  * Every non-geometry column becomes a feature property; rows that can't be converted are
  * skipped and counted by warning kind. Never throws.
  */
-export function frameToFeatureCollection(frame: DataFrame, mapping: GeometryMapping = {}): ConversionResult {
+export function frameToFeatureCollection(
+  frame: DataFrame,
+  mapping: GeometryMapping = {},
+  layerId = frame.refId ?? ''
+): ConversionResult {
   const result: ConversionResult = {
+    layerId,
     refId: frame.refId ?? '',
     rowCount: frame.length,
     featureCollection: { type: 'FeatureCollection', features: [] },
