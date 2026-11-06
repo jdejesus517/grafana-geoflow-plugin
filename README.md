@@ -2,7 +2,7 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** Phase 5 is complete: the panel draws query results on an interactive basemap, styled per query, with tooltips that show each feature's attributes. Data-driven styling arrives in Phase 6. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: pre-MVP.** Phase 7 is complete: the panel draws each query as a named layer on an interactive basemap, styled per query and by value, with tooltips that show each feature's attributes. Refresh behavior comes in Phase 8. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
@@ -28,10 +28,28 @@ WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
 - **Precision `6`:** about 0.1 m, which roughly halves the size of the result compared with the default.
 - **Other columns:** become the feature's properties, shown in its tooltip.
 - **An `id` column** (any column named `id`) identifies features. Keep it unique: a pinned tooltip then follows its feature when the dashboard refreshes. Text ids work too.
+- **Other geometry or id columns:** pick them in the [Layers](#layers) list when detection chooses the wrong ones, or a query returns two geometry columns.
 
-**Each query is a layer.** Queries A, B, C… are drawn in that order, later ones on top, each in its own color from the Grafana theme unless styled otherwise (see [Styling](#styling)). Queries without a geometry column are left out.
+**Each query is a layer.** Queries A, B, C… are drawn in that order, later ones on top, each in its own color from the Grafana theme unless styled otherwise (see [Styling](#styling)). Queries without a geometry column are left out. The [Layers](#layers) list names, reorders and hides them.
 
 **Rows that can't be drawn are skipped:** empty or invalid geometry, GeometryCollections, other coordinate systems, and coordinates outside ±180/±90. Turn on **Show data summary** in the panel options to see how many rows each query lost, and why. If no query has a geometry column, the panel says what to select instead. For example, a raw PostGIS `geom` column needs `ST_AsGeoJSON(geom)`.
+
+## Layers
+
+**Layers**, at the top of the panel options, lists one row per query, top layer first:
+
+- **Visibility** (the eye): a hidden layer isn't drawn, has no tooltips and no legend entry. Showing it again is quick: its data stays loaded.
+- **Move up** and **Move down** change the drawing order.
+- Click a row's name for its settings:
+  - **Name:** shown in tooltips, the legend and the data summary, in place of "Query A" or the frame's name
+  - **Geometry column** and **ID column:** override what GeoFlow detects. A named column the query no longer returns leaves the layer empty and says so in the row and the data summary.
+  - **Tooltips:** off for background layers, such as building footprints under other features. The layer is drawn, but hovering it shows the features below instead.
+
+The list follows the queries: a new query appears on top with default settings. Settings of a query that no longer returns data, or whose letter was renamed, stay in the list as **No data** until removed with the bin button, as Grafana does with field overrides. Moving or hiding a layer doesn't change the other layers' colors.
+
+Style isn't in the list: it stays in the field options, per query through overrides (see [Styling](#styling)).
+
+**A query that returns several frames** gets a layer for each, named after the frame. Grafana's **Partition by values** transformation splits one query this way, for example cables by placement: each value is then its own layer, named `placement=aerial` with the default **As label** naming, or `aerial` with **As frame name**. With **As frame name**, each value's frames can also be styled with a **Fields returned by query** override on its own query name, such as `A-aerial`.
 
 ## Tooltips
 
@@ -39,7 +57,7 @@ Hover a feature to highlight it and see its attributes. Click to pin the tooltip
 
 - **Several features under the pointer:** a pinned tooltip pages through them with **1 of 3**, topmost first. Hover shows the topmost and how many more there are.
 - **Data links** configured on the panel's fields appear at the bottom of the pinned tooltip.
-- **Closing:** press Escape, click the close button, click empty map, or change the basemap. A pinned tooltip stays put while you pan and zoom.
+- **Closing:** press Escape, click the close button, click empty map, or change the basemap. Hiding a layer, or turning its tooltips off, closes its tooltips. A pinned tooltip stays put while you pan and zoom.
 - **Size:** a tooltip fits in the room beside its feature. When there are more fields than fit, the list scrolls in a pinned tooltip; pin a hover tooltip to scroll it.
 
 **Tooltip** in the panel options chooses **Hover** (hover shows a tooltip, click pins it), **Click** (only clicking shows one, for busy maps) or **Off**.
@@ -63,7 +81,7 @@ Style the map in the panel's field options, as in Grafana's other panels:
   - **Classic palette** (default): each query in the next palette color, in query order
   - **Single color:** one color, alpha included
   - **Shades of a color**
-  - **Classic palette (by series name):** a color from the query's name (the frame name, or its letter), the same wherever the query is
+  - **Classic palette (by series name):** a color from the layer's name: its name in the Layers list, else the frame name or the query's letter
   - The by-value schemes (From thresholds, gradients) are for columns that color features, under [Coloring by value](#coloring-by-value). On a layer's own color they act as Classic palette.
 - **Map style:**
   - **Opacity:** the whole layer: lines, points, outlines and fills
@@ -144,16 +162,17 @@ npm run server     # start Grafana and PostGIS in Docker (terminal 2)
 
 Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 
-| Dashboard      | Shows                                                                                                                                                 |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 00 Smoke       | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                             |
-| 01 Adapter     | How each kind of query result converts to GeoJSON.                                                                                                    |
-| 02 Basemap     | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                |
-| 03 Many panels | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                       |
-| 04 Geometry    | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.       |
-| 05 Tooltips    | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes. |
-| 06 Style       | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                             |
-| 07 Data-driven | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.        |
+| Dashboard      | Shows                                                                                                                                                      |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 00 Smoke       | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                                  |
+| 01 Adapter     | How each kind of query result converts to GeoJSON.                                                                                                         |
+| 02 Basemap     | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                     |
+| 03 Many panels | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                            |
+| 04 Geometry    | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.            |
+| 05 Tooltips    | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes.      |
+| 06 Style       | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                  |
+| 07 Data-driven | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.             |
+| 08 Layers      | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values. |
 
 ### Docker environment
 
@@ -204,7 +223,7 @@ E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers e
 Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
 
 - **Drawn-feature counts.** `renderedFeatures(panel)` in `tests/fixtures/` asks the panel's map which features it drew. This goes through a small test hook in the plugin ([src/panel/testHook.ts](src/panel/testHook.ts)), which does nothing unless a test triggers it. All test-only code in `src/` is marked with a `// Test hook:` comment: `grep -rn "Test hook:" src/` lists it.
-- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style and 07 Data-driven dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
+- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style, 07 Data-driven and 08 Layers dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
 
 To hover or click a known feature, `mapPoint(panel, [lon, lat], view)` in `tests/fixtures/` works out where a coordinate is on screen from the panel's view in the dashboard JSON. It's plain Web Mercator math, so it needs no test hook.
 
@@ -220,7 +239,7 @@ node scripts/capture-frames.mjs
 
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
-- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md)
+- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md)
 
 ## License
 

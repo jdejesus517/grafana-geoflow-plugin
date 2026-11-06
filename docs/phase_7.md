@@ -1,6 +1,6 @@
 # Phase 7: Multiple layers
 
-Status: **Approved** (2026-11-05). Decisions 1–11 accepted as proposed.
+Status: **Implemented** (2026-11-06). Decisions 1–11 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §2.2 (`LayersEditor`), §2.4 (`LayerSpec`), §3.2 (geometry field resolution), §3.4 (layer binding modes), §5.3 (Phase 7 row).
 
 ## Goal
@@ -274,13 +274,66 @@ Accepted as proposed (2026-11-05):
 
 ## Outcome
 
+Implemented on branch `phase-7` in eight commits: one per step, and one that gives the adapter e2e tests time for query results (see Findings):
+- 444 unit and component tests pass, and 47 e2e tests (plus the login setup). In full-suite runs, `basemap.spec.ts` failed now and then: the known zoom control test, and a few times a check that the map's canvas shows within 5 s (see Findings).
+- the new layers e2e tests compare three stored screenshots. The Phase 3 geometry, Phase 5 style and Phase 6 data-driven screenshots still match, so saved dashboards draw as before.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Layers list | Met. A **Layers** group, the first of GeoFlow's options (after Grafana's own panel options), with one row per layer, top first; rows flag a missing geometry column and gone layers. |
+| 2 | Names | Met. Tooltips, the legend and the data summary use the layer's name; the default is the frame's name or "Query A" (component and e2e tests). |
+| 3 | Order | Met. Moving a layer restacks the map without `setData` (unit tests); the e2e screenshots show a patch panel above and below its building, and the pinned tooltip lists the cable above it first. |
+| 4 | Visibility | Met. Hidden layers keep their source and feature-state, aren't hit-tested, and have no legend entry; their tooltips close. On 100k points with the GPU, hiding caused no main-thread task over 50 ms, and showing none over 132 ms. |
+| 5 | Tooltips per layer | Met. With Tooltips off, the building under the pointer shows no tooltip (e2e). |
+| 6 | Geometry column | Met. Picked from the query's text and JSON columns; a missing one empties the layer and says so in its row and the data summary, without falling back to detection. |
+| 7 | ID column | Met, with a data summary line when the column is missing. |
+| 8 | Saved dashboards unchanged | Met. The Phase 3, 5 and 6 screenshots match. Palette colors go by frame position, so moving or hiding a layer recolors nothing (unit test). |
+| 9 | Several frames per query | Met. Each frame gets its own layer; a Partition by values split draws three layers (e2e). |
+| 10 | Layer binding | Met. `layerBinding: { mode: 'perFrame' }` is saved, not shown; settings are keyed by layer id. |
+| 11 | Engine boundary | Met. The engine gets `name` and `visible` in `LayerSpec`s. |
+| 12 | Tests | Met locally; CI to be filled in. |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Change from Phase 6 |
+|---|---|---|---|
+| `module.js` | 58.7 KiB | 17.4 KiB | +10.3 KiB: the Layers editor and the binding. `@grafana/ui`'s Combobox stays external. |
+| `maplibre.js` (engine and MapLibre CSS) | 41.7 KiB | 11.7 KiB | +0.1 KiB: visibility |
+| `36.js` (MapLibre) | 1139 KiB | 294 KiB | none |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| Frames without a unique name: `${refId}:${position}` | Their labels first (`A-undefined:placement=aerial`), then `#n` by position (`A:#2`) | Step 7.1: Partition by values' default naming leaves frames unnamed, with the value as a label on every field. The `#` keeps a position from looking like a frame name. |
+| `buildLayerSpecs` switches on the binding mode | `bindLayers` does, before the conversion; `buildLayerSpecs` takes its layers | The conversion needs each layer's id and columns, so binding has to come first. |
+| By name hashes the layer's name | A typed name, else what Phase 5 hashed: the frame's name or refId | The default name, "Query A", would have changed the By name colors of saved dashboards (exit criterion 8). |
+| If Grafana follows refId renames, a way to move settings to another layer | None | Step 7.1: Grafana doesn't follow renames in overrides either, so settings left behind behave like Grafana's own. |
+| A missing geometry column reported as "Geometry column: no column named footprint" | The conversion's own message, "No column named "footprint"", in the row, the settings and the data summary | It was already there for explicit columns (Phase 1); the row says "No geometry" and the settings name the column. |
+| — | The data summary reports a missing ID column | Without it, a missing ID column silently falls back to row numbers. |
+| — | A pinned tooltip that closed because its layer was hidden stays closed when the layer is shown again | Coming back with the layer, after the user had moved on, would be a surprise. |
+| Component tests for picking columns | Covered by the e2e test | Grafana's Combobox virtualizes its list, which renders no options in jsdom. |
+| — | The adapter e2e tests wait up to 30 s for query results | They failed now and then in full-suite runs, locally and on Grafana 13.3.0 in Phase 6's CI. |
+
+### Findings for later phases
+
+- **Partition by values gives per-value layers today** (step 7.1): with **As frame name**, each value is its own query name for overrides, line style included. Phase 11 should start from what it adds beyond that: the cap, "Other", "(none)" and palette colors per value. See [architecture.md §3.4](architecture.md#34-layer-binding-modes).
+- **The Layers list follows the data**, through the editor context's frames: a renamed or new query shows once the queries have run, and a query that returns nothing has no row.
+- **Showing a hidden 100k-point layer** costs tasks of up to about 130 ms while MapLibre rebuilds its buckets, against none for hiding. Phase 9's benchmark should include it.
+- **Grafana's Combobox can't be driven in jsdom:** its options are virtualized. Pick options in e2e tests.
+- **e2e under load:** the full suite's parallel workers slow Grafana down. Checks that wait for query results or the map's canvas need more than Playwright's 5 s default; `basemap.spec.ts` still uses the default and fails now and then (Phase 9, hardening).
+- **React's lint rules forbid setting state in an effect.** State that follows other state (closing a pinned tooltip) is adjusted during render instead, as React's docs suggest.
+
 ### Step 7.1 findings
 
 Checked on Grafana 13.2.4, in a dashboard created through the API and read through the data summary, and in Grafana's source. The visibility cost was measured with MapLibre 6.16 in a page of its own: 100k points, one circle layer, Playwright's Chromium on this machine's GPU, as in Phase 6.
 
 | Check | Result |
 |---|---|
-| `context.data` in a custom editor | Typed as the panel's `DataFrame[]` (`StandardEditorContext.data`). How it follows query changes in the options pane is checked in step 7.4. |
+| `context.data` in a custom editor | Typed as the panel's `DataFrame[]` (`StandardEditorContext.data`). In the options pane (step 7.4), it follows the data, after transformations: renaming B to `cables` changed nothing until the queries ran, then `cables` showed as a new layer and B's settings as gone. A new query that returns nothing has no frame, so no row. |
 | Renaming a query's refId | **Grafana doesn't follow it either.** After renaming B to `cables` and running the queries, a **Fields returned by query** override still holds `B`, and its picker shows "Select query refId". GeoFlow's layer settings behave the same way: they show as a gone layer. No way to move settings to another layer is added (Risks). |
 | Partition by values: refIds | Each split frame gets the refId `${refId}-${frame name}`. With the default naming, **As label**, the frame keeps the query's frame name, which PostgreSQL frames don't have: all three cable frames came back as `A-undefined`. Today they'd share one layer id. With **As frame name**, the refIds are `A-underground`, `A-aerial` and `A-mixed`, and the names the values. |
 | Partition by values: names | With **As label**, every field of a split frame carries the value as a label (`placement: aerial`). So frames without a name are named and identified by their labels, before falling back to their position (Design §2, a difference from the plan). |
