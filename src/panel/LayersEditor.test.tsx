@@ -1,0 +1,165 @@
+import React from 'react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { DataFrame, FieldType, StandardEditorsRegistryItem, toDataFrame } from '@grafana/data';
+import { LayerConfig } from '../adapter';
+import { LayersEditor } from './LayersEditor';
+import { DEFAULT_OPTIONS } from './options';
+
+const point = '{"type":"Point","coordinates":[-78.78,35.78]}';
+
+function frame(refId: string, name?: string): DataFrame {
+  return toDataFrame({
+    refId,
+    name,
+    fields: [
+      { name: 'id', type: FieldType.number, values: [1] },
+      { name: 'footprint', type: FieldType.string, values: [point] },
+      { name: 'centroid', type: FieldType.string, values: [point] },
+      { name: 'size', type: FieldType.number, values: [3] },
+    ],
+  });
+}
+
+const noGeometry = toDataFrame({ refId: 'N', fields: [{ name: 'name', type: FieldType.string, values: ['a'] }] });
+
+function setup(value: LayerConfig[] | undefined, data: DataFrame[] = [frame('A'), frame('B'), frame('C')]) {
+  const onChange = jest.fn();
+  const props = {
+    value,
+    onChange,
+    item: {} as StandardEditorsRegistryItem,
+    context: { data, options: { ...DEFAULT_OPTIONS, layers: value ?? [] } },
+  };
+  const view = render(<LayersEditor {...props} />);
+  const rerender = (next: LayerConfig[]) =>
+    view.rerender(
+      <LayersEditor
+        {...props}
+        value={next}
+        context={{ ...props.context, options: { ...DEFAULT_OPTIONS, layers: next } }}
+      />
+    );
+  return { onChange, rerender };
+}
+
+const rows = () =>
+  screen.getAllByTestId(/^geoflow-layer-row-/).map((row) => row.dataset.testid!.replace('geoflow-layer-row-', ''));
+const lastSaved = (onChange: jest.Mock): LayerConfig[] => onChange.mock.calls.at(-1)[0];
+
+describe('LayersEditor', () => {
+  it('lists one row per query, top layer first, and selects the top one', () => {
+    setup(undefined);
+
+    expect(rows()).toEqual(['C', 'B', 'A']);
+    expect(within(screen.getByTestId('geoflow-layer-settings')).getByText('Query C')).toBeInTheDocument();
+  });
+
+  it('saves every layer in the new order when one moves, with no other settings', () => {
+    const { onChange } = setup(undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'Move Query C down' }));
+
+    expect(lastSaved(onChange)).toEqual([{ id: 'B' }, { id: 'C' }, { id: 'A' }]);
+  });
+
+  it('disables moving the top layer up and the bottom layer down', () => {
+    setup(undefined);
+
+    expect(screen.getByRole('button', { name: 'Move Query C up' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Move Query A down' })).toBeDisabled();
+  });
+
+  it('hides and shows a layer, saving only what differs from the defaults', () => {
+    const { onChange, rerender } = setup([{ id: 'A' }, { id: 'B' }, { id: 'C' }]);
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Query B' }));
+    expect(lastSaved(onChange)).toEqual([{ id: 'A' }, { id: 'B', visible: false }, { id: 'C' }]);
+
+    rerender(lastSaved(onChange));
+    fireEvent.click(screen.getByRole('button', { name: 'Show Query B' }));
+    expect(lastSaved(onChange)).toEqual([{ id: 'A' }, { id: 'B' }, { id: 'C' }]);
+  });
+
+  it('renames the selected layer on blur, with its default name as the placeholder', () => {
+    const { onChange } = setup(undefined, [frame('A', 'Cables')]);
+    const name = screen.getByLabelText(/^Name/);
+    expect(name).toHaveAttribute('placeholder', 'Cables');
+
+    fireEvent.change(name, { target: { value: 'Fiber cables' } });
+    fireEvent.blur(name);
+    expect(lastSaved(onChange)).toEqual([{ id: 'A', name: 'Fiber cables' }]);
+  });
+
+  it('clears a typed name when the input is emptied', () => {
+    const { onChange } = setup([{ id: 'A', name: 'Fiber cables' }], [frame('A')]);
+    const name = screen.getByLabelText(/^Name/);
+    fireEvent.change(name, { target: { value: ' ' } });
+    fireEvent.blur(name);
+
+    expect(lastSaved(onChange)).toEqual([{ id: 'A' }]);
+  });
+
+  it('shows the settings of the row clicked', () => {
+    setup(undefined);
+    fireEvent.click(screen.getByRole('button', { name: 'Query A' }));
+
+    expect(within(screen.getByTestId('geoflow-layer-settings')).getByText('Query A')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Query A' })).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('turns tooltips off for the selected layer', () => {
+    const { onChange } = setup(undefined, [frame('A')]);
+    fireEvent.click(screen.getByLabelText(/^Tooltips/));
+
+    expect(lastSaved(onChange)).toEqual([{ id: 'A', tooltips: false }]);
+  });
+
+  // Picking a column is covered by the e2e tests: Combobox virtualizes its list, which renders no
+  // options in jsdom.
+  it('names the detected columns in the column pickers, or the fallback', () => {
+    setup(undefined, [frame('A'), noGeometry]);
+    expect(screen.getByLabelText(/^Geometry column/)).toHaveAttribute('placeholder', 'Auto: none found');
+    expect(screen.getByLabelText(/^ID column/)).toHaveAttribute('placeholder', 'Auto: row number');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Query A' }));
+    expect(screen.getByLabelText(/^Geometry column/)).toHaveAttribute('placeholder', 'Auto: footprint');
+    expect(screen.getByLabelText(/^ID column/)).toHaveAttribute('placeholder', 'Auto: id');
+  });
+
+  it('shows a saved column in its picker', () => {
+    setup([{ id: 'A', geometryField: 'centroid', idField: 'size' }], [frame('A')]);
+
+    expect(screen.getByLabelText(/^Geometry column/)).toHaveValue('centroid');
+    expect(screen.getByLabelText(/^ID column/)).toHaveValue('size');
+  });
+
+  it('says why a layer has no geometry, in its row and its settings', () => {
+    setup([{ id: 'A', geometryField: 'shape' }], [frame('A'), noGeometry]);
+
+    expect(within(screen.getByTestId('geoflow-layer-row-N')).getByText('No geometry')).toBeInTheDocument();
+    expect(within(screen.getByTestId('geoflow-layer-row-A')).getByText('No geometry')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Query A' }));
+    expect(screen.getByText('No column named "shape"')).toBeInTheDocument();
+  });
+
+  it('keeps the settings of a gone layer, marked No data, until they are removed', () => {
+    const { onChange } = setup([{ id: 'Z', name: 'Old cables' }, { id: 'A' }], [frame('A')]);
+
+    expect(rows()).toEqual(['Z', 'A']);
+    expect(within(screen.getByTestId('geoflow-layer-row-Z')).getByText('No data')).toBeInTheDocument();
+    expect(screen.getByTestId('geoflow-layer-settings')).toHaveTextContent('No query returns this layer now');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Remove the settings of Old cables' }));
+    expect(lastSaved(onChange)).toEqual([{ id: 'A' }]);
+  });
+
+  it('lists saved layers before the queries have run', () => {
+    setup([{ id: 'A', name: 'Cables' }], []);
+
+    expect(rows()).toEqual(['A']);
+  });
+
+  it('asks for the queries to run when there is nothing to list', () => {
+    setup(undefined, []);
+
+    expect(screen.getByText(/Run the panel's queries/)).toBeInTheDocument();
+  });
+});

@@ -1,0 +1,298 @@
+import React, { useMemo, useState } from 'react';
+import { css, cx } from '@emotion/css';
+import { DataFrame, FieldType, GrafanaTheme2, StandardEditorProps } from '@grafana/data';
+import { Combobox, ComboboxOption, Field, Icon, IconButton, Input, Stack, Switch, useStyles2 } from '@grafana/ui';
+import { BoundLayer, LayerConfig, bindLayers, bindPerFrame, detectGeometryField } from '../adapter';
+import { GeoFlowOptions } from './options';
+
+const getStyles = (theme: GrafanaTheme2) => ({
+  list: css`
+    display: flex;
+    flex-direction: column;
+    gap: ${theme.spacing(0.5)};
+    margin-bottom: ${theme.spacing(2)};
+  `,
+  row: css`
+    display: flex;
+    align-items: center;
+    gap: ${theme.spacing(1)};
+    min-height: ${theme.spacing(4)};
+    padding: ${theme.spacing(0, 1)};
+    background: ${theme.colors.background.secondary};
+    border: 1px solid ${theme.colors.border.weak};
+    border-radius: ${theme.shape.radius.default};
+    cursor: pointer;
+
+    & > * {
+      flex-shrink: 0;
+    }
+  `,
+  selected: css`
+    border-color: ${theme.colors.primary.border};
+  `,
+  name: css`
+    flex: 1 1 auto !important;
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    color: inherit;
+    text-align: left;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    background: none;
+    border: none;
+  `,
+  hidden: css`
+    color: ${theme.colors.text.secondary};
+  `,
+  secondary: css`
+    color: ${theme.colors.text.secondary};
+    white-space: nowrap;
+  `,
+  id: css`
+    flex-shrink: 1 !important;
+    max-width: 25%;
+    overflow: hidden;
+    color: ${theme.colors.text.secondary};
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  `,
+  warning: css`
+    color: ${theme.colors.warning.text};
+    white-space: nowrap;
+  `,
+  heading: css`
+    margin-bottom: ${theme.spacing(1)};
+    font-weight: ${theme.typography.fontWeightMedium};
+  `,
+  note: css`
+    color: ${theme.colors.text.secondary};
+  `,
+});
+
+/**
+ * The Layers list (docs/phase_7.md, Design §4): one row per layer, top layer first, with
+ * visibility and move buttons, and the settings of the selected layer below. The rows follow the
+ * panel's queries; saved settings whose layer is gone stay until removed. Any change saves every
+ * layer in its current order, each with only the settings that differ from the defaults.
+ */
+export const LayersEditor = ({
+  value,
+  onChange,
+  context,
+}: StandardEditorProps<LayerConfig[] | undefined, unknown, GeoFlowOptions>) => {
+  const styles = useStyles2(getStyles);
+  const frames = useMemo(() => context.data ?? [], [context.data]);
+  const layers = bindLayers(frames, value, context.options?.layerBinding);
+  // The names layers get without a typed one, for the Name placeholder.
+  const defaultNames = useMemo(
+    () => new Map(bindPerFrame(frames, []).map((layer) => [layer.id, layer.name])),
+    [frames]
+  );
+  const [selectedId, setSelectedId] = useState<string>();
+  const selected = layers.find((layer) => layer.id === selectedId) ?? layers[0];
+
+  const save = (next: BoundLayer[], patch?: { id: string; changes: Partial<LayerConfig> }) =>
+    onChange(
+      next.map((layer) => {
+        const config = { ...(layer.config ?? { id: layer.id }), ...(patch?.id === layer.id && patch.changes) };
+        return withoutDefaults(config);
+      })
+    );
+  const update = (id: string, changes: Partial<LayerConfig>) => save(layers, { id, changes });
+  const move = (index: number, by: number) => {
+    const next = [...layers];
+    [next[index], next[index + by]] = [next[index + by], next[index]];
+    save(next);
+  };
+
+  if (layers.length === 0) {
+    return <div className={styles.note}>Run the panel&apos;s queries to list their layers.</div>;
+  }
+
+  return (
+    <div data-testid="geoflow-layers-editor">
+      <div className={styles.list}>
+        {layers.map((layer, index) => {
+          const frame = frameOf(frames, layer);
+          const problem = frame && geometryProblem(frame, layer);
+          return (
+            <div
+              key={layer.id}
+              className={cx(styles.row, layer === selected && styles.selected)}
+              onClick={() => setSelectedId(layer.id)}
+              data-testid={`geoflow-layer-row-${layer.id}`}
+            >
+              {frame ? (
+                <IconButton
+                  name={layer.visible ? 'eye' : 'eye-slash'}
+                  tooltip={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    update(layer.id, { visible: !layer.visible });
+                  }}
+                />
+              ) : (
+                <Icon name="exclamation-triangle" className={styles.secondary} />
+              )}
+              <button
+                type="button"
+                className={cx(styles.name, !layer.visible && styles.hidden)}
+                title={layer.name}
+                aria-pressed={layer === selected}
+              >
+                {layer.name}
+              </button>
+              {!frame && <span className={styles.secondary}>No data</span>}
+              {problem && <span className={styles.warning}>No geometry</span>}
+              <span className={styles.id} title={layer.id}>
+                {layer.id}
+              </span>
+              <IconButton
+                name="arrow-up"
+                tooltip={`Move ${layer.name} up`}
+                disabled={index === 0}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  move(index, -1);
+                }}
+              />
+              <IconButton
+                name="arrow-down"
+                tooltip={`Move ${layer.name} down`}
+                disabled={index === layers.length - 1}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  move(index, 1);
+                }}
+              />
+              {!frame && (
+                <IconButton
+                  name="trash-alt"
+                  tooltip={`Remove the settings of ${layer.name}`}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    save(layers.filter(({ id }) => id !== layer.id));
+                  }}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+      {selected && (
+        <LayerSettings
+          key={selected.id}
+          layer={selected}
+          frame={frameOf(frames, selected)}
+          defaultName={defaultNames.get(selected.id) ?? selected.id}
+          onChange={(changes) => update(selected.id, changes)}
+        />
+      )}
+    </div>
+  );
+};
+
+interface SettingsProps {
+  layer: BoundLayer;
+  frame: DataFrame | undefined;
+  defaultName: string;
+  onChange: (changes: Partial<LayerConfig>) => void;
+}
+
+function LayerSettings({ layer, frame, defaultName, onChange }: SettingsProps) {
+  const styles = useStyles2(getStyles);
+  const id = `geoflow-layer-${layer.id}`;
+  if (!frame) {
+    return (
+      <div className={styles.note} data-testid="geoflow-layer-settings">
+        No query returns this layer now. Its settings are kept until you remove them.
+      </div>
+    );
+  }
+  const geometryOptions = columnOptions(frame, (type) => type === FieldType.string || type === FieldType.other);
+  const detected = detectGeometryField(frame);
+  const idDefault = frame.fields.find((field) => field.name.toLowerCase() === 'id')?.name;
+  const problem = geometryProblem(frame, layer);
+
+  return (
+    <div data-testid="geoflow-layer-settings">
+      <div className={styles.heading}>{layer.name}</div>
+      <Stack direction="column" gap={0}>
+        <Field label="Name" description="Shown in tooltips, the legend and the data summary.">
+          {/* Uncontrolled, committed on blur, like CheckedTextEditor. */}
+          <Input
+            key={layer.config?.name ?? ''}
+            id={`${id}-name`}
+            defaultValue={layer.config?.name ?? ''}
+            placeholder={defaultName}
+            onBlur={(e) => {
+              const name = e.currentTarget.value.trim();
+              if (name !== (layer.config?.name ?? '')) {
+                onChange({ name: name || undefined });
+              }
+            }}
+          />
+        </Field>
+        <Field
+          label="Geometry column"
+          description="The column with GeoJSON geometry."
+          invalid={!!problem}
+          error={problem}
+        >
+          <Combobox
+            id={`${id}-geometry`}
+            options={geometryOptions}
+            value={layer.geometryField ?? null}
+            placeholder={detected.found ? `Auto: ${detected.field.name}` : 'Auto: none found'}
+            isClearable
+            onChange={(option) => onChange({ geometryField: option?.value })}
+          />
+        </Field>
+        <Field label="ID column" description="Unique ids keep tooltips on the same feature across refreshes.">
+          <Combobox
+            id={`${id}-id`}
+            options={columnOptions(frame, () => true)}
+            value={layer.idField ?? null}
+            placeholder={idDefault ? `Auto: ${idDefault}` : 'Auto: row number'}
+            isClearable
+            onChange={(option) => onChange({ idField: option?.value })}
+          />
+        </Field>
+        <Field label="Tooltips" description="Off: the layer is drawn, but its features can't be hovered or clicked.">
+          <Switch
+            id={`${id}-tooltips`}
+            value={layer.tooltips}
+            onChange={() => onChange({ tooltips: !layer.tooltips })}
+          />
+        </Field>
+      </Stack>
+    </div>
+  );
+}
+
+function frameOf(frames: DataFrame[], layer: BoundLayer): DataFrame | undefined {
+  return layer.frameIndex === undefined ? undefined : frames[layer.frameIndex];
+}
+
+/** Why the layer has no geometry column, or undefined when it has one. */
+function geometryProblem(frame: DataFrame, layer: BoundLayer): string | undefined {
+  const detection = detectGeometryField(frame, layer.geometryField);
+  return detection.found ? undefined : detection.detail;
+}
+
+function columnOptions(frame: DataFrame, include: (type: FieldType) => boolean): Array<ComboboxOption<string>> {
+  return frame.fields.filter((field) => include(field.type)).map(({ name }) => ({ label: name, value: name }));
+}
+
+/** The config with only what differs from the defaults, so saved dashboards stay small. */
+function withoutDefaults({ id, name, visible, tooltips, geometryField, idField }: LayerConfig): LayerConfig {
+  return {
+    id,
+    ...(name && { name }),
+    ...(visible === false && { visible }),
+    ...(tooltips === false && { tooltips }),
+    ...(geometryField && { geometryField }),
+    ...(idField && { idField }),
+  };
+}

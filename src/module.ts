@@ -1,6 +1,7 @@
 import { FieldColorModeId, FieldConfigProperty, FieldType, PanelPlugin, StandardEditorProps } from '@grafana/data';
 import { DASH_PATTERN_EXAMPLE, LineStyleOption, MAP_STYLE_RANGES, dashPatternProblem } from './adapter';
 import { CheckedTextEditor, CheckedTextEditorSettings } from './panel/CheckedTextEditor';
+import { LayersEditor } from './panel/LayersEditor';
 import { MapPanel } from './panel/MapPanel';
 import {
   BasemapKind,
@@ -12,6 +13,7 @@ import {
   tileUrlProblem,
 } from './panel/options';
 
+const LAYERS = ['Layers'];
 const BASEMAP = ['Basemap'];
 const VIEW = ['Initial view'];
 const TOOLTIP = ['Tooltip'];
@@ -137,6 +139,26 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
   })
   .setPanelOptions((builder) =>
     builder
+      // The Layers list comes first: it's the panel's content (docs/phase_7.md, Design §4).
+      .addCustomEditor({
+        id: 'layers',
+        path: 'layers',
+        name: '',
+        description: 'Top layer first. Style each layer with field overrides on its query.',
+        category: LAYERS,
+        editor: LayersEditor,
+        defaultValue: DEFAULT_OPTIONS.layers,
+      })
+      // Saved so Phase 11 can add byColumn without a migration; one mode isn't worth showing.
+      .addCustomEditor({
+        id: 'layerBinding',
+        path: 'layerBinding',
+        name: 'Layer binding',
+        category: LAYERS,
+        editor: () => null,
+        defaultValue: DEFAULT_OPTIONS.layerBinding,
+        showIf: () => false,
+      })
       // A select: as radio buttons, the labels were cut off (docs/phase_4.md, Findings).
       .addSelect<BasemapKind, { options: Array<{ value: BasemapKind; label: string }> }>({
         path: 'basemap.kind',
