@@ -269,3 +269,21 @@ Accepted as proposed (2026-11-05):
 | 9 | Settings of gone queries | **Kept and shown as "No data"**, with a remove button. A query that fails for a moment keeps its settings. | Dropped when the query is gone: a failing query would lose its name and order. |
 | 10 | E2E checks | **Stored screenshots for order and visibility, DOM checks for names, rendered feature counts for hidden layers**, as in Phases 5 and 6. | Screenshots only. |
 | 11 | Layer ids for several frames per query | **The refId for a query's only frame; `${refId}:${frame name}` for each frame when there are several**, by position when names are missing or repeat. Saved dashboards keep their ids, and a Partition by values split gets ids like Phase 11's `${refId}:${value}`. | Always `${refId}:${index}`: simpler, but a frame's settings move to another value when the values change. Or `${refId}:${frame name}` even for one frame: consistent, but changes every saved layer id. |
+
+---
+
+## Outcome
+
+### Step 7.1 findings
+
+Checked on Grafana 13.2.4, in a dashboard created through the API and read through the data summary, and in Grafana's source. The visibility cost was measured with MapLibre 6.16 in a page of its own: 100k points, one circle layer, Playwright's Chromium on this machine's GPU, as in Phase 6.
+
+| Check | Result |
+|---|---|
+| `context.data` in a custom editor | Typed as the panel's `DataFrame[]` (`StandardEditorContext.data`). How it follows query changes in the options pane is checked in step 7.4. |
+| Renaming a query's refId | **Grafana doesn't follow it either.** After renaming B to `cables` and running the queries, a **Fields returned by query** override still holds `B`, and its picker shows "Select query refId". GeoFlow's layer settings behave the same way: they show as a gone layer. No way to move settings to another layer is added (Risks). |
+| Partition by values: refIds | Each split frame gets the refId `${refId}-${frame name}`. With the default naming, **As label**, the frame keeps the query's frame name, which PostgreSQL frames don't have: all three cable frames came back as `A-undefined`. Today they'd share one layer id. With **As frame name**, the refIds are `A-underground`, `A-aerial` and `A-mixed`, and the names the values. |
+| Partition by values: names | With **As label**, every field of a split frame carries the value as a label (`placement: aerial`). So frames without a name are named and identified by their labels, before falling back to their position (Design §2, a difference from the plan). |
+| Partition by values: overrides | A **Fields returned by query** override matches the exact refId (`byFrameRefID`), so an override on `A` doesn't reach split frames, and one on `A-aerial` styles that value's frames alone. For Phase 11: per-value styling through overrides already works on a split with **As frame name**. |
+| Visibility cost | Hiding or showing through `visibility`: **no main-thread task over 50 ms**, and the layer is back in about 350 ms, while the worker rebuilds its tiles. Removing and adding the layer, and opacity 0, take the same. |
+| Feature-state across hide and show | Kept: a feature's `color` state is still there after hiding and showing its layer. |
