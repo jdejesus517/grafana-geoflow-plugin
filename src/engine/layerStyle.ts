@@ -26,6 +26,25 @@ export const HIGHLIGHT = { width: 2, radius: 2, strokeWidth: 2, fillOpacity: 0.2
 /** Feature-state keys the engine sets for highlights. */
 export const HOVERED_STATE = 'hovered';
 export const SELECTED_STATE = 'selected';
+/** Feature-state keys the engine sets for per-feature styles (docs/phase_6.md, Design §3). */
+export const COLOR_STATE = 'color';
+export const RADIUS_STATE = 'radius';
+
+/** Which of a layer's paint values come from per-feature styles. */
+export interface PerFeature {
+  color: boolean;
+  radius: boolean;
+}
+
+/**
+ * A layer reads feature-state only for what its per-feature styles set. Plain values elsewhere
+ * keep Phase 5's layers as they were, and a style change on them stays a cheap uniform update.
+ */
+export function perFeature({ featureStyles }: Pick<LayerSpec, 'featureStyles'>): PerFeature {
+  return { color: !!featureStyles?.colors, radius: !!featureStyles?.radii };
+}
+
+const NOT_PER_FEATURE: PerFeature = { color: false, radius: false };
 
 const highlighted: ExpressionSpecification = [
   'any',
@@ -33,8 +52,8 @@ const highlighted: ExpressionSpecification = [
   ['boolean', ['feature-state', HOVERED_STATE], false],
 ];
 
-function whenHighlighted(value: number, normal: number): ExpressionSpecification {
-  return ['case', highlighted, value, normal];
+function whenHighlighted(value: number | ExpressionSpecification, normal: number | ExpressionSpecification) {
+  return ['case', highlighted, value, normal] as ExpressionSpecification;
 }
 
 /**
@@ -102,38 +121,48 @@ function dashArray(lineStyle: LineStyle, lineWidth: number): number[] | undefine
 /**
  * Paint properties per style layer kind. Kept separate so the engine can diff them on a style
  * change; a property left out (a solid line's dash array) goes back to MapLibre's default.
+ * Per-feature colors and radii come from feature-state, with the layer's style where a feature
+ * has none.
  */
-export function paintFor(style: LayerStyle): Record<StyleLayerKind, Properties> {
+export function paintFor(style: LayerStyle, { color: colorPerFeature, radius: radiusPerFeature } = NOT_PER_FEATURE) {
   const { opacity } = style;
   const dashes = dashArray(style.lineStyle, style.lineWidth);
-  return {
+  const color: Value = colorPerFeature ? ['coalesce', ['feature-state', COLOR_STATE], style.color] : style.color;
+  const radius: number | ExpressionSpecification = radiusPerFeature
+    ? ['coalesce', ['feature-state', RADIUS_STATE], style.pointRadius]
+    : style.pointRadius;
+  const paint: Record<StyleLayerKind, Properties> = {
     fill: {
-      'fill-color': style.color,
+      'fill-color': color,
       'fill-opacity': whenHighlighted(
         Math.min(1, style.fillOpacity + HIGHLIGHT.fillOpacity) * opacity,
         style.fillOpacity * opacity
       ),
     },
     outline: {
-      'line-color': style.color,
+      'line-color': color,
       'line-opacity': opacity,
       'line-width': whenHighlighted(OUTLINE_WIDTH + HIGHLIGHT.width, OUTLINE_WIDTH),
     },
     line: {
-      'line-color': style.color,
+      'line-color': color,
       'line-opacity': opacity,
       'line-width': whenHighlighted(style.lineWidth + HIGHLIGHT.width, style.lineWidth),
       ...(dashes && { 'line-dasharray': dashes }),
     },
     circle: {
-      'circle-color': style.color,
+      'circle-color': color,
       'circle-opacity': opacity,
-      'circle-radius': whenHighlighted(style.pointRadius + HIGHLIGHT.radius, style.pointRadius),
+      'circle-radius': whenHighlighted(
+        typeof radius === 'number' ? radius + HIGHLIGHT.radius : ['+', radius, HIGHLIGHT.radius],
+        radius
+      ),
       'circle-stroke-color': style.outlineColor,
       'circle-stroke-opacity': opacity,
       'circle-stroke-width': whenHighlighted(HIGHLIGHT.strokeWidth, POINT_STROKE_WIDTH),
     },
   };
+  return paint;
 }
 
 /**
@@ -156,7 +185,7 @@ export function layoutFor(style: LayerStyle): Record<StyleLayerKind, Properties>
  */
 export function styleLayers(spec: LayerSpec): LayerSpecification[] {
   const source = dataSourceId(spec.id);
-  const paint = paintFor(spec.style);
+  const paint = paintFor(spec.style, perFeature(spec));
   const layout = layoutFor(spec.style);
   const id = (kind: StyleLayerKind) => styleLayerId(spec.id, kind);
   const layer = (kind: StyleLayerKind, type: 'fill' | 'line' | 'circle') =>

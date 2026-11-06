@@ -43,12 +43,25 @@ export interface LayerStyle {
   outlineColor: string;
 }
 
+/**
+ * Per-feature overrides of a layer's style, in feature order (`data.features`). An undefined
+ * entry, or a missing array, keeps the layer's style (docs/phase_6.md, Design §3).
+ */
+export interface FeatureStyles {
+  /** CSS colors for points, lines, outlines and fills. */
+  colors?: Array<string | undefined>;
+  /** Point radii, px. */
+  radii?: Array<number | undefined>;
+}
+
 /** One set of features drawn together; Phase 3 makes one per data frame. */
 export interface LayerSpec {
   /** Stable across refreshes, so the engine updates the layer instead of replacing it. */
   id: string;
   data: FeatureCollection<SupportedGeometry>;
   style: LayerStyle;
+  /** Colors and sizes from data (Phase 6), applied without reloading `data`. */
+  featureStyles?: FeatureStyles;
   /** Hover and click report this layer's features, and the pointer turns into a hand over them. */
   interactive: boolean;
 }

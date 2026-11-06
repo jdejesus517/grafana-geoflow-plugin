@@ -1,0 +1,4 @@
+/* Map screenshots show only the data; the legend is checked through the DOM. */
+[data-testid='geoflow-legend'] {
+  visibility: hidden;
+}

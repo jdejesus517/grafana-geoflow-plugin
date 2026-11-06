@@ -3,6 +3,7 @@ import {
   dataSourceId,
   layoutFor,
   paintFor,
+  perFeature,
   styleLayerId,
   styleLayerIds,
   styleLayers,
@@ -11,7 +12,7 @@ import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, BASEMAP_SOURCE_ID } from 
 import { LayerSpec, LayerStyle } from '../types';
 
 /** A paint value that changes for hovered or selected features. */
-const highlighted = (value: number, normal: number) => [
+const highlighted = (value: unknown, normal: unknown) => [
   'case',
   ['any', ['boolean', ['feature-state', 'selected'], false], ['boolean', ['feature-state', 'hovered'], false]],
   value,
@@ -155,6 +156,48 @@ describe('paintFor', () => {
       paint.line,
       paint.circle,
     ]);
+  });
+
+  describe('per feature', () => {
+    const color = ['coalesce', ['feature-state', 'color'], '#73bf69'];
+    const radius = ['coalesce', ['feature-state', 'radius'], 5];
+
+    it("takes colors from feature-state, with the layer's color as the fallback", () => {
+      const paint = paintFor(style, { color: true, radius: false });
+
+      expect(paint.fill['fill-color']).toEqual(color);
+      expect(paint.outline['line-color']).toEqual(color);
+      expect(paint.line['line-color']).toEqual(color);
+      expect(paint.circle['circle-color']).toEqual(color);
+      expect(paint.circle['circle-radius']).toEqual(highlighted(7, 5));
+    });
+
+    it('takes point radii from feature-state, still growing highlighted points', () => {
+      const paint = paintFor(style, { color: false, radius: true });
+
+      expect(paint.circle['circle-radius']).toEqual(highlighted(['+', radius, 2], radius));
+      expect(paint.circle['circle-color']).toBe('#73bf69');
+      expect(paint.line['line-width']).toEqual(paintFor(style).line['line-width']);
+    });
+
+    it('reads feature-state only for what the per-feature styles set', () => {
+      expect(perFeature(spec)).toEqual({ color: false, radius: false });
+      expect(perFeature({ featureStyles: {} })).toEqual({ color: false, radius: false });
+      expect(perFeature({ featureStyles: { colors: [] } })).toEqual({ color: true, radius: false });
+      expect(perFeature({ featureStyles: { radii: [undefined] } })).toEqual({ color: false, radius: true });
+    });
+
+    it('is what styleLayers paints for a layer with per-feature styles', () => {
+      const styled: LayerSpec = { ...spec, featureStyles: { colors: ['#f00'], radii: [3] } };
+      const paint = paintFor(style, { color: true, radius: true });
+
+      expect(styleLayers(styled).map((layer) => layer.paint)).toEqual([
+        paint.fill,
+        paint.outline,
+        paint.line,
+        paint.circle,
+      ]);
+    });
   });
 });
 

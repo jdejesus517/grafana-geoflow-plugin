@@ -64,6 +64,7 @@ Style the map in the panel's field options, as in Grafana's other panels:
   - **Single color:** one color, alpha included
   - **Shades of a color**
   - **Classic palette (by series name):** a color from the query's name (the frame name, or its letter), the same wherever the query is
+  - The by-value schemes (From thresholds, gradients) are for columns that color features, under [Coloring by value](#coloring-by-value). On a layer's own color they act as Classic palette.
 - **Map style:**
   - **Opacity:** the whole layer: lines, points, outlines and fills
   - **Fill opacity:** polygon interiors
@@ -74,6 +75,24 @@ Style the map in the panel's field options, as in Grafana's other panels:
 **Styling one query:** add a field override with **Fields returned by query**, pick the query, and add the properties to change. An override by field name, such as `geometry`, styles every query whose geometry column has that name. GeoFlow reads each query's style from its geometry column, so the style options do nothing on other columns.
 
 Hovered and selected features stand out from whatever style is set. Changing a style only repaints the map: the data isn't converted or loaded again.
+
+## Coloring by value
+
+Color or size each feature by a column of its query: a patch panel red when it's over 80% full, a cable colored by placement, a splice case sized by how many splices it holds. Under **Map style**:
+
+- **Color by** picks the column. Each feature is drawn in the color Grafana gives that column's value, the same color a table cell or stat would show. Set the colors on the column itself, usually with an override on its name:
+  - **Thresholds,** with **Color scheme** set to **From thresholds**
+  - a by-value **Color scheme,** such as Green-Yellow-Red, across the column's **Min** and **Max**
+  - **Value mappings** with a color, which win over both. Text columns are colored this way.
+- **Size by** picks a number column. Point diameters scale with its value, from **Min point size** at the column's Min to **Max point size** at its Max. Values outside the range get the nearest size.
+
+Like the rest of Map style, both go on the geometry column, so the usual setup is a **Fields returned by query** override with **Color by** or **Size by**. A feature with no value keeps the layer's own color and size; a **Null** value mapping with a color still colors it.
+
+**Range:** without Min and Max, a column's range is its own data's, from its smallest value to its largest. Grafana's other panels default to a range across every number column, which would let an `id` column squash the colors. Because the range comes from the data, a gradient's colors can shift when a refresh brings new extremes; set Min and Max to keep them fixed.
+
+**Legend:** layers colored by a column get a legend in the bottom left corner: value mappings and threshold steps as a list, a gradient as a bar from Min to Max. **Legend** in the panel options turns it off. It's hidden on panels narrower than 200 px, and scrolls when it's taller than half the panel.
+
+A tooltip's color marker shows the feature's own color. Changing a threshold, mapping or size range only repaints the map, as with other style options.
 
 ## Basemap
 
@@ -134,6 +153,7 @@ Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 | 04 Geometry    | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.       |
 | 05 Tooltips    | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes. |
 | 06 Style       | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                             |
+| 07 Data-driven | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.        |
 
 ### Docker environment
 
@@ -184,7 +204,7 @@ E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers e
 Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
 
 - **Drawn-feature counts.** `renderedFeatures(panel)` in `tests/fixtures/` asks the panel's map which features it drew. This goes through a small test hook in the plugin ([src/panel/testHook.ts](src/panel/testHook.ts)), which does nothing unless a test triggers it. All test-only code in `src/` is marked with a `// Test hook:` comment: `grep -rn "Test hook:" src/` lists it.
-- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style dashboard, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
+- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style and 07 Data-driven dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
 
 To hover or click a known feature, `mapPoint(panel, [lon, lat], view)` in `tests/fixtures/` works out where a coordinate is on screen from the panel's view in the dashboard JSON. It's plain Web Mercator math, so it needs no test hook.
 

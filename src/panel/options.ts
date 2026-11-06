@@ -18,12 +18,15 @@ export interface GeoFlowOptions {
   };
   view: { lat: number; lon: number; zoom: number };
   tooltip: TooltipMode;
+  /** The legend of colors from Color by (docs/phase_6.md, Design §4). */
+  legend: { show: boolean };
   showSummary: boolean;
 }
 
 /**
  * Per-field options GeoFlow adds to Grafana's standard ones, usable as defaults and in overrides.
- * The Map style options are read from each query's geometry field (docs/phase_5.md).
+ * The Map style options are read from each query's geometry field (docs/phase_5.md and
+ * docs/phase_6.md).
  */
 export interface GeoFlowFieldConfig extends MapStyleConfig {
   /** Leave the field out of tooltips. Its data links still show. */
@@ -34,6 +37,7 @@ export const DEFAULT_OPTIONS: GeoFlowOptions = {
   basemap: { kind: 'osm' },
   view: { lat: 20, lon: 0, zoom: 1 },
   tooltip: 'hover',
+  legend: { show: true },
   showSummary: false,
 };
 

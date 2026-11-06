@@ -2,11 +2,12 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { buildLayerSpecs } from '../adapter';
+import { buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
 import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { convertFrames } from './convertFrames';
 import { GeoFlowOptions, basemapFromOptions, tooltipMode, viewFromOptions } from './options';
+import { MapLegend } from './MapLegend';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 import { useFeatureTooltip } from './useFeatureTooltip';
 import { useOnScreen } from './useOnScreen';
@@ -19,6 +20,9 @@ interface Props extends PanelProps<GeoFlowOptions> {}
  * behind the viewport while new ones start ahead of it, and the page runs out of WebGL contexts.
  */
 const ON_SCREEN_MARGIN = '200px';
+
+/** Narrower panels have no room for a legend beside the map's controls. */
+const LEGEND_MIN_WIDTH = 200;
 
 const getStyles = (theme: GrafanaTheme2) => ({
   // MapLibre's controls are styled for a light page; these overrides, scoped to the panel, match
@@ -170,6 +174,11 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     () => buildLayerSpecs(results, data.series, theme, { interactive }),
     [results, data.series, theme, interactive]
   );
+  const showLegend = options.legend?.show !== false && width >= LEGEND_MIN_WIDTH;
+  const legend = useMemo(
+    () => (showLegend ? legendEntries(results, data.series, theme) : []),
+    [showLegend, results, data.series, theme]
+  );
   // Data arrived, but no frame has a geometry column: say why instead of showing an empty map.
   const noGeometry = layers.length === 0 ? results.find((result) => result.noGeometry)?.noGeometry : undefined;
 
@@ -286,6 +295,7 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         </div>
       )}
       <div className={styles.notices}>
+        <MapLegend entries={legend} maxHeight={height / 2} />
         {noGeometry && (
           <div className={styles.notice} data-testid="geoflow-no-geometry">
             {noGeometry.detail}
@@ -306,10 +316,16 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         <div className={styles.overlay} data-testid="geoflow-summary">
           {results.map((result, i) => {
             const warning = firstWarning(result);
+            const styleProblems = result.noGeometry ? [] : dataStyleFields(data.series[i], result).problems;
             return (
               <div key={result.refId} className={styles.frame} data-testid={`geoflow-frame-${result.refId}`}>
                 <div data-testid={`geoflow-summary-${result.refId}`}>{conversionSummary(result)}</div>
                 {warning && <div className={styles.secondary}>{warning}</div>}
+                {styleProblems.map((problem) => (
+                  <div key={problem} className={styles.secondary}>
+                    {problem}
+                  </div>
+                ))}
                 <div className={styles.fields}>
                   {data.series[i].fields.map((field) => `${field.name} (${field.type})`).join(', ')}
                 </div>

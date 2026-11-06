@@ -14,6 +14,7 @@ import {
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint } from '../basemapStyle';
 import { WebGLUnavailableError } from '../errors';
+import { StyledFeatures, featureStateChanges } from '../featureState';
 import {
   HOVERED_STATE,
   SELECTED_STATE,
@@ -21,6 +22,7 @@ import {
   dataSourceId,
   layoutFor,
   paintFor,
+  perFeature,
   styleLayerId,
   styleLayerIds,
   styleLayers,
@@ -32,7 +34,6 @@ import {
   EngineTheme,
   FeatureRef,
   LayerSpec,
-  LayerStyle,
   MapEngine,
   PointerHit,
   ViewState,
@@ -67,6 +68,12 @@ export class MapLibreEngine implements MapEngine {
   private layers: LayerSpec[] = [];
   /** The layers on the map, in drawing order. Differs from `layers` until the style is ready. */
   private applied = new Map<string, LayerSpec>();
+  /**
+   * Per layer, the per-feature styles set as feature-state, and the source they were set on. A
+   * style loaded from scratch brings new sources without any state, so a different source
+   * object means nothing is set.
+   */
+  private featureStates = new Map<string, StyledFeatures & { source: object }>();
   /** Sources and layers can only be added once the style has loaded. */
   private styleReady = false;
   private readonly lastErrorAt = new Map<string, number>();
@@ -294,6 +301,7 @@ export class MapLibreEngine implements MapEngine {
     this.map?.remove();
     this.map = undefined;
     this.applied.clear();
+    this.featureStates.clear();
     for (const listeners of Object.values(this.listeners)) {
       listeners.clear();
     }
@@ -349,6 +357,7 @@ export class MapLibreEngine implements MapEngine {
         map.removeSource(dataSourceId(id));
       }
       this.applied.delete(id);
+      this.featureStates.delete(id);
     }
 
     for (const spec of this.layers) {
@@ -363,12 +372,13 @@ export class MapLibreEngine implements MapEngine {
         if (current.data !== spec.data) {
           map.getSource<GeoJSONSource>(dataSourceId(spec.id))?.setData(spec.data);
         }
-        if (current.style !== spec.style) {
-          this.repaint(map, spec.id, current.style, spec.style);
+        if (current.style !== spec.style || !samePerFeature(current, spec)) {
+          this.repaint(map, current, spec);
         }
       }
       // A Map keeps the position of existing keys and appends new ones, like the map's layers.
       this.applied.set(spec.id, spec);
+      this.syncFeatureStates(map, spec);
     }
 
     const order = this.layers.map(({ id }) => id);
@@ -381,11 +391,11 @@ export class MapLibreEngine implements MapEngine {
     }
   }
 
-  private repaint(map: MapLibreMap, id: string, from: LayerStyle, to: LayerStyle): void {
-    const paint = [paintFor(from), paintFor(to)] as const;
-    const layout = [layoutFor(from), layoutFor(to)] as const;
+  private repaint(map: MapLibreMap, from: LayerSpec, to: LayerSpec): void {
+    const paint = [paintFor(from.style, perFeature(from)), paintFor(to.style, perFeature(to))] as const;
+    const layout = [layoutFor(from.style), layoutFor(to.style)] as const;
     for (const kind of STYLE_LAYER_KINDS) {
-      const layerId = styleLayerId(id, kind);
+      const layerId = styleLayerId(to.id, kind);
       for (const [property, value] of changed(paint[0][kind], paint[1][kind])) {
         map.setPaintProperty(layerId, property as PaintProperty, value);
       }
@@ -393,6 +403,35 @@ export class MapLibreEngine implements MapEngine {
         map.setLayoutProperty(layerId, property as LayoutProperty, value);
       }
     }
+  }
+
+  /**
+   * Sets the layer's per-feature styles as feature-state, calling MapLibre only for features
+   * whose color or radius changed (docs/phase_6.md, Design §3).
+   */
+  private syncFeatureStates(map: MapLibreMap, spec: LayerSpec): void {
+    const sourceId = dataSourceId(spec.id);
+    const source = map.getSource(sourceId);
+    if (!source) {
+      return;
+    }
+    const before = this.featureStates.get(spec.id);
+    const applied = before?.source === source ? before : undefined;
+    if (applied?.data === spec.data && applied.featureStyles === spec.featureStyles) {
+      return;
+    }
+    // A layer that never had per-feature styles has no state to diff.
+    if (applied || spec.featureStyles) {
+      for (const { id, set, remove } of featureStateChanges(applied, spec)) {
+        if (set) {
+          map.setFeatureState({ source: sourceId, id }, set);
+        }
+        for (const key of remove ?? []) {
+          map.removeFeatureState({ source: sourceId, id }, key);
+        }
+      }
+    }
+    this.featureStates.set(spec.id, { source, data: spec.data, featureStyles: spec.featureStyles });
   }
 
   /** Interactive features under the pointer, topmost first, each once (docs/phase_4.md, Design §4). */
@@ -522,6 +561,11 @@ function changed<V>(before: Record<string, V>, after: Record<string, V>): Array<
   return [...properties]
     .filter((property) => JSON.stringify(before[property]) !== JSON.stringify(after[property]))
     .map((property) => [property, after[property]]);
+}
+
+function samePerFeature(a: LayerSpec, b: LayerSpec): boolean {
+  const [x, y] = [perFeature(a), perFeature(b)];
+  return x.color === y.color && x.radius === y.radius;
 }
 
 function geoJsonSource(spec: LayerSpec): GeoJSONSourceSpecification {

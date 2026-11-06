@@ -3,12 +3,14 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import {
   DataFrame,
   Field,
+  FieldColorModeId,
   FieldType,
   LinkModel,
   LoadingState,
   PanelData,
   PanelProps,
   ThemeContext,
+  ThresholdsMode,
   createTheme,
   getDefaultTimeRange,
   toDataFrame,
@@ -82,6 +84,12 @@ class FakeIntersectionObserver {
   report(isIntersecting: boolean) {
     this.callback([{ isIntersecting } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
   }
+}
+
+/** How jsdom reports a hex color set as an inline style. */
+function hexToRgb(hex: string): string {
+  const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  return `rgb(${r}, ${g}, ${b})`;
 }
 
 /** Moves every panel on or off screen. */
@@ -714,6 +722,92 @@ describe('MapPanel', () => {
       await act(async () => container.dispatchEvent(new Event(INSPECT_EVENT)));
 
       expect(container).toHaveAttribute(RENDERED_FEATURES_ATTRIBUTE, '{"A":2}');
+    });
+  });
+
+  describe('data-driven styling', () => {
+    const point = (lon: number) => `{"type":"Point","coordinates":[${lon},35.78]}`;
+    const thresholds = {
+      mode: ThresholdsMode.Absolute,
+      steps: [
+        { value: -Infinity, color: 'green' },
+        { value: 80, color: 'red' },
+      ],
+    };
+    const theme = createTheme();
+    const red = theme.visualization.getColorByName('red');
+    /** Patch panels colored by utilization, as the panel gets them from Grafana. */
+    const panels = (custom: Record<string, unknown> = { colorBy: 'utilization_pct' }) =>
+      toDataFrame({
+        refId: 'A',
+        fields: [
+          { name: 'name', type: FieldType.string, values: ['PP-1', 'PP-2'] },
+          {
+            name: 'utilization_pct',
+            type: FieldType.number,
+            values: [40, 95],
+            config: { thresholds, color: { mode: FieldColorModeId.Thresholds } },
+          },
+          { name: 'geometry', type: FieldType.string, values: [point(-78.78), point(-78.77)], config: { custom } },
+        ],
+      });
+    const lastLayers = (): LayerSpec[] => engine.setLayers.mock.lastCall![0];
+
+    it("gives the engine each feature's color", async () => {
+      await renderPanel({ data: { series: [panels()] } });
+
+      expect(lastLayers()[0].featureStyles).toEqual({ colors: [theme.visualization.getColorByName('green'), red] });
+    });
+
+    it("shows a legend of the column's colors over the map", async () => {
+      await renderPanel({ data: { series: [panels()] } });
+      const legend = within(screen.getByTestId('geoflow-legend-A'));
+
+      expect(legend.getByText('Query A · utilization_pct')).toBeInTheDocument();
+      expect(legend.getByText('< 80')).toBeInTheDocument();
+      expect(legend.getByText('80+')).toBeInTheDocument();
+    });
+
+    it('shows a by-value scheme as a bar from Min to Max', async () => {
+      const frame = panels();
+      frame.fields[1].config = { color: { mode: 'continuous-GrYlRd' as FieldColorModeId }, min: 0, max: 100 };
+      await renderPanel({ data: { series: [frame] } });
+
+      expect(screen.getByTestId('geoflow-legend-gradient')).toHaveTextContent(/^0.*100$/);
+    });
+
+    it('shows no legend without Color by, when turned off, or on a narrow panel', async () => {
+      const { rerender } = await renderPanel({ data: { series: [panels({ sizeBy: 'utilization_pct' })] } });
+      expect(screen.queryByTestId('geoflow-legend')).not.toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [panels()] }, options: { legend: { show: false } } })} />);
+      expect(screen.queryByTestId('geoflow-legend')).not.toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [panels()] }, width: 150 })} />);
+      expect(screen.queryByTestId('geoflow-legend')).not.toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [panels()] } })} />);
+      expect(screen.getByTestId('geoflow-legend')).toBeInTheDocument();
+    });
+
+    it("marks a tooltip with the feature's own color", async () => {
+      await renderPanel({ data: { series: [panels()] } });
+      act(() =>
+        engine.pointerListeners.click.forEach((listener) =>
+          listener({ lngLat: [0, 0], features: [{ layerId: 'A', featureId: 1 }] })
+        )
+      );
+      const [, element] = engine.openTooltip.mock.lastCall!;
+      const marker = (element as HTMLElement).querySelector<HTMLElement>('[style*="background"]');
+
+      expect(marker?.style.background || marker?.style.backgroundColor).toBe(hexToRgb(red));
+    });
+
+    it('says in the data summary when Color by names a column the query lacks', async () => {
+      await renderPanel({ data: { series: [panels({ colorBy: 'gone' })] }, options: { showSummary: true } });
+
+      expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('Color by: no column named gone');
+      expect(lastLayers()[0]).not.toHaveProperty('featureStyles');
     });
   });
 

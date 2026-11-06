@@ -11,6 +11,7 @@ export type {
   EngineOptions,
   EngineTheme,
   FeatureRef,
+  FeatureStyles,
   LayerSpec,
   LayerStyle,
   LineStyle,

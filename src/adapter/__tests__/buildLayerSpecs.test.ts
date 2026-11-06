@@ -59,6 +59,17 @@ describe('buildLayerSpecs', () => {
     expect(layers.map((layer) => layer.style.lineWidth)).toEqual([2, 6]);
   });
 
+  it('gives layers with Color by or Size by per-feature styles, and leaves the others without', () => {
+    const cables = converted('B', 'fiber_cables');
+    const geometry = cables.frame.fields.find(({ name }) => name === cables.result.geometryField)!;
+    geometry.config = { ...geometry.config, custom: { sizeBy: 'fiber_count' } };
+    const layers = build([converted('A'), cables]);
+
+    expect(layers[0]).not.toHaveProperty('featureStyles');
+    expect(layers[1].featureStyles?.radii).toHaveLength(cables.result.featureCollection.features.length);
+    expect(layers[1].featureStyles).not.toHaveProperty('colors');
+  });
+
   it('leaves out frames without a geometry column, without using up a color', () => {
     const layers = build([noGeometry, converted('A'), converted('B')]);
 

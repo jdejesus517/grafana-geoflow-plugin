@@ -2,7 +2,7 @@
 // (docs/phase_2.md, Design §6). The real map is covered by the e2e tests.
 import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint } from '../../basemapStyle';
 import { WebGLUnavailableError } from '../../errors';
-import { styleLayerIds, styleLayers } from '../../layerStyle';
+import { paintFor, styleLayerIds, styleLayers } from '../../layerStyle';
 import { EngineOptions, EngineTheme, LayerSpec, LayerStyle } from '../../types';
 import { ERROR_THROTTLE_MS, HIT_TOLERANCE_PX, MapLibreEngine, TOOLTIP_MARGIN_PX } from '../MapLibreEngine';
 
@@ -50,6 +50,7 @@ class FakeMap {
     return this.rendered.filter((feature) => layers.includes(feature.layer.id));
   });
   setFeatureState = jest.fn();
+  removeFeatureState = jest.fn();
   canvas = { style: { cursor: '' } };
   canvasContainer = document.createElement('div');
   container = { clientWidth: 800, clientHeight: 400 };
@@ -499,6 +500,116 @@ describe('MapLibreEngine', () => {
 
     it('is a no-op before mount', () => {
       expect(() => new MapLibreEngine().setLayers([layer('A')])).not.toThrow();
+    });
+  });
+
+  describe('per-feature styles', () => {
+    const data: LayerSpec['data'] = {
+      type: 'FeatureCollection',
+      features: [7, 8, 9].map((id) => ({
+        type: 'Feature',
+        id,
+        geometry: { type: 'Point', coordinates: [0, 0] },
+        properties: {},
+      })),
+    };
+    const colored = (colors: Array<string | undefined>, overrides: Partial<LayerSpec> = {}) =>
+      layer('A', { data, featureStyles: { colors }, ...overrides });
+
+    it('sets them as feature-state once the first style has loaded', async () => {
+      const { map } = await mounted({ ...options, layers: [colored(['red', undefined, 'blue'])] });
+
+      expect(map.setFeatureState.mock.calls).toEqual([
+        [{ source: 'geoflow-layer:A', id: 7 }, { color: 'red' }],
+        [{ source: 'geoflow-layer:A', id: 9 }, { color: 'blue' }],
+      ]);
+    });
+
+    it('sets them on a new layer, after its source is added', async () => {
+      const { engine, map } = await mounted();
+      engine.setLayers([colored(['red', 'red', 'red'])]);
+
+      expect(map.setFeatureState).toHaveBeenCalledTimes(3);
+      expect(map.addSource.mock.invocationCallOrder[0]).toBeLessThan(map.setFeatureState.mock.invocationCallOrder[0]);
+    });
+
+    it('updates only the features that changed, without reloading data or repainting', async () => {
+      const spec = colored(['red', 'red', 'red']);
+      const { engine, map } = await mounted({ ...options, layers: [spec] });
+      map.setFeatureState.mockClear();
+      engine.setLayers([{ ...spec, featureStyles: { colors: ['red', undefined, 'blue'] } }]);
+
+      expect(map.setFeatureState.mock.calls).toEqual([[{ source: 'geoflow-layer:A', id: 9 }, { color: 'blue' }]]);
+      expect(map.removeFeatureState.mock.calls).toEqual([[{ source: 'geoflow-layer:A', id: 8 }, 'color']]);
+      expect(map.sources['geoflow-layer:A'].setData).not.toHaveBeenCalled();
+      expect(map.setPaintProperty).not.toHaveBeenCalled();
+    });
+
+    it('does nothing when the per-feature styles are the same object', async () => {
+      const spec = colored(['red', 'red', 'red']);
+      const { engine, map } = await mounted({ ...options, layers: [spec] });
+      map.setFeatureState.mockClear();
+      engine.setLayers([{ ...spec }]);
+
+      expect(map.setFeatureState).not.toHaveBeenCalled();
+      expect(map.removeFeatureState).not.toHaveBeenCalled();
+    });
+
+    it('repaints a layer to read feature-state when it gets per-feature styles, and back', async () => {
+      const plain = layer('A', { data });
+      const { engine, map } = await mounted({ ...options, layers: [plain] });
+      engine.setLayers([colored(['red', 'red', 'red'])]);
+      const perFeature = paintFor(style, { color: true, radius: false });
+
+      expect(map.setPaintProperty).toHaveBeenCalledWith(
+        'geoflow-layer:A:circle',
+        'circle-color',
+        perFeature.circle['circle-color']
+      );
+
+      map.setPaintProperty.mockClear();
+      engine.setLayers([plain]);
+      expect(map.setPaintProperty).toHaveBeenCalledWith('geoflow-layer:A:circle', 'circle-color', style.color);
+      expect(map.removeFeatureState).toHaveBeenCalledTimes(3);
+    });
+
+    it('carries states over to new data by feature id, and clears features that are gone', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [colored(['red', 'green', 'blue'])] });
+      map.setFeatureState.mockClear();
+      const next: LayerSpec['data'] = { ...data, features: [data.features[2], data.features[0]] };
+      engine.setLayers([colored(['blue', 'red'], { data: next })]);
+
+      expect(map.sources['geoflow-layer:A'].setData).toHaveBeenCalledWith(next);
+      expect(map.setFeatureState).not.toHaveBeenCalled();
+      expect(map.removeFeatureState.mock.calls).toEqual([[{ source: 'geoflow-layer:A', id: 8 }, 'color']]);
+    });
+
+    it('sets them again when a style loaded from scratch brings new sources', async () => {
+      const { map } = await mounted({ ...options, layers: [colored(['red', 'red', 'red'])] });
+      map.setFeatureState.mockClear();
+      map.fire('styledataloading');
+      map.sources['geoflow-layer:A'] = { setData: jest.fn() };
+      map.fire('style.load');
+
+      expect(map.setFeatureState).toHaveBeenCalledTimes(3);
+    });
+
+    it('keeps them when a basemap change keeps the sources', async () => {
+      const { map } = await mounted({ ...options, layers: [colored(['red', 'red', 'red'])] });
+      map.setFeatureState.mockClear();
+      map.fire('style.load');
+
+      expect(map.setFeatureState).not.toHaveBeenCalled();
+    });
+
+    it('sets them again on a layer that was removed and added back', async () => {
+      const spec = colored(['red', 'red', 'red']);
+      const { engine, map } = await mounted({ ...options, layers: [spec] });
+      engine.setLayers([]);
+      map.setFeatureState.mockClear();
+      engine.setLayers([spec]);
+
+      expect(map.setFeatureState).toHaveBeenCalledTimes(3);
     });
   });
 

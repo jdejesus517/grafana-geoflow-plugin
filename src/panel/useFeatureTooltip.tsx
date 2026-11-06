@@ -1,7 +1,7 @@
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DataFrame } from '@grafana/data';
-import { ConversionResult, FeatureKey, featureByKey, featureDetails, featureKey } from '../adapter';
+import { ConversionResult, FeatureKey, featureByKey, featureDetails, featureIndex, featureKey } from '../adapter';
 import { BasemapSpec, FeatureRef, LayerSpec, MapEngine, PointerHit } from '../engine';
 import { FeatureTooltip, TooltipFeature } from './FeatureTooltip';
 import { TooltipMode } from './options';
@@ -222,7 +222,10 @@ function tooltipFeatures(
     if (!details) {
       return [];
     }
-    const color = layers.find(({ id }) => id === ref.layerId)?.style.color ?? 'transparent';
+    // The feature's own color when its layer is colored by a column, the layer's otherwise.
+    const layer = layers.find(({ id }) => id === ref.layerId);
+    const index = layer?.featureStyles?.colors && featureIndex(results[i], ref.featureId);
+    const color = (index !== undefined && layer?.featureStyles?.colors?.[index]) || layer?.style.color || 'transparent';
     return [
       {
         layerId: ref.layerId,
