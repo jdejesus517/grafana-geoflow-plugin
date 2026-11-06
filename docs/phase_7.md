@@ -277,7 +277,7 @@ Accepted as proposed (2026-11-05):
 Implemented on branch `phase-7` in eight commits: one per step, and one that gives the adapter e2e tests time for query results (see Findings):
 - 444 unit and component tests pass, and 47 e2e tests (plus the login setup). In full-suite runs, `basemap.spec.ts` failed now and then: the known zoom control test, and a few times a check that the map's canvas shows within 5 s (see Findings).
 - the new layers e2e tests compare three stored screenshots. The Phase 3 geometry, Phase 5 style and Phase 6 data-driven screenshots still match, so saved dashboards draw as before.
-- CI: to be filled in from the pull request.
+- CI on PR #27 passes build, lint, 444 unit tests and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 47 e2e tests each (plus the login setup), on the first run. The layers screenshots match on all three, and `basemap.spec.ts` passed on each. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
@@ -294,7 +294,7 @@ Implemented on branch `phase-7` in eight commits: one per step, and one that giv
 | 9 | Several frames per query | Met. Each frame gets its own layer; a Partition by values split draws three layers (e2e). |
 | 10 | Layer binding | Met. `layerBinding: { mode: 'perFrame' }` is saved, not shown; settings are keyed by layer id. |
 | 11 | Engine boundary | Met. The engine gets `name` and `visible` in `LayerSpec`s. |
-| 12 | Tests | Met locally; CI to be filled in. |
+| 12 | Tests | Met, locally and in CI on Grafana 13.2.5, 13.3.0 and nightly. |
 
 ### Bundle sizes (production build)
 
