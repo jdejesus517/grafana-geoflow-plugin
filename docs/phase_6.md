@@ -238,10 +238,10 @@ Accepted as proposed (2026-11-05):
 
 ## Outcome
 
-Implemented on branch `phase-6` in eight commits: one per step, and one that keeps `@grafana/schema` out of the bundle (see Findings):
+Implemented on branch `phase-6` in nine commits: one per step, one that keeps `@grafana/schema` out of the bundle, and one that fixes the editor e2e test on Grafana 13.3 (see Findings):
 - 395 unit and component tests pass, and 44 e2e tests (plus the login setup). Locally, `basemap.spec.ts`'s zoom control test failed in some runs, as it did in Phase 5 (see Findings).
 - the new data-driven e2e tests compare four stored screenshots. The Phase 3 geometry and Phase 5 style screenshots still match, so layers without Color by and Size by draw as before.
-- CI: to be filled in from the pull request.
+- CI on PR #26 passes build, lint, unit tests and e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 45 e2e tests each. The data-driven screenshots match on all three, so Grafana's thresholds and gradients give the same colors on each. The first run failed the editor test on 13.3.0 (see Findings). The API compatibility check reports the known `useFieldConfig` false positive (Phase 4); one of its runs failed on a transient GitHub API error and passed on a rerun.
 
 ### Exit criteria
 
@@ -257,7 +257,7 @@ Implemented on branch `phase-6` in eight commits: one per step, and one that kee
 | 8 | Responsive | Met. On 100k points with the GPU, threshold changes in the panel editor caused no task over 62 ms when recoloring 20% of the points, and 130 ms when recoloring 80%. The data isn't converted or loaded again. |
 | 9 | Phase 5 unchanged | Met. Layers without per-feature styles keep plain paint values, and the Phase 3 and Phase 5 screenshots match. |
 | 10 | Engine boundary | Met. The engine gets colors and numbers in `LayerSpec.featureStyles`. |
-| 11 | Tests | Met locally; CI to be filled in. |
+| 11 | Tests | Met, locally and in CI on Grafana 13.2.5, 13.3.0 and nightly. |
 
 ### Bundle sizes (production build)
 
@@ -285,6 +285,7 @@ Implemented on branch `phase-6` in eight commits: one per step, and one that kee
 - **`@grafana/schema` is bundled,** not provided by Grafana. Importing its enums (such as `LegendDisplayMode`) adds them to `module.js`; prefer defaults or string literals.
 - **The field name picker is a Combobox** in Grafana 13.2, and lists display names from every query. `@grafana/plugin-e2e`'s `getSelect` looks for the Select menu, so tests click its option by role.
 - **The counting test hook is expensive at 100k points:** `renderedFeatureCounts` took one 323 ms task on its own. Performance measurements (Phase 9) shouldn't count features while measuring.
+- **Grafana 13.3 threshold inputs** update their `value` attribute as you type. A locator such as `input[value="80"]` matches nothing after `fill()`, so the test leaves the input with the keyboard rather than with the same locator.
 - **Local e2e flakiness** in `basemap.spec.ts` (real OpenStreetMap tile requests) continues from Phase 5.
 
 ### Step 6.1 findings
