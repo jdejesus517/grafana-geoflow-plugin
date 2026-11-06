@@ -385,6 +385,54 @@ describe('MapPanel', () => {
       expect(lastOf(engine.setSelected)).toEqual({ layerId: 'A', featureId: 1 });
     });
 
+    it("titles a tooltip with its layer's name", async () => {
+      await renderPanel({ data: { series }, options: { layers: [{ id: 'A', name: 'Assets' }] } });
+      fire('click', hit(['A', 1]));
+
+      expect(tooltip().content.getByText('Assets')).toBeInTheDocument();
+    });
+
+    it('closes a pinned tooltip when its layer is hidden, and keeps it closed when shown again', async () => {
+      const view = await renderPanel({ data: { series } });
+      fire('click', hit(['A', 1]));
+      expect(lastOf(engine.setSelected)).toEqual({ layerId: 'A', featureId: 1 });
+
+      const rerender = (layers: GeoFlowOptions['layers']) =>
+        act(() => view.rerender(<MapPanel {...props({ data: { series }, options: { layers } })} />));
+      rerender([{ id: 'A', visible: false }]);
+      expect(engine.closeTooltip).toHaveBeenCalled();
+      expect(lastOf(engine.setSelected)).toBeUndefined();
+
+      engine.openTooltip.mockClear();
+      rerender([{ id: 'A' }]);
+      expect(engine.openTooltip).not.toHaveBeenCalled();
+    });
+
+    it("leaves a hidden layer's features out of a pinned tooltip with others", async () => {
+      const view = await renderPanel({ data: { series } });
+      fire('click', hit(['B', 0], ['A', 0]));
+      act(() =>
+        view.rerender(<MapPanel {...props({ data: { series }, options: { layers: [{ id: 'B', visible: false }] } })} />)
+      );
+
+      expect(tooltip().content.queryByTestId('geoflow-tooltip-pager')).not.toBeInTheDocument();
+      expect(tooltip().content.getByText('Office')).toBeInTheDocument();
+    });
+
+    it("drops a hover tooltip when its layer's tooltips are turned off", async () => {
+      const view = await renderPanel({ data: { series } });
+      fire('hover', hit(['A', 1]));
+      expect(lastOf(engine.setHovered)).toEqual({ layerId: 'A', featureId: 1 });
+
+      act(() =>
+        view.rerender(
+          <MapPanel {...props({ data: { series }, options: { layers: [{ id: 'A', tooltips: false }] } })} />
+        )
+      );
+      expect(lastOf(engine.setHovered)).toBeUndefined();
+      expect(engine.closeTooltip).toHaveBeenCalled();
+    });
+
     it('sizes the tooltip to the room the map has beside it, measured when it opens', async () => {
       await renderPanel({ data: { series } });
       engine.tooltipSpace.mockReturnValue({ width: 600, height: 150 });
@@ -635,6 +683,39 @@ describe('MapPanel', () => {
       expect(layers[0].style.color).not.toBe(layers[1].style.color);
     });
 
+    it('draws the layers in the saved order, bottom first, with their names, visibility and tooltips', async () => {
+      await renderPanel({
+        data: { series: [points, lines] },
+        options: {
+          layers: [
+            { id: 'A', name: 'Points', visible: false },
+            { id: 'B', tooltips: false },
+          ],
+        },
+      });
+
+      expect(lastLayers().map(({ id, name, visible, interactive }) => [id, name, visible, interactive])).toEqual([
+        ['B', 'Query B', true, false],
+        ['A', 'Points', false, true],
+      ]);
+    });
+
+    it('draws a layer from the geometry column given in its settings', async () => {
+      const twoColumns = toDataFrame({
+        refId: 'A',
+        fields: [
+          { name: 'footprint', type: FieldType.string, values: ['{"type":"LineString","coordinates":[[1,2],[3,4]]}'] },
+          { name: 'centroid', type: FieldType.string, values: ['{"type":"Point","coordinates":[2,3]}'] },
+        ],
+      });
+      await renderPanel({
+        data: { series: [twoColumns] },
+        options: { layers: [{ id: 'A', geometryField: 'centroid' }] },
+      });
+
+      expect(lastLayers()[0].data.features[0].geometry).toEqual({ type: 'Point', coordinates: [2, 3] });
+    });
+
     it('passes the layers to a map created after the panel comes back on screen', async () => {
       const { rerender } = await renderPanel({ data: { series: [points] } });
       setOnScreen(false);
@@ -839,6 +920,17 @@ describe('MapPanel', () => {
       expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('row 2: no value');
       expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('id (number), geometry (string)');
       expect(screen.getByTestId('geoflow-summary-B')).toHaveTextContent('B: 3 rows → no geometry:');
+    });
+
+    it('names a layer with a name of its own or that is hidden, and reports a missing ID column', async () => {
+      await renderPanel({
+        data: { series },
+        options: { showSummary: true, layers: [{ id: 'A', name: 'Assets', visible: false, idField: 'key' }] },
+      });
+
+      expect(screen.getByTestId('geoflow-summary-layer-A')).toHaveTextContent('Assets · hidden');
+      expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('ID column: no column named key');
+      expect(screen.queryByTestId('geoflow-summary-layer-B')).not.toBeInTheDocument();
     });
 
     it('names frames without a refId by position', async () => {
