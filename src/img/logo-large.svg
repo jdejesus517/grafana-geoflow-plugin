@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 2 128 124">
+  <path d="M8 22 L44 12 L84 22 L120 12 L120 82 L84 92 L44 82 L8 92 Z" fill="#e4edf6"/>
+  <path d="M44 12 L84 22 L84 92 L44 82 Z" fill="#cfdeed"/>
+  <path d="M8 22 L44 12 L84 22 L120 12 L120 82 L84 92 L44 82 L8 92 Z" fill="none" stroke="#7d97b3" stroke-width="2.5" stroke-linejoin="round"/>
+  <g fill="none" stroke="#1f9e89" stroke-width="3" stroke-linecap="round">
+    <path d="M20 72 Q48.0 38.0 76 56"/>
+    <path d="M38 40 Q57.0 32.0 76 56"/>
+    <path d="M76 56 Q92.0 47.0 108 70"/>
+    <path d="M20 72 Q29.0 46.0 38 40"/>
+  </g>
+  <g fill="#1f9e89" stroke="#ffffff" stroke-width="2">
+    <circle cx="20" cy="72" r="5"/>
+    <circle cx="38" cy="40" r="5"/>
+    <circle cx="108" cy="70" r="5"/>
+  </g>
+  <path d="M76 56 C72 49 62 41 62 30 A14 14 0 1 1 90 30 C90 41 80 49 76 56 Z" fill="#f57c00" stroke="#ffffff" stroke-width="2" stroke-linejoin="round"/>
+  <circle cx="76" cy="30" r="5.5" fill="#ffffff"/>
+  <g fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke="#3d71d9"><path transform="translate(8 119)" d="M15.4 -15.4 A9 9 0 1 0 18 -9 H10"/><path transform="translate(31 119)" d="M0.5 -6 H12 A6 6 0 1 0 10.2 -1.8"/><path transform="translate(48 119)" d="M6 -12 A6 6 0 1 0 6.01 -12 Z"/></g>
+  <g fill="none" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" stroke="#f57c00"><path transform="translate(66 119)" d="M0 0 V-18 H13 M0 -9 H10"/><path transform="translate(84 119)" d="M0 -19 V0"/><path transform="translate(89 119)" d="M6 -12 A6 6 0 1 0 6.01 -12 Z"/><path transform="translate(106 119)" d="M0 -12 L3.5 0 L7 -10 L10.5 0 L14 -12"/></g>
+</svg>

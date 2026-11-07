@@ -31,8 +31,9 @@ const ALLOWED = [
 ];
 
 // Files the plugin must ship. THIRD_PARTY_NOTICES.txt carries the license notices that bundled
-// packages (MapLibre: BSD-3-Clause) require in binary distributions.
-const REQUIRED = ['module.js', 'plugin.json', 'LICENSE', 'THIRD_PARTY_NOTICES.txt'];
+// packages (MapLibre: BSD-3-Clause) require in binary distributions, and NOTICE the map data
+// attribution (docs/licenses.md).
+const REQUIRED = ['module.js', 'plugin.json', 'LICENSE', 'NOTICE', 'THIRD_PARTY_NOTICES.txt'];
 
 async function listFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });

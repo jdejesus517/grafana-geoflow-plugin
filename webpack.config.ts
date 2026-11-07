@@ -2,6 +2,7 @@
 // https://grafana.com/developers/plugin-tools/how-to-guides/extend-configurations
 // Keep this minimal: anything added here has to survive `create-plugin update`.
 import path from 'node:path';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
 import type { Configuration } from 'webpack';
 import { merge } from 'webpack-merge';
 import grafanaConfig, { type Env } from './.config/webpack/webpack.config';
@@ -20,6 +21,8 @@ const config = async (env: Env): Promise<Configuration> => {
       },
     },
     plugins: [
+      // The scaffold copies LICENSE but not NOTICE, which carries the map data attribution.
+      new CopyWebpackPlugin({ patterns: [{ from: path.resolve(process.cwd(), 'NOTICE'), to: '.' }] }),
       new ThirdPartyNoticesPlugin({
         filename: 'THIRD_PARTY_NOTICES.txt',
         prebundled: ['maplibre-gl'],
