@@ -248,9 +248,9 @@ Accepted as proposed (2026-11-06):
 ## Outcome
 
 Implemented on branch `phase-8` in eight commits: one per step, and one that gives the basemap e2e tests time for the map's canvas and tiles (see Findings):
-- 491 unit and component tests pass, and 55 e2e tests (plus the login setup), in two full-suite runs in a row.
+- 491 unit and component tests pass, and 54 e2e tests (plus the login setup), in two full-suite runs in a row.
 - the new refresh e2e tests compare one stored screenshot. The Phase 3, 5, 6 and 7 screenshots still match, so panels saved before Phase 8 keep their fixed view.
-- CI: to be filled in from the pull request.
+- CI on PR #28 passes build, lint, 491 unit tests and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 54 e2e tests each (plus the login setup), on the first run. The fit screenshot matches on all three, and the Use current view test passing confirms that option editors share the panel's `eventBus` on 13.3.0 and nightly too. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
@@ -265,7 +265,7 @@ Implemented on branch `phase-8` in eight commits: one per step, and one that giv
 | 7 | Use current view | Met (e2e): the view shown follows the map, and the button fills in Latitude, Longitude and Zoom and selects Fixed. |
 | 8 | Dark basemap | Met. The dark tile URL is requested in dark theme only, and the light one in light theme only (e2e). The switch keeps the map, and without a dark URL, a theme switch keeps a pinned tooltip (component tests). |
 | 9 | Engine boundary | Met. The engine gets `Bounds` and `FitOptions`, and `dimInDark` in a raster `BasemapSpec`. |
-| 10 | Tests | Met locally; CI to be filled in. |
+| 10 | Tests | Met, locally and in CI on Grafana 13.2.5, 13.3.0 and nightly. |
 
 ### Bundle sizes (production build)
 
@@ -304,7 +304,7 @@ Checked on Grafana 13.2.4, with temporary logging in a development build and a d
 | Check | Result |
 |---|---|
 | `requestId` | A new one for each refresh and each time range change (`SQR100` → `SQR103` → `SQR106`). A field config change keeps it, along with the frames' `values` arrays. So a new `requestId` means a query response. |
-| Option editors and the panel's `eventBus` | **The same object.** In the panel editor, `context.eventBus` is the panel's `PanelProps.eventBus`, and an event published by the panel reaches the editor's subscriber. No fallback is needed (decision 8). Grafana 13.3 is covered by the e2e test in CI. |
+| Option editors and the panel's `eventBus` | **The same object.** In the panel editor, `context.eventBus` is the panel's `PanelProps.eventBus`, and an event published by the panel reaches the editor's subscriber. No fallback is needed (decision 8). Grafana 13.3 and nightly are covered by the e2e test in CI, which passes. |
 | Migration | `setMigrationHandler` runs for a panel saved without a `pluginVersion` or with another version, and not for one saved with the plugin's version. Its result is kept: a `view.mode` it sets survives the option defaults, while a panel it doesn't touch gets the default. Provisioned dashboards have no `pluginVersion`, so the handler runs on every load for them: it has to leave a panel with a mode alone. |
 | Refresh data | Every field gets a new `values` array on each refresh, even when nothing changed. **Grafana then empties the previous arrays** (their length drops to 0), so they can't be compared with the new data afterwards. The cache keeps its own shallow copy of each layer's values (Differences from the plan). |
 | Cost at 100k rows | Copying the arrays: 1.7 ms. Comparing them with the new data, equal: 2.7 ms. Converting: 310 ms. The comparison stays far below the 200 ms budget. |
