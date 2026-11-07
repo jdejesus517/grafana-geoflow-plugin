@@ -288,7 +288,7 @@ WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
 
 Also accepted:
 
-- A column containing a full **GeoJSON Feature**, e.g. `ST_AsGeoJSON(t.*)`. Its `properties` are merged with the other columns.
+- A column containing a full **GeoJSON Feature**, e.g. `ST_AsGeoJSON(t.*)`. Its `properties` are kept, and shown in tooltips unless a column has the same name.
 - A `json` / `jsonb` geometry column. On Grafana 13.2 this arrives as a field of type `other` whose values are already-parsed objects (verified in Phase 0); string values are handled too.
 
 ### 3.2 Geometry field resolution
@@ -318,7 +318,7 @@ for each row i in 0..frame.length:
   empty coordinates (PostGIS POINT EMPTY → [])               → skip ("empty")
   coordinates nested wrongly or not finite numbers           → skip ("invalid")
   any position outside lon ±180 / lat ±90                    → skip ("outOfRange")
-  properties = baseProps, then { other field name → field.values[i] } (columns win)
+  properties = baseProps                 (columns stay in the frame, where tooltips read them; Phase 9)
   id = ids from the id column if all are unique finite numbers, else i
   push { type:'Feature', id, geometry, properties }
 return { FeatureCollection, warnings: counts per kind + first five samples }
@@ -330,9 +330,9 @@ Notes:
 - **Feature ids and keys** (Phase 4): two separate identities.
   - **MapLibre's feature id** is used for hit testing and feature-state highlights. MapLibre keeps ids only as non-negative whole numbers: it reads a negative id back as an unsigned 64-bit number and cuts decimals, so 7.2 and 7.7 collide (checked in Phase 4, step 4.1). The `id` column's values are used only when every one is a unique whole number from 0 to `Number.MAX_SAFE_INTEGER`. Otherwise every feature gets its row index, so a fallback id can never collide with a real one.
   - **The feature key** follows a feature through a refresh. It's the `id` column's value, a number or a string, when every feature has one and they're all unique; otherwise there are no keys.
-  - The column's values stay in `properties` either way. Each conversion also records every feature's row (`featureRows`), and `featureRow`, `featureKey` and `featureByKey` look features up with cached maps.
+  - Each conversion also records every feature's row (`featureRows`), and `featureRow`, `featureKey` and `featureByKey` look features up with cached maps.
 - **Nested property values** (objects or arrays) are JSON-stringified, because MapLibre flattens them anyway.
-- **Display values** for tooltips are computed with `field.display(value)` and kept apart from the feature properties, which stay raw for data-driven styling later. Phase 4 formats them when a feature is hovered or clicked, rather than up front for every row ([phase_4.md](phase_4.md)).
+- **Display values** for tooltips are computed with `field.display(value)` and never stored on features. Phase 4 formats them when a feature is hovered or clicked, rather than up front for every row ([phase_4.md](phase_4.md)).
 - **Not supported in MVP**:
   - `GeometryCollection`: counted as "unsupported" and reported.
   - Z/M coordinates: passed through; MapLibre ignores them.
@@ -392,12 +392,12 @@ Design rules that keep later modes cheap to add:
 | Concern | Approach |
 |---|---|
 | **Payload size.** GeoJSON text is verbose. | Recommend `ST_AsGeoJSON(geom, 6)`. For detailed polygons, recommend `ST_SimplifyPreserveTopology`. Mention the data source row limit (`row_limit` in Grafana config). |
-| **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 9, against budgets at 100k points: 200 ms for interactions and unchanged refreshes, 500 ms for new data. If new data still misses its budget after cheaper fixes, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. A first measurement in Phase 3: 100k points draw about 2.5 s after the query returns, with main-thread tasks of up to about 0.5 s. |
+| **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Measured by `npm run bench:map` at 1k, 10k and 100k features (Phase 9), against budgets at 100k points: 200 ms for interactions and unchanged refreshes, 500 ms for new data. All are met on the main thread: 215 ms to load 100k points and 334 ms for a refresh with new data, with 100k points drawn in about 2.2 s. So conversion stays there; a web worker would add copying for no budget it's needed to meet. Features carry no column values, which took 90 ms off new data. 100k simple polygons take one task of about 590 ms, nearly all of it MapLibre serializing the GeoJSON for its worker. |
 | **Hover on large data.** Hit testing runs on every pointer move, and a highlight changes feature-state on a large source. | Measured on 100k points in Phase 4 with the machine's GPU: hover is as fast as plain panning, with no main-thread task over 50 ms. Headless Chromium's default software rendering (SwiftShader) is far slower for anything that redraws a large layer, including panning, so performance has to be judged with the GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), not in the default e2e browser. |
 | **Redundant work on refresh.** | Conversion is cached per frame data (Phase 3, keyed on the frames' `values` arrays since Phase 5), so a frame whose data Grafana didn't replace keeps its FeatureCollection and the engine skips `setData`. That includes every style change. Since Phase 8, a refresh with unchanged data is compared value by value with a copy of the layer's previous data, and reuses its conversion: no main-thread task over 50 ms on 100k rows, when the query has an `ORDER BY`. The viewport is kept across refreshes unless **Fit on refresh** is on. |
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
-| **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` stays about 19 KiB. The Bundle Stats workflow reports size changes on every PR. |
-| **Beyond about 100k features.** | Out of scope for the MVP. The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |
+| **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` is about 21 KiB gzipped. The Bundle Stats workflow reports size changes on every PR. |
+| **Beyond about 100k features.** | Out of scope for the MVP. The panel warns above 100k features and still draws them (Phase 9). The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |
 
 ---
 

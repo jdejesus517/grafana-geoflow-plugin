@@ -1,6 +1,6 @@
 # Phase 9: Hardening
 
-Status: **Approved** (2026-11-07). Decisions 1–10 accepted as proposed.
+Status: **Implemented** (2026-11-07). Decisions 1–10 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §2.2 (panel warnings), §4.1 (compatibility risks), §4.2 (performance), §5.3 (Phase 9 row).
 
 ## Goal
@@ -229,6 +229,75 @@ Accepted as proposed (2026-11-07):
 ---
 
 ## Outcome
+
+Implemented on branch `phase-9` in seven commits, one per step:
+- 520 unit and component tests pass, and 58 e2e tests (plus the login setup), in two full-suite runs in a row. The earlier stored screenshots still match.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Warnings | Met. A count on the map, with the details on hover or focus; **Show warnings** turns it off (component and e2e tests). |
+| 2 | What counts | Met, plus a named geometry column that has gone. Empty geometry doesn't count (unit and e2e tests). |
+| 3 | Query failure | Met. The map keeps drawing through a failed refresh and recovers, with Grafana's error icon showing (e2e). The data isn't sent to MapLibre again (component test). |
+| 4 | No WebGL2 | Met. In a browser with `--disable-webgl2`, the panel shows its message and a table on the same dashboard loads (e2e). |
+| 5 | Software rendering | Met. A line in the data summary, from the renderer's name. |
+| 6 | CSP | Met (step 9.1). Only the tile hosts in `connect-src` are needed, for raster tiles, dark theme URLs and a vector style. |
+| 7 | Benchmark | Met. `npm run bench:map`; results below. |
+| 8 | Budgets | Met at 100k points: 215 ms to load, 334 ms for a refresh with new data, nothing over 200 ms for interactions. 100k polygons take 587 ms to load, above the figure for points; it's nearly all inside MapLibre, and recorded in the README's Sizing. |
+| 9 | Sizing | Met. A **Sizing** section in the README. |
+| 10 | Saved dashboards unchanged | Met. The stored screenshots match. |
+| 11 | Tests | Met locally; CI to be filled in. |
+
+### Benchmark results
+
+On the finished code, on the machine and with the columns described under the baseline below.
+
+| Kind | Rows | drawn | load | pan | hover | refresh | hide | show | basemap |
+|---|---|---|---|---|---|---|---|---|---|
+| points | 1,000 | 0.3 s | 50 | <50 | <50 | <50 | <50 | <50 | <50 |
+| points | 10,000 | 0.6 s | 51 | <50 | <50 | <50 | <50 | <50 | <50 |
+| points | 100,000 | 2.2 s | 215 | <50 | <50 | <50 | <50 | <50 | 101 |
+| lines | 1,000 | 0.3 s | 51 | <50 | <50 | <50 | <50 | <50 | <50 |
+| lines | 10,000 | 0.6 s | 52 | <50 | <50 | <50 | <50 | <50 | <50 |
+| lines | 100,000 | 2.6 s | 314 | <50 | <50 | <50 | <50 | <50 | 136 |
+| polygons | 1,000 | 0.3 s | 52 | <50 | <50 | <50 | <50 | <50 | <50 |
+| polygons | 10,000 | 0.8 s | 63 | <50 | <50 | <50 | <50 | <50 | <50 |
+| polygons | 100,000 | 4.9 s | 587 | <50 | <50 | 65 | 51 | 51 | 256 |
+| colored | 1,000 | 0.3 s | <50 | <50 | <50 | <50 | <50 | <50 | <50 |
+| colored | 10,000 | 0.6 s | 50 | <50 | <50 | <50 | <50 | <50 | <50 |
+| colored | 100,000 | 2.4 s | 248 | <50 | <50 | <50 | <50 | 118 | 101 |
+| changing | 1,000 | 0.3 s | <50 | <50 | <50 | <50 | <50 | <50 | <50 |
+| changing | 10,000 | 0.5 s | 51 | <50 | <50 | <50 | <50 | <50 | <50 |
+| changing | 100,000 | 2.2 s | 213 | <50 | <50 | 334 | <50 | <50 | 102 |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Change from Phase 8 |
+|---|---|---|---|
+| `module.js` | 71.3 KiB | 20.6 KiB | +4.8 KiB: warnings and held frames |
+| `maplibre.js` (engine and MapLibre CSS) | 42.4 KiB | 12.0 KiB | +0.3 KiB: software rendering |
+| `36.js` (MapLibre) | 1139 KiB | 295 KiB | none |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| Hold the last `data.series` when the response has no frames | Each query's last frames are held, as the panel's own copy | Step 9.1: when one query of two fails, only its frames go; and Grafana empties the old arrays on a failed refresh too. |
+| Holding the last data matches Grafana's panels | It doesn't: they go blank | Step 9.1. The criterion stands, and the README says so. |
+| A Feature's own properties move to a separate list | They stay on the feature, which simply no longer gets the columns | `featureDetails` already read them from there and skipped names that have a column, so the change is three lines fewer. |
+| A web worker if needed | Not needed | The budgets are met without it (decision 4). |
+| — | A named geometry column that has gone is a warning | It's the same kind of mistake as a missing ID column. |
+| — | The no-WebGL2 test has a file of its own | Playwright's launch options apply to a whole worker. |
+
+### Findings for later phases
+
+- **A failed query's data links:** tooltips on held data read values from GeoFlow's copy, but a field's `getLinks` belongs to Grafana and may read the emptied arrays, so links could lose their row's values while a query is failing. Not checked; it lasts only until a refresh succeeds.
+- **The row order hint stays** on a conversion until the data next changes, so it can outlast the reorder by a refresh.
+- **MapLibre's serialization** is what limits very large polygon layers, not GeoFlow's conversion. Beyond simplifying them in the query, the way forward is vector tiles (§7).
+- **Phase 10:** this phase added no dependencies.
+- **Phase 12:** the CSP check covers what presets need: only their hosts in `connect-src`.
 
 ### Benchmark baseline
 

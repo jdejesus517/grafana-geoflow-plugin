@@ -2,7 +2,7 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** Phase 8 is complete: the panel draws each query as a named layer on an interactive basemap, styled per query and by value, with tooltips that show each feature's attributes. It fits the view to the data, and keeps the view and tooltips through refreshes. Hardening comes in Phase 9. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: pre-MVP.** The panel draws each query as a named layer on an interactive basemap, styled per query and by value, with tooltips that show each feature's attributes. It fits the view to the data, keeps the view and tooltips through refreshes, and warns about problems on the map. Its limits are measured: see [Sizing](#sizing). Phase 9 is complete; the license review comes in Phase 10. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
@@ -27,14 +27,14 @@ ORDER BY id
 - **Geometry column:** GeoFlow finds it by name (`geometry`, `geom`, `geojson`, `the_geom`, `wkb_geometry` or `shape`) or by content. It accepts GeoJSON text, `json`/`jsonb` values, and whole GeoJSON Features such as `ST_AsGeoJSON(t.*)`, whose properties are kept.
 - **`ST_Transform(geom, 4326)`:** needed unless the data is already in WGS84. Rows in another coordinate system are skipped.
 - **Precision `6`:** about 0.1 m, which roughly halves the size of the result compared with the default.
-- **Other columns:** become the feature's properties, shown in its tooltip.
+- **Other columns:** are shown in the feature's tooltip.
 - **An `id` column** (any column named `id`) identifies features. Keep it unique: a pinned tooltip then follows its feature when the dashboard refreshes. Text ids work too.
 - **`ORDER BY`:** a refresh that returns the same rows in the same order costs almost nothing: GeoFlow reuses what it drew, and a tooltip under the pointer stays open. Without `ORDER BY`, PostgreSQL may return rows in another order each time, and the layer is redrawn. On 100k rows, that's a pause of about 0.4 s per refresh.
 - **Other geometry or id columns:** pick them in the [Layers](#layers) list when detection chooses the wrong ones, or a query returns two geometry columns.
 
 **Each query is a layer.** Queries A, B, C… are drawn in that order, later ones on top, each in its own color from the Grafana theme unless styled otherwise (see [Styling](#styling)). Queries without a geometry column are left out. The [Layers](#layers) list names, reorders and hides them.
 
-**Rows that can't be drawn are skipped:** empty or invalid geometry, GeometryCollections, other coordinate systems, and coordinates outside ±180/±90. Turn on **Show data summary** in the panel options to see how many rows each query lost, and why. If no query has a geometry column, the panel says what to select instead. For example, a raw PostGIS `geom` column needs `ST_AsGeoJSON(geom)`.
+**Rows that can't be drawn are skipped:** empty or invalid geometry, GeometryCollections, other coordinate systems, and coordinates outside ±180/±90. Rows skipped for any reason but empty geometry show a warning on the map (see [Warnings](#warnings)). Turn on **Show data summary** in the panel options to see how many rows each query lost, and why. If no query has a geometry column, the panel says what to select instead. For example, a raw PostGIS `geom` column needs `ST_AsGeoJSON(geom)`.
 
 ## Layers
 
@@ -145,7 +145,7 @@ For the OpenStreetMap basemap, the `connect-src` part of `content_security_polic
 connect-src 'self' grafana.com *.cartocdn.com https://tile.openstreetmap.org ws://$ROOT_PATH wss://$ROOT_PATH;
 ```
 
-For a **Style URL**, also add the hosts of the style JSON and of the tiles, glyphs and sprites it references. Nothing else needs to change: the map's web worker is a same-origin file in the plugin, so `worker-src` and `blob:` aren't needed. When a tile server is blocked, the panel shows a "Basemap: … Failed to fetch" notice.
+For a **Style URL**, also add the hosts of the style JSON and of the tiles, glyphs and sprites it references, including those of a dark theme style. Nothing else needs to change: the map's web worker is a same-origin file in the plugin, so `worker-src` and `blob:` aren't needed. When a tile server is blocked, the panel shows a "Basemap: … Failed to fetch" notice.
 
 ## View
 
@@ -157,6 +157,38 @@ Under **View** in the panel options, **View mode** sets where the map looks:
 Either way, once you pan or zoom, the map stays there through refreshes, option changes and scrolling. **Fit on refresh** fits the data again on every refresh instead, undoing any panning: use it on wall displays.
 
 To set a fixed view, move the map in the panel editor, then click **Use current view**. It shows the map's view as it moves, saves it, and switches the mode to Fixed.
+
+## Warnings
+
+When something's wrong, a small warning shows on the map. Hover it, or focus it with the keyboard, to see the problems, layer by layer:
+
+- rows skipped as invalid, unsupported, in another coordinate system or out of range, with the reason for the first one
+- a Geometry, ID, Color by or Size by column the query doesn't return
+- more than 100,000 features in the panel
+
+Rows with empty geometry don't count, since they're usually intended, such as an asset without a location. Viewers see the warning too. To turn it off for a panel, turn off **Show warnings**.
+
+**Show data summary** lists every query result in full. It also says when a query's rows come back in another order, and when the browser draws the map without a GPU, which is the most common reason for a slow map.
+
+**When a query fails,** Grafana shows its error icon on the panel, and the map keeps drawing that query's last data until a refresh succeeds. Grafana's own panels go blank instead.
+
+## Sizing
+
+GeoFlow draws every row a query returns, in the browser. Measured with an integrated GPU, on one query:
+
+| Features        | Points or lines                                                      | Polygons                                        |
+| --------------- | -------------------------------------------------------------------- | ----------------------------------------------- |
+| 1,000 to 10,000 | Drawn in under a second                                              | Drawn in under a second                         |
+| 100,000         | Drawn in 2 to 3 s, with a pause of about 0.3 s when new data arrives | Drawn in about 5 s, with a pause of about 0.6 s |
+
+At these sizes, panning, hovering and refreshes that bring the same data don't noticeably pause the map. Simple polygons were measured; detailed ones take longer.
+
+- **Up to 100,000 features per panel** works well with a GPU. Without one, panning large maps gets slow: **Show data summary** says when that's the case.
+- **Beyond 100,000**, the panel still draws them, with a warning. Filter in the query, and simplify detailed polygons with `ST_SimplifyPreserveTopology`.
+- **Refreshing often?** Add an `ORDER BY`, so a refresh with the same data costs almost nothing.
+- **Grafana's row limit** (`row_limit` in its configuration) caps what a SQL query returns.
+
+To measure your own machine, run `npm run bench:map`. [docs/phase_9.md](docs/phase_9.md#outcome) has the full results.
 
 ## Development
 
@@ -187,6 +219,8 @@ Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 | 07 Data-driven | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.             |
 | 08 Layers      | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values. |
 | 09 Refresh     | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.   |
+| 10 Hardening   | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                      |
+| 11 Performance | Points, lines, polygons and colored points at up to 100k rows, picked with a variable. `npm run bench:map` measures these.                                 |
 
 ### Docker environment
 
@@ -228,6 +262,7 @@ npm run check:dist       # dist/ holds only expected files, including THIRD_PART
 npm run license:check    # production dependency license gate
 npm run e2e              # Playwright end-to-end tests; needs `npm run server` running
 npm run bench:adapter    # 100k-row conversion timing (not part of CI)
+npm run bench:map        # the panel in a real browser with the GPU; needs a build and `npm run server` (not part of CI)
 ```
 
 Before the first e2e run, install the browser with `npx playwright install chromium`.
@@ -253,7 +288,7 @@ node scripts/capture-frames.mjs
 
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
-- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md), [8](docs/phase_8.md)
+- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md), [8](docs/phase_8.md), [9](docs/phase_9.md)
 
 ## License
 
