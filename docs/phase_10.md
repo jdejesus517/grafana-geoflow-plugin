@@ -186,6 +186,7 @@ Implemented on branch `phase-10` in four commits, one per step:
 - **`spdx-satisfies` 6.0.0, pinned exactly.** 6.0.1 was published the day of the change. 6.0.0 dates from January 2025.
 - **The smoke e2e test** failed in two of the first five full-suite runs: the first check after the dashboard loads used the default 5 s timeout, under load. It now waits like the other specs (`DRAWN`). It passed 45 runs in a row alone, and the plugin's code didn't change, so the flake predates this phase.
 - **The README's script list** changed with the gate (step 10.2) rather than in step 10.4.
+- **`test:build` takes a file pattern, and the minimum Node version is 22.18.** `node --test webpack/` works on Node 26 but not 22, which needs a pattern (`'webpack/**/*.test.ts'`). Running TypeScript without a flag arrived in 22.18. The build, unit tests, typecheck and lint were checked on 22.18 too. CI runs Node 26 (`.nvmrc`) only.
 
 ### Review findings
 

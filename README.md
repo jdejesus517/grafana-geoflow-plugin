@@ -194,7 +194,7 @@ To measure your own machine, run `npm run bench:map`. [docs/phase_9.md](docs/pha
 
 ### Prerequisites
 
-- Node.js 22 or later (`.nvmrc` pins the recommended version) and npm 10 or later
+- Node.js 22.18 or later (`.nvmrc` pins the recommended version, which CI uses) and npm 10 or later
 - Docker Engine with Docker Compose v2.24 or later
 
 ### Quick start
