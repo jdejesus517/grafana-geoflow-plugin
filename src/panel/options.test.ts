@@ -2,6 +2,7 @@ import {
   basemapFromOptions,
   fitFromOptions,
   migrateOptions,
+  optional,
   styleUrlProblem,
   tileUrlProblem,
   tooltipMode,
@@ -39,6 +40,47 @@ describe('basemapFromOptions', () => {
       attribution: '© Example',
     });
     expect(basemapFromOptions({ kind: 'raster', tileUrl: TILES })).toMatchObject({ attribution: '' });
+  });
+
+  it('uses a dark tile URL in dark theme only, without dimming', () => {
+    const basemap = {
+      kind: 'raster' as const,
+      tileUrl: TILES,
+      darkTileUrl: ' https://dark.example.com/{z}/{x}/{y}.png ',
+    };
+
+    expect(basemapFromOptions(basemap, true)).toEqual({
+      kind: 'raster',
+      tiles: ['https://dark.example.com/{z}/{x}/{y}.png'],
+      attribution: '',
+      dimInDark: false,
+    });
+    expect(basemapFromOptions(basemap, false)).toEqual({ kind: 'raster', tiles: [TILES], attribution: '' });
+  });
+
+  it('uses a dark style URL in dark theme only', () => {
+    const basemap = { kind: 'style' as const, styleUrl: 'https://s/light.json', darkStyleUrl: 'https://s/dark.json' };
+
+    expect(basemapFromOptions(basemap, true)).toEqual({ kind: 'style', url: 'https://s/dark.json' });
+    expect(basemapFromOptions(basemap, false)).toEqual({ kind: 'style', url: 'https://s/light.json' });
+  });
+
+  it('ignores an empty or invalid dark URL, keeping the light one', () => {
+    expect(basemapFromOptions({ kind: 'raster', tileUrl: TILES, darkTileUrl: ' ' }, true)).toEqual({
+      kind: 'raster',
+      tiles: [TILES],
+      attribution: '',
+    });
+    expect(basemapFromOptions({ kind: 'raster', tileUrl: TILES, darkTileUrl: 'https://t/x.png' }, true)).toMatchObject({
+      tiles: [TILES],
+    });
+    expect(
+      basemapFromOptions({ kind: 'style', styleUrl: 'https://s/light.json', darkStyleUrl: 'ftp://s/dark.json' }, true)
+    ).toEqual({ kind: 'style', url: 'https://s/light.json' });
+  });
+
+  it('ignores a dark URL without a usable light one', () => {
+    expect(basemapFromOptions({ kind: 'raster', tileUrl: '', darkTileUrl: TILES }, true)).toEqual({ kind: 'none' });
   });
 
   it('maps a style URL', () => {
@@ -137,5 +179,16 @@ describe('migrateOptions', () => {
     const options = { view: { mode: 'fit' as const, lat: 0, lon: 0, zoom: 1 } };
 
     expect(migrateOptions(options)).toBe(options);
+  });
+});
+
+describe('optional', () => {
+  it('accepts an empty URL, and checks any other', () => {
+    const check = optional(tileUrlProblem);
+
+    expect(check(undefined)).toBeUndefined();
+    expect(check('  ')).toBeUndefined();
+    expect(check(TILES)).toBeUndefined();
+    expect(check('https://t/x.png')).toMatch(/needs \{z\}/);
   });
 });

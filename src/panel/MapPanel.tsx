@@ -168,7 +168,11 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
   // Remembers the layers it came from, so it disappears when new data arrives.
   const [layerError, setLayerError] = useState<{ layers: LayerSpec[]; layerId: string; message: string }>();
 
-  const basemap = useMemo(() => basemapFromOptions(options.basemap), [options.basemap]);
+  // A dark theme URL replaces the light one while Grafana's theme is dark (docs/phase_8.md). The
+  // same basemap keeps its identity, so a theme switch without a dark URL doesn't count as a
+  // basemap change, which would close a pinned tooltip.
+  const basemapKey = JSON.stringify(basemapFromOptions(options.basemap, theme.isDark));
+  const basemap = useMemo<BasemapSpec>(() => JSON.parse(basemapKey), [basemapKey]);
   const engineTheme = useMemo(
     () => ({ dark: theme.isDark, background: theme.colors.background.primary }),
     [theme.isDark, theme.colors.background.primary]

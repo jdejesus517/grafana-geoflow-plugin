@@ -13,6 +13,7 @@ import {
   TooltipMode,
   ViewMode,
   migrateOptions,
+  optional,
   styleUrlProblem,
   tileUrlProblem,
 } from './panel/options';
@@ -190,13 +191,36 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         showIf: (options) => options.basemap?.kind === 'raster',
       })
       .addCustomEditor<CheckedTextEditorSettings, string | undefined>({
+        id: 'basemap.darkTileUrl',
+        path: 'basemap.darkTileUrl',
+        name: 'Dark theme tile URL',
+        description: 'Optional tiles for dark theme, used as they are. Without them, the tiles above are dimmed.',
+        category: BASEMAP,
+        editor: CheckedTextEditor,
+        settings: { placeholder: 'https://tiles.example.com/dark/{z}/{x}/{y}.png', validate: optional(tileUrlProblem) },
+        showIf: (options) => options.basemap?.kind === 'raster',
+      })
+      .addCustomEditor<CheckedTextEditorSettings, string | undefined>({
         id: 'basemap.styleUrl',
         path: 'basemap.styleUrl',
         name: 'Style URL',
-        description: 'A MapLibre style JSON. The style controls the whole basemap, including in dark theme.',
+        description: "A MapLibre style JSON. The style controls the whole basemap; it isn't dimmed in dark theme.",
         category: BASEMAP,
         editor: CheckedTextEditor,
         settings: { placeholder: 'https://tiles.example.com/styles/basic/style.json', validate: styleUrlProblem },
+        showIf: (options) => options.basemap?.kind === 'style',
+      })
+      .addCustomEditor<CheckedTextEditorSettings, string | undefined>({
+        id: 'basemap.darkStyleUrl',
+        path: 'basemap.darkStyleUrl',
+        name: 'Dark theme style URL',
+        description: 'Optional style for dark theme.',
+        category: BASEMAP,
+        editor: CheckedTextEditor,
+        settings: {
+          placeholder: 'https://tiles.example.com/styles/dark/style.json',
+          validate: optional(styleUrlProblem),
+        },
         showIf: (options) => options.basemap?.kind === 'style',
       })
       .addRadio<ViewMode, { options: Array<{ value: ViewMode; label: string }> }>({

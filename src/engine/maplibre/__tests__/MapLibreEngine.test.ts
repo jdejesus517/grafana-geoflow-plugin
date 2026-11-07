@@ -348,6 +348,21 @@ describe('MapLibreEngine', () => {
       }
     });
 
+    it('leaves tiles made for dark theme undimmed', async () => {
+      const basemap = {
+        kind: 'raster' as const,
+        tiles: ['https://t/{z}/{x}/{y}.png'],
+        attribution: '',
+        dimInDark: false,
+      };
+      const { engine, map } = await mounted({ ...options, basemap });
+      engine.setTheme(dark);
+
+      for (const [property, value] of Object.entries(rasterPaint(light))) {
+        expect(map.setPaintProperty).toHaveBeenCalledWith(BASEMAP_RASTER_LAYER_ID, property, value);
+      }
+    });
+
     it('ignores an unchanged theme', async () => {
       const { engine, map } = await mounted();
       engine.setTheme({ ...light });

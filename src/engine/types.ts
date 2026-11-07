@@ -4,7 +4,8 @@ import type { Bounds, FeatureCollection, SupportedGeometry } from '../model';
 
 export type BasemapSpec =
   | { kind: 'osm' }
-  | { kind: 'raster'; tiles: string[]; attribution: string; maxZoom?: number }
+  /** `dimInDark` (default true) dims the tiles in dark theme; false for tiles that are dark already. */
+  | { kind: 'raster'; tiles: string[]; attribution: string; maxZoom?: number; dimInDark?: boolean }
   | { kind: 'style'; url: string }
   | { kind: 'none' };
 

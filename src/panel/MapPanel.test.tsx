@@ -827,6 +827,35 @@ describe('MapPanel', () => {
       expect(light[0].data).toBe(dark[0].data);
     });
 
+    it('switches to the dark theme URL with the theme, keeping the map', async () => {
+      const basemap = {
+        kind: 'raster' as const,
+        tileUrl: 'https://t/{z}/{x}/{y}.png',
+        darkTileUrl: 'https://d/{z}/{x}/{y}.png',
+      };
+      const panel = (mode: 'light' | 'dark') => (
+        <ThemeContext.Provider value={createTheme({ colors: { mode } })}>
+          <MapPanel {...props({ options: { basemap } })} />
+        </ThemeContext.Provider>
+      );
+      const { rerender } = render(panel('light'));
+      await act(async () => {});
+      expect(engine.mount.mock.lastCall![1].basemap).toMatchObject({ tiles: ['https://t/{z}/{x}/{y}.png'] });
+
+      rerender(panel('dark'));
+      expect(engine.setBasemap).toHaveBeenLastCalledWith({
+        kind: 'raster',
+        tiles: ['https://d/{z}/{x}/{y}.png'],
+        attribution: '',
+        dimInDark: false,
+      });
+      rerender(panel('light'));
+      expect(engine.setBasemap).toHaveBeenLastCalledWith(
+        expect.objectContaining({ tiles: ['https://t/{z}/{x}/{y}.png'] })
+      );
+      expect(engine.mount).toHaveBeenCalledTimes(1);
+    });
+
     it('explains when no frame has a geometry column', async () => {
       await renderPanel({ data: { series: [noGeometry] } });
 

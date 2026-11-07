@@ -15,8 +15,12 @@ export interface GeoFlowOptions {
     /** XYZ template for `raster`, e.g. https://tiles.example.com/{z}/{x}/{y}.png */
     tileUrl?: string;
     tileAttribution?: string;
+    /** Optional XYZ template for `raster` in dark theme, not dimmed (docs/phase_8.md, Design §5). */
+    darkTileUrl?: string;
     /** MapLibre style JSON URL for `style`. */
     styleUrl?: string;
+    /** Optional style JSON URL for `style` in dark theme. */
+    darkStyleUrl?: string;
   };
   view: {
     /**
@@ -102,23 +106,45 @@ export function styleUrlProblem(url: string | undefined): string | undefined {
   return undefined;
 }
 
+/** A check for an optional URL: an empty one is fine. */
+export function optional(problem: (url: string | undefined) => string | undefined) {
+  return (url: string | undefined) => (url?.trim() ? problem(url) : undefined);
+}
+
 /**
- * The engine basemap for the panel options. Incomplete or invalid settings fall back to `none`
- * rather than a broken style; the options pane shows why (see CheckedTextEditor.tsx).
+ * The engine basemap for the panel options and theme. Incomplete or invalid settings fall back to
+ * `none` rather than a broken style; the options pane shows why (see CheckedTextEditor.tsx). In
+ * dark theme, a dark URL replaces the light one; an invalid dark URL is ignored.
  */
-export function basemapFromOptions(basemap: GeoFlowOptions['basemap'] | undefined): BasemapSpec {
+export function basemapFromOptions(basemap: GeoFlowOptions['basemap'] | undefined, dark = false): BasemapSpec {
   switch (basemap?.kind ?? DEFAULT_OPTIONS.basemap.kind) {
     case 'osm':
       return { kind: 'osm' };
-    case 'raster':
-      return tileUrlProblem(basemap?.tileUrl)
-        ? { kind: 'none' }
-        : { kind: 'raster', tiles: [basemap!.tileUrl!.trim()], attribution: basemap?.tileAttribution?.trim() ?? '' };
-    case 'style':
-      return styleUrlProblem(basemap?.styleUrl) ? { kind: 'none' } : { kind: 'style', url: basemap!.styleUrl!.trim() };
+    case 'raster': {
+      if (tileUrlProblem(basemap?.tileUrl)) {
+        return { kind: 'none' };
+      }
+      const attribution = basemap?.tileAttribution?.trim() ?? '';
+      const darkUrl = dark && usable(basemap?.darkTileUrl, tileUrlProblem);
+      return darkUrl
+        ? { kind: 'raster', tiles: [darkUrl], attribution, dimInDark: false }
+        : { kind: 'raster', tiles: [basemap!.tileUrl!.trim()], attribution };
+    }
+    case 'style': {
+      if (styleUrlProblem(basemap?.styleUrl)) {
+        return { kind: 'none' };
+      }
+      const darkUrl = dark && usable(basemap?.darkStyleUrl, styleUrlProblem);
+      return { kind: 'style', url: darkUrl || basemap!.styleUrl!.trim() };
+    }
     default:
       return { kind: 'none' };
   }
+}
+
+/** The trimmed URL when it's set and valid. */
+function usable(url: string | undefined, problem: (url: string | undefined) => string | undefined) {
+  return url?.trim() && !problem(url) ? url.trim() : undefined;
 }
 
 /** Ranges for the fit options; the defaults are in DEFAULT_OPTIONS. */

@@ -342,7 +342,8 @@ export class MapLibreEngine implements MapEngine {
       map.setPaintProperty(BACKGROUND_LAYER_ID, 'background-color', this.theme.background);
     }
     if (map.getLayer(BASEMAP_RASTER_LAYER_ID)) {
-      for (const [property, value] of Object.entries(rasterPaint(this.theme))) {
+      const dim = this.basemap.kind !== 'raster' || this.basemap.dimInDark !== false;
+      for (const [property, value] of Object.entries(rasterPaint(this.theme, dim))) {
         map.setPaintProperty(BASEMAP_RASTER_LAYER_ID, property as PaintProperty, value);
       }
     }
