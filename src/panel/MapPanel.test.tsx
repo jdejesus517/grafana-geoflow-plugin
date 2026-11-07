@@ -2,6 +2,7 @@ import React from 'react';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import {
   DataFrame,
+  EventBusSrv,
   Field,
   FieldColorModeId,
   FieldType,
@@ -28,6 +29,7 @@ import {
 import { MapPanel } from './MapPanel';
 import { DEFAULT_OPTIONS, GeoFlowOptions } from './options';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
+import { MapViewEvent, MapViewRequestEvent } from './viewEvents';
 
 jest.mock('../engine', () => ({
   ...jest.requireActual('../engine/errors'),
@@ -133,15 +135,17 @@ afterEach(() => {
 });
 
 interface PanelOverrides {
+  eventBus?: EventBusSrv;
   options?: Partial<GeoFlowOptions>;
   data?: Partial<PanelData>;
   width?: number;
   height?: number;
 }
 
-function props({ options, data, width = 400, height = 300 }: PanelOverrides = {}) {
+function props({ options, data, eventBus, width = 400, height = 300 }: PanelOverrides = {}) {
   return {
     id: 1,
+    eventBus,
     data: { state: LoadingState.Done, series: [], timeRange: getDefaultTimeRange(), ...data },
     // A fixed view, as most of these tests expect; the fit tests set Fit to data.
     options: { ...DEFAULT_OPTIONS, view: { ...DEFAULT_OPTIONS.view, mode: 'fixed' }, ...options },
@@ -1127,6 +1131,28 @@ describe('MapPanel', () => {
       });
 
       expect(engine.mount.mock.lastCall![1].fit).toBeUndefined();
+    });
+  });
+
+  describe('current view for the options pane', () => {
+    it("publishes the map's view on the panel's eventBus as it moves, and when asked", async () => {
+      const eventBus = new EventBusSrv();
+      const views = jest.fn();
+      eventBus.subscribe(MapViewEvent, (event) => views(event.payload));
+      await renderPanel({ eventBus, options: { view: { ...DEFAULT_OPTIONS.view, mode: 'fixed', lat: 5, lon: 6 } } });
+
+      eventBus.publish(new MapViewRequestEvent());
+      expect(views).toHaveBeenLastCalledWith({ center: [6, 5], zoom: 1 });
+
+      const moved = { center: [9, 9], zoom: 11 };
+      act(() =>
+        jest
+          .mocked(engine.on)
+          .mock.calls.find(([event]) => event === 'viewChange')![1](moved as never)
+      );
+      expect(views).toHaveBeenLastCalledWith(moved);
+      eventBus.publish(new MapViewRequestEvent());
+      expect(views).toHaveBeenLastCalledWith(moved);
     });
   });
 });

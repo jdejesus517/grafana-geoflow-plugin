@@ -19,6 +19,7 @@ import { MapLegend } from './MapLegend';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 import { useFeatureTooltip } from './useFeatureTooltip';
 import { useOnScreen } from './useOnScreen';
+import { MapViewEvent, MapViewRequestEvent } from './viewEvents';
 
 interface Props extends PanelProps<GeoFlowOptions> {}
 
@@ -153,7 +154,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * place as data, options, theme and size change, and destroyed when the panel goes off screen or
  * unmounts.
  */
-export const MapPanel = ({ data, options, width, height }: Props) => {
+export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
   const styles = useStyles2(getStyles);
   const theme = useTheme2();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -213,10 +214,18 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   // new query response, fit again. Nothing else does, scrolling back on screen included.
   const lastFit = useRef<LastFit>({});
   // The engine loads asynchronously; it mounts with whatever the options and data are by then.
-  const latest = useRef({ basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading });
+  const latest = useRef({ basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading, eventBus });
   useEffect(() => {
-    latest.current = { basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading };
+    latest.current = { basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading, eventBus };
   });
+
+  // Use current view in the options pane asks for the view when it opens (docs/phase_8.md, Design §4).
+  useEffect(() => {
+    const subscription = eventBus?.subscribe(MapViewRequestEvent, () =>
+      eventBus.publish(new MapViewEvent(currentView.current))
+    );
+    return () => subscription?.unsubscribe();
+  }, [eventBus]);
 
   // A map holds a WebGL context, and browsers cap them per page (16 in Chromium), so the map
   // exists only while the panel is on or near the screen.
@@ -238,7 +247,10 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
             ? setLayerError({ layers: latest.current.layers, layerId: error.layerId, message: error.message })
             : setBasemapError({ basemap: latest.current.basemap, message: error.message })
         );
-        loaded.on('viewChange', (next) => (currentView.current = next));
+        loaded.on('viewChange', (next) => {
+          currentView.current = next;
+          latest.current.eventBus?.publish(new MapViewEvent(next));
+        });
         loaded.on('contextLost', () => setPaused(true));
         const { basemap, theme, layers, fit, dataBounds, requestId, loading } = latest.current;
         const options: EngineOptions = { basemap, theme, layers, view: currentView.current };

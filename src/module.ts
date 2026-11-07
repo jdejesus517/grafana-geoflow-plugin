@@ -3,6 +3,7 @@ import { DASH_PATTERN_EXAMPLE, LineStyleOption, MAP_STYLE_RANGES, dashPatternPro
 import { CheckedTextEditor, CheckedTextEditorSettings } from './panel/CheckedTextEditor';
 import { LayersEditor } from './panel/LayersEditor';
 import { MapPanel } from './panel/MapPanel';
+import { ViewEditor } from './panel/ViewEditor';
 import {
   BasemapKind,
   DEFAULT_OPTIONS,
@@ -210,6 +211,14 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
             { value: 'fit', label: 'Fit to data' },
           ],
         },
+      })
+      .addCustomEditor({
+        id: 'view.current',
+        path: 'view',
+        name: 'Current view',
+        description: "Saves the map's view as the fixed view.",
+        category: VIEW,
+        editor: ViewEditor,
       })
       .addNumberInput({
         path: 'view.lat',
