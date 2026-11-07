@@ -3,6 +3,8 @@ import { BasemapSpec, ViewState } from '../engine';
 
 export type BasemapKind = BasemapSpec['kind'];
 
+export type ViewMode = 'fixed' | 'fit';
+
 /** When tooltips show: on hover (and pinned on click), only on click, or never (docs/phase_4.md). */
 export type TooltipMode = 'hover' | 'click' | 'off';
 
@@ -13,10 +15,30 @@ export interface GeoFlowOptions {
     /** XYZ template for `raster`, e.g. https://tiles.example.com/{z}/{x}/{y}.png */
     tileUrl?: string;
     tileAttribution?: string;
+    /** Optional XYZ template for `raster` in dark theme, not dimmed (docs/phase_8.md, Design §5). */
+    darkTileUrl?: string;
     /** MapLibre style JSON URL for `style`. */
     styleUrl?: string;
+    /** Optional style JSON URL for `style` in dark theme. */
+    darkStyleUrl?: string;
   };
-  view: { lat: number; lon: number; zoom: number };
+  view: {
+    /**
+     * Fixed: the latitude, longitude and zoom. Fit: framed around the data (docs/phase_8.md,
+     * Design §2), with the fixed view until there is data. Panels saved before Phase 8 are
+     * migrated to fixed.
+     */
+    mode: ViewMode;
+    lat: number;
+    lon: number;
+    zoom: number;
+    /** Fit only: fit again on every query response. */
+    fitOnRefresh?: boolean;
+    /** Fit only: px around the data. */
+    padding?: number;
+    /** Fit only: the closest a fit zooms in, so a single point doesn't fill the map. */
+    maxZoom?: number;
+  };
   tooltip: TooltipMode;
   /** The legend of colors from Color by (docs/phase_6.md, Design §4). */
   legend: { show: boolean };
@@ -39,7 +61,7 @@ export interface GeoFlowFieldConfig extends MapStyleConfig {
 
 export const DEFAULT_OPTIONS: GeoFlowOptions = {
   basemap: { kind: 'osm' },
-  view: { lat: 20, lon: 0, zoom: 1 },
+  view: { mode: 'fit', lat: 20, lon: 0, zoom: 1, fitOnRefresh: false, padding: 40, maxZoom: 17 },
   tooltip: 'hover',
   legend: { show: true },
   showSummary: false,
@@ -84,26 +106,86 @@ export function styleUrlProblem(url: string | undefined): string | undefined {
   return undefined;
 }
 
+/** A check for an optional URL: an empty one is fine. */
+export function optional(problem: (url: string | undefined) => string | undefined) {
+  return (url: string | undefined) => (url?.trim() ? problem(url) : undefined);
+}
+
 /**
- * The engine basemap for the panel options. Incomplete or invalid settings fall back to `none`
- * rather than a broken style; the options pane shows why (see CheckedTextEditor.tsx).
+ * The engine basemap for the panel options and theme. Incomplete or invalid settings fall back to
+ * `none` rather than a broken style; the options pane shows why (see CheckedTextEditor.tsx). In
+ * dark theme, a dark URL replaces the light one; an invalid dark URL is ignored.
  */
-export function basemapFromOptions(basemap: GeoFlowOptions['basemap'] | undefined): BasemapSpec {
+export function basemapFromOptions(basemap: GeoFlowOptions['basemap'] | undefined, dark = false): BasemapSpec {
   switch (basemap?.kind ?? DEFAULT_OPTIONS.basemap.kind) {
     case 'osm':
       return { kind: 'osm' };
-    case 'raster':
-      return tileUrlProblem(basemap?.tileUrl)
-        ? { kind: 'none' }
-        : { kind: 'raster', tiles: [basemap!.tileUrl!.trim()], attribution: basemap?.tileAttribution?.trim() ?? '' };
-    case 'style':
-      return styleUrlProblem(basemap?.styleUrl) ? { kind: 'none' } : { kind: 'style', url: basemap!.styleUrl!.trim() };
+    case 'raster': {
+      if (tileUrlProblem(basemap?.tileUrl)) {
+        return { kind: 'none' };
+      }
+      const attribution = basemap?.tileAttribution?.trim() ?? '';
+      const darkUrl = dark && usable(basemap?.darkTileUrl, tileUrlProblem);
+      return darkUrl
+        ? { kind: 'raster', tiles: [darkUrl], attribution, dimInDark: false }
+        : { kind: 'raster', tiles: [basemap!.tileUrl!.trim()], attribution };
+    }
+    case 'style': {
+      if (styleUrlProblem(basemap?.styleUrl)) {
+        return { kind: 'none' };
+      }
+      const darkUrl = dark && usable(basemap?.darkStyleUrl, styleUrlProblem);
+      return { kind: 'style', url: darkUrl || basemap!.styleUrl!.trim() };
+    }
     default:
       return { kind: 'none' };
   }
 }
 
-/** The initial view, clamped to valid ranges. */
+/** The trimmed URL when it's set and valid. */
+function usable(url: string | undefined, problem: (url: string | undefined) => string | undefined) {
+  return url?.trim() && !problem(url) ? url.trim() : undefined;
+}
+
+/** Ranges for the fit options; the defaults are in DEFAULT_OPTIONS. */
+export const FIT_RANGES = { padding: { min: 0, max: 200 }, maxZoom: { min: 0, max: 22 } };
+
+/** How the map fits the data, or undefined in fixed mode. */
+export interface FitSettings {
+  padding: number;
+  maxZoom: number;
+  onRefresh: boolean;
+}
+
+/**
+ * The fit settings, clamped to valid ranges, or undefined when the view is fixed. A view without
+ * a mode is fixed, as every view was before Phase 8.
+ */
+export function fitFromOptions(view: Partial<GeoFlowOptions['view']> | undefined): FitSettings | undefined {
+  if (view?.mode !== 'fit') {
+    return undefined;
+  }
+  const { padding, maxZoom } = FIT_RANGES;
+  return {
+    padding: clamp(finite(view.padding, DEFAULT_OPTIONS.view.padding!), padding.min, padding.max),
+    maxZoom: clamp(finite(view.maxZoom, DEFAULT_OPTIONS.view.maxZoom!), maxZoom.min, maxZoom.max),
+    onRefresh: view.fitOnRefresh === true,
+  };
+}
+
+/**
+ * Panel migration (docs/phase_8.md, Design §2): panels saved before Phase 8 keep their fixed
+ * view, while new panels get Fit to data from the defaults. Grafana runs it on panels saved with
+ * another plugin version, or none (provisioned dashboards), before applying option defaults.
+ */
+export function migrateOptions(options: Partial<GeoFlowOptions> | undefined): Partial<GeoFlowOptions> {
+  if (options?.view?.mode) {
+    return options;
+  }
+  return { ...options, view: { ...options?.view, mode: 'fixed' } as GeoFlowOptions['view'] };
+}
+
+/** The fixed view, clamped to valid ranges. */
 export function viewFromOptions(view: Partial<GeoFlowOptions['view']> | undefined): ViewState {
   const { lat, lon, zoom } = { ...DEFAULT_OPTIONS.view, ...view };
   return {

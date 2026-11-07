@@ -185,34 +185,40 @@ function columnRange(field: Field): { min: number; max: number; delta: number } 
 }
 
 interface Cached<T> {
-  featureRows: number[];
   inputs: string;
   extra: unknown;
   values: T[];
 }
-const colorCache = new WeakMap<object, Cached<string | undefined>>();
-const radiusCache = new WeakMap<object, Cached<number | undefined>>();
+const colorCache = new WeakMap<ConversionResult, Map<string, Cached<string | undefined>>>();
+const radiusCache = new WeakMap<ConversionResult, Map<string, Cached<number | undefined>>>();
 
 /**
- * Per-feature values, worked out again only when the column's data, the features, `inputs` or
- * `extra` change. Keyed by the column's values array, which Grafana keeps across field config
- * changes (docs/phase_5.md, Design §3). It clones every config, so `inputs` holds what the
- * values depend on as JSON, compared by content. Unchanged inputs give the same array back.
+ * Per-feature values, worked out again only when the column's data, `inputs` or `extra` change.
+ * Keyed by the conversion and the column's name: a conversion is reused only while its frame's
+ * data is unchanged, through field config changes (docs/phase_5.md, Design §3) and refreshes that
+ * bring the same data again (docs/phase_8.md, Design §1). Grafana clones every config, so
+ * `inputs` holds what the values depend on as JSON, compared by content. Unchanged inputs give
+ * the same array back.
  */
 function cached<T>(
-  cache: WeakMap<object, Cached<T>>,
+  cache: WeakMap<ConversionResult, Map<string, Cached<T>>>,
   field: Field,
   result: ConversionResult,
   inputs: string,
   extra: unknown,
   compute: () => T[]
 ): T[] {
-  const hit = cache.get(field.values);
-  if (hit && hit.featureRows === result.featureRows && hit.inputs === inputs && hit.extra === extra) {
+  let byField = cache.get(result);
+  if (!byField) {
+    byField = new Map();
+    cache.set(result, byField);
+  }
+  const hit = byField.get(field.name);
+  if (hit && hit.inputs === inputs && hit.extra === extra) {
     return hit.values;
   }
   const values = compute();
-  cache.set(field.values, { featureRows: result.featureRows, inputs, extra, values });
+  byField.set(field.name, { inputs, extra, values });
   return values;
 }
 

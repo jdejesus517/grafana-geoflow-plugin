@@ -42,6 +42,15 @@ describe('basemapStyle', () => {
       expect(style.layers[1]).toMatchObject({ type: 'raster', source: BASEMAP_SOURCE_ID });
     });
 
+    it('does not dim custom tiles made for dark theme', () => {
+      const tiles = { kind: 'raster' as const, tiles: ['https://t/{z}/{x}/{y}.png'], attribution: '' };
+
+      expect(asStyle(basemapStyle({ ...tiles, dimInDark: false }, dark)).layers[1]).toMatchObject({
+        paint: rasterPaint(light),
+      });
+      expect(asStyle(basemapStyle(tiles, dark)).layers[1]).toMatchObject({ paint: rasterPaint(dark) });
+    });
+
     it('dims the tiles in dark theme only', () => {
       const darkStyle = asStyle(basemapStyle({ kind: 'osm' }, dark));
 
@@ -115,6 +124,10 @@ describe('basemapStyle', () => {
 describe('rasterPaint', () => {
   it('sets the same properties in both themes, so a theme switch resets them all', () => {
     expect(Object.keys(rasterPaint(light)).sort()).toEqual(Object.keys(rasterPaint(dark)).sort());
+  });
+
+  it('leaves tiles made for dark theme undimmed', () => {
+    expect(rasterPaint(dark, false)).toEqual(rasterPaint(light));
   });
 
   it('uses the MapLibre defaults in light theme', () => {

@@ -1,6 +1,6 @@
 import { DataFrame, FieldType, toDataFrame } from '@grafana/data';
 import { bindPerFrame } from '../adapter';
-import { convertFrames } from './convertFrames';
+import { ConversionHistory, convertFrames } from './convertFrames';
 
 const point = (lon: number) => `{"type":"Point","coordinates":[${lon},35.78]}`;
 
@@ -20,6 +20,16 @@ function withNewConfig(source: DataFrame): DataFrame {
     ...source,
     fields: source.fields.map((field) => ({ ...field, config: { ...field.config, custom: { lineWidth: 5 } } })),
   };
+}
+
+/**
+ * What a refresh does: new frame and field objects, and new values arrays with the same content.
+ * Grafana then empties the old arrays (docs/phase_8.md, step 8.1).
+ */
+function refresh(source: DataFrame): DataFrame {
+  const fields = source.fields.map((field) => ({ ...field, values: JSON.parse(JSON.stringify(field.values)) }));
+  source.fields.forEach((field) => (field.values.length = 0));
+  return { ...source, fields };
 }
 
 describe('convertFrames', () => {
@@ -111,6 +121,68 @@ describe('convertFrames', () => {
     expect(named.featureCollection.features).toHaveLength(2);
     expect(convertFrames(frames, bindPerFrame(frames, [{ id: 'A', idField: 'name' }]))[0]).not.toBe(named);
     expect(missing.noGeometry).toEqual({ reason: 'fieldNotFound', detail: 'No column named "footprint"' });
+  });
+
+  describe('with a history', () => {
+    it('reuses the conversion of a refresh with the same data, after Grafana empties the old arrays', () => {
+      const history: ConversionHistory = new Map();
+      const [first] = convertFrames([frame()], [], history);
+      const [second] = convertFrames([refresh(frame())], [], history);
+      const original = frame();
+      convertFrames([original], [], history);
+
+      expect(second).toBe(first);
+      expect(convertFrames([refresh(original)], [], history)[0]).toBe(first);
+    });
+
+    it('converts again when a value, a type, a field name or the row count changes', () => {
+      const history: ConversionHistory = new Map();
+      const [first] = convertFrames([frame()], [], history);
+      const changed = (change: (source: DataFrame) => void) => {
+        const source = refresh(frame());
+        change(source);
+        const [result] = convertFrames([source], [], history);
+        // Back to the original data for the next change.
+        convertFrames([frame()], [], history);
+        return result;
+      };
+
+      expect(changed((source) => (source.fields[0].values[1] = 'c'))).not.toBe(first);
+      expect(changed((source) => (source.fields[0] = { ...source.fields[0], type: FieldType.other }))).not.toBe(first);
+      expect(changed((source) => (source.fields[0] = { ...source.fields[0], name: 'label' }))).not.toBe(first);
+      expect(changed((source) => source.fields.forEach((field) => field.values.pop()))).not.toBe(first);
+    });
+
+    it('compares objects by identity, so parsed JSON in new objects converts again', () => {
+      const geometry = (lon: number) => ({ type: 'Point', coordinates: [lon, 35.78] });
+      const source = () =>
+        toDataFrame({ refId: 'A', fields: [{ name: 'geometry', type: FieldType.other, values: [geometry(-78.78)] }] });
+      const history: ConversionHistory = new Map();
+      const [first] = convertFrames([source()], [], history);
+
+      expect(convertFrames([source()], [], history)[0]).not.toBe(first);
+    });
+
+    it("keeps each layer's last conversion apart, and drops layers that are gone", () => {
+      const history: ConversionHistory = new Map();
+      const [a, b] = convertFrames([frame('A'), frame('B')], [], history);
+      const [b2] = convertFrames([refresh(frame('B'))], [], history);
+
+      expect(b2).toBe(b);
+      expect([...history.keys()]).toEqual(['B']);
+      expect(convertFrames([refresh(frame('A'))], [], history)[0]).not.toBe(a);
+    });
+
+    it('converts again when the layer gets another geometry column', () => {
+      const history: ConversionHistory = new Map();
+      const frames = [frame('A')];
+      const [first] = convertFrames(frames, bindPerFrame(frames, []), history);
+      const refreshed = [refresh(frame('A'))];
+
+      expect(
+        convertFrames(refreshed, bindPerFrame(refreshed, [{ id: 'A', geometryField: 'name' }]), history)[0]
+      ).not.toBe(first);
+    });
   });
 
   it('copes with a frame without fields', () => {

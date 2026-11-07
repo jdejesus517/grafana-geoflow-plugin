@@ -12,6 +12,7 @@ export type {
   EngineTheme,
   FeatureRef,
   FeatureStyles,
+  FitOptions,
   LayerSpec,
   LayerStyle,
   LineStyle,

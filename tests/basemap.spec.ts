@@ -1,4 +1,4 @@
-import { STUB_TILE_HOST, editedPanel, expect, test } from './fixtures';
+import { DRAWN, STUB_TILE_HOST, editedPanel, expect, test } from './fixtures';
 
 const OSM_ATTRIBUTION = '© OpenStreetMap contributors';
 
@@ -16,22 +16,22 @@ test('OpenStreetMap panel shows the map, controls and attribution', async ({
   const dashboard = await readProvisionedDashboard({ fileName: '02-basemap.json' });
   const panel = (await gotoDashboardPage(dashboard)).getPanelByTitle('OpenStreetMap').locator;
 
-  await expect(panel.locator('canvas.maplibregl-canvas')).toBeVisible();
+  await expect(panel.locator('canvas.maplibregl-canvas')).toBeVisible(DRAWN);
   await expect(panel.getByRole('button', { name: 'Zoom in' })).toBeVisible();
   await expect(panel.getByText(OSM_ATTRIBUTION)).toBeAttached();
-  await expect.poll(() => maxOsmTileZoom(tileRequests)).toBeGreaterThan(0);
+  await expect.poll(() => maxOsmTileZoom(tileRequests), DRAWN).toBeGreaterThan(0);
 });
 
 test('zoom control zooms the map', async ({ readProvisionedDashboard, gotoDashboardPage, tileRequests }) => {
   const dashboard = await readProvisionedDashboard({ fileName: '02-basemap.json' });
   const panel = (await gotoDashboardPage(dashboard)).getPanelByTitle('OpenStreetMap').locator;
-  await expect.poll(() => maxOsmTileZoom(tileRequests)).toBeGreaterThan(0);
+  await expect.poll(() => maxOsmTileZoom(tileRequests), DRAWN).toBeGreaterThan(0);
   const before = maxOsmTileZoom(tileRequests);
 
   await panel.getByRole('button', { name: 'Zoom in' }).click();
 
   // The map's zoom level isn't readable from outside, but it fetches tiles for the new one.
-  await expect.poll(() => maxOsmTileZoom(tileRequests)).toBe(before + 1);
+  await expect.poll(() => maxOsmTileZoom(tileRequests), DRAWN).toBe(before + 1);
 });
 
 test('None basemap shows a map without tiles or attribution', async ({
@@ -41,7 +41,7 @@ test('None basemap shows a map without tiles or attribution', async ({
   const dashboard = await readProvisionedDashboard({ fileName: '02-basemap.json' });
   const panel = (await gotoDashboardPage(dashboard)).getPanelByTitle('No basemap').locator;
 
-  await expect(panel.locator('canvas.maplibregl-canvas')).toBeVisible();
+  await expect(panel.locator('canvas.maplibregl-canvas')).toBeVisible(DRAWN);
   await expect(panel.getByRole('button', { name: 'Zoom in' })).toBeVisible();
   await expect(panel.getByText(OSM_ATTRIBUTION)).not.toBeAttached();
 });
@@ -51,7 +51,7 @@ test('dark theme shows the map with themed controls', async ({ readProvisionedDa
   const dashboardPage = await gotoDashboardPage({ ...dashboard, queryParams: new URLSearchParams({ theme: 'dark' }) });
   const panel = dashboardPage.getPanelByTitle('OpenStreetMap').locator;
 
-  await expect(panel.locator('canvas.maplibregl-canvas')).toBeVisible();
+  await expect(panel.locator('canvas.maplibregl-canvas')).toBeVisible(DRAWN);
   // MapLibre's controls are white by default; the panel restyles them with the theme's background.
   const background = await panel
     .locator('.maplibregl-ctrl-group')
@@ -68,7 +68,7 @@ test('switching the basemap in the panel editor keeps the same map', async ({
   const panelEditPage = await gotoPanelEditPage({ dashboard, id: '1' });
   const panel = await editedPanel(panelEditPage);
   const canvas = panel.locator('canvas.maplibregl-canvas');
-  await expect(canvas).toBeVisible();
+  await expect(canvas).toBeVisible(DRAWN);
   // Tag the canvas: if the map were recreated, the tag would be gone.
   await canvas.evaluate((el) => (el.dataset.e2eOriginal = 'true'));
   const basemap = panelEditPage.getCustomOptions('Basemap');
@@ -115,7 +115,7 @@ test('a dashboard with 20 maps loads, scrolls and closes without WebGL errors', 
   // A map exists only while its panel is on or near the screen, so scroll to the panel, not the map.
   const showsMap = async (i: number) => {
     await panel(i).scrollIntoViewIfNeeded();
-    await expect(panel(i).locator('canvas.maplibregl-canvas')).toBeVisible();
+    await expect(panel(i).locator('canvas.maplibregl-canvas')).toBeVisible(DRAWN);
   };
 
   for (let i = 1; i <= 20; i++) {

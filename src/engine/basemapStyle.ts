@@ -14,11 +14,12 @@ const OSM_MAX_ZOOM = 19;
 
 /**
  * Raster paint for the theme. Dark theme dims and desaturates the tiles so a bright basemap
- * doesn't glare in a dark dashboard. Light theme returns the MapLibre defaults explicitly, so
- * switching back with setPaintProperty resets every property.
+ * doesn't glare in a dark dashboard, unless `dim` is false: tiles made for dark theme. Otherwise
+ * it returns the MapLibre defaults explicitly, so switching back with setPaintProperty resets
+ * every property.
  */
-export function rasterPaint(theme: EngineTheme) {
-  return theme.dark
+export function rasterPaint(theme: EngineTheme, dim = true) {
+  return theme.dark && dim
     ? { 'raster-brightness-max': 0.6, 'raster-saturation': -0.5, 'raster-contrast': 0.1 }
     : { 'raster-brightness-max': 1, 'raster-saturation': 0, 'raster-contrast': 0 };
 }
@@ -30,11 +31,11 @@ export function rasterPaint(theme: EngineTheme) {
 export function basemapStyle(spec: BasemapSpec, theme: EngineTheme): StyleSpecification | string {
   switch (spec.kind) {
     case 'osm':
-      return rasterStyle([OSM_TILE_URL], OSM_ATTRIBUTION, OSM_MAX_ZOOM, theme);
+      return rasterStyle([OSM_TILE_URL], OSM_ATTRIBUTION, OSM_MAX_ZOOM, theme, true);
     case 'raster':
       // MapLibre renders attribution as HTML. A custom attribution is typed by a dashboard
       // editor and shown to every viewer, so it is shown as plain text.
-      return rasterStyle(spec.tiles, escapeHtml(spec.attribution), spec.maxZoom, theme);
+      return rasterStyle(spec.tiles, escapeHtml(spec.attribution), spec.maxZoom, theme, spec.dimInDark !== false);
     case 'style':
       return spec.url;
     case 'none':
@@ -46,7 +47,8 @@ function rasterStyle(
   tiles: string[],
   attribution: string,
   maxZoom: number | undefined,
-  theme: EngineTheme
+  theme: EngineTheme,
+  dim: boolean
 ): StyleSpecification {
   return {
     version: 8,
@@ -61,7 +63,7 @@ function rasterStyle(
     },
     layers: [
       backgroundLayer(theme),
-      { id: BASEMAP_RASTER_LAYER_ID, type: 'raster', source: BASEMAP_SOURCE_ID, paint: rasterPaint(theme) },
+      { id: BASEMAP_RASTER_LAYER_ID, type: 'raster', source: BASEMAP_SOURCE_ID, paint: rasterPaint(theme, dim) },
     ],
   };
 }
