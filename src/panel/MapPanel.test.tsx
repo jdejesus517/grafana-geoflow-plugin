@@ -1184,4 +1184,46 @@ describe('MapPanel', () => {
       expect(views).toHaveBeenLastCalledWith(moved);
     });
   });
+
+  describe('warnings', () => {
+    const point = '{"type":"Point","coordinates":[1,2]}';
+    const frame = (values: Array<string | null>) =>
+      toDataFrame({ refId: 'A', fields: [{ name: 'geometry', type: FieldType.string, values }] });
+
+    it('shows nothing when there is nothing wrong, or only empty geometry', async () => {
+      await renderPanel({ data: { series: [frame([point, null])] } });
+
+      expect(screen.queryByTestId('geoflow-warnings')).not.toBeInTheDocument();
+    });
+
+    it('counts the problems, and lists them on hover, without the data summary', async () => {
+      await renderPanel({
+        data: { series: [frame([point, 'not json'])] },
+        options: { layers: [{ id: 'A', name: 'Assets', idField: 'key' }] },
+      });
+      const warning = screen.getByTestId('geoflow-warnings');
+      expect(warning).toHaveAccessibleName('2 warnings');
+
+      fireEvent.mouseEnter(warning);
+      const details = await screen.findByTestId('geoflow-warnings-details');
+      expect(details).toHaveTextContent('Assets: 1 row skipped: invalid 1');
+      expect(details).toHaveTextContent('Assets: ID column: no column named key');
+    });
+
+    it('is turned off by Show warnings', async () => {
+      await renderPanel({ data: { series: [frame([point, 'not json'])] }, options: { showWarnings: false } });
+
+      expect(screen.queryByTestId('geoflow-warnings')).not.toBeInTheDocument();
+    });
+
+    it('agrees with the data summary about a layer setting', async () => {
+      await renderPanel({
+        data: { series: [frame([point])] },
+        options: { showSummary: true, layers: [{ id: 'A', idField: 'key' }] },
+      });
+
+      expect(screen.getByTestId('geoflow-warnings')).toHaveAccessibleName('1 warning');
+      expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('ID column: no column named key');
+    });
+  });
 });

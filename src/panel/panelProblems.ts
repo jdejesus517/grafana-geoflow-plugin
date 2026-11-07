@@ -1,0 +1,75 @@
+import { DataFrame } from '@grafana/data';
+import { BoundLayer, ConversionResult, WarningKind, dataStyleFields } from '../adapter';
+import { WARNING_LABELS } from './conversionSummary';
+
+/** More features than this draw slowly: the limit of the design (docs/architecture.md §4.2). */
+export const MANY_FEATURES = 100_000;
+
+export interface PanelProblem {
+  /** The layer's name; undefined for a problem with the whole panel. */
+  layerName?: string;
+  /** For example "12 rows skipped: invalid 10, out of range 2". */
+  text: string;
+  /** More about it, such as why the first row was skipped. */
+  detail?: string;
+}
+
+/** Empty geometry isn't a problem: it's usually intended, such as an asset without a location. */
+const SKIPPED_KINDS: WarningKind[] = ['invalid', 'unsupported', 'projected', 'outOfRange'];
+
+/**
+ * What's wrong with the layer's settings for its frame: columns it names that aren't there. The
+ * warning on the map and the data summary both list these.
+ */
+export function layerSettingProblems(
+  layer: BoundLayer | undefined,
+  frame: DataFrame,
+  result: ConversionResult
+): string[] {
+  const missingId = layer?.idField && !frame.fields.some(({ name }) => name === layer.idField);
+  return [
+    ...(missingId ? [`ID column: no column named ${layer.idField}`] : []),
+    ...(result.noGeometry ? [] : dataStyleFields(frame, result).problems),
+  ];
+}
+
+/** Everything the warning on the map lists (docs/phase_9.md, Design §1), layer by layer. */
+export function panelProblems(results: ConversionResult[], layers: BoundLayer[], frames: DataFrame[]): PanelProblem[] {
+  const problems: PanelProblem[] = results.flatMap((result, i) => {
+    const layer = layers.find(({ frameIndex }) => frameIndex === i);
+    const layerName = layer?.name ?? result.layerId;
+    return [
+      ...skippedRows(result, layerName),
+      // A query without a geometry column is left out on purpose; a named column that's gone isn't.
+      ...(result.noGeometry?.reason === 'fieldNotFound' ? [{ layerName, text: result.noGeometry.detail }] : []),
+      ...layerSettingProblems(layer, frames[i], result).map((text) => ({ layerName, text })),
+    ];
+  });
+  const features = results.reduce((total, result) => total + result.featureCollection.features.length, 0);
+  if (features > MANY_FEATURES) {
+    problems.push({
+      text: `${features.toLocaleString('en-US')} features may draw slowly`,
+      detail: 'Filter the query, or simplify detailed polygons with ST_SimplifyPreserveTopology.',
+    });
+  }
+  return problems;
+}
+
+function skippedRows(result: ConversionResult, layerName: string): PanelProblem[] {
+  const { counts, samples } = result.warnings;
+  const kinds = SKIPPED_KINDS.filter((kind) => counts[kind] > 0);
+  if (kinds.length === 0) {
+    return [];
+  }
+  const total = kinds.reduce((sum, kind) => sum + counts[kind], 0);
+  const sample = samples.find(({ kind }) => kinds.includes(kind));
+  return [
+    {
+      layerName,
+      text: `${total} ${total === 1 ? 'row' : 'rows'} skipped: ${kinds
+        .map((kind) => `${WARNING_LABELS[kind]} ${counts[kind]}`)
+        .join(', ')}`,
+      ...(sample && { detail: `Row ${sample.row + 1}: ${sample.detail}` }),
+    },
+  ];
+}

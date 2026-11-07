@@ -1,6 +1,6 @@
 import { ConversionResult, WarningKind } from '../adapter';
 
-const WARNING_LABELS: Record<WarningKind, string> = {
+export const WARNING_LABELS: Record<WarningKind, string> = {
   empty: 'empty',
   invalid: 'invalid',
   unsupported: 'unsupported',

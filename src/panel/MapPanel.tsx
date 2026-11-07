@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
-import { DataFrame, GrafanaTheme2, LoadingState, PanelProps } from '@grafana/data';
+import { GrafanaTheme2, LoadingState, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { BoundLayer, ConversionResult, bindLayers, buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
+import { ConversionResult, bindLayers, buildLayerSpecs, legendEntries } from '../adapter';
 import { BasemapSpec, EngineOptions, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { Bounds, unionBounds } from '../model';
 import { conversionSummary, firstWarning } from './conversionSummary';
@@ -16,6 +16,8 @@ import {
   viewFromOptions,
 } from './options';
 import { MapLegend } from './MapLegend';
+import { MapWarnings } from './MapWarnings';
+import { layerSettingProblems, panelProblems } from './panelProblems';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 import { useFeatureTooltip } from './useFeatureTooltip';
 import { useOnScreen } from './useOnScreen';
@@ -202,6 +204,10 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
     () => (showLegend ? legendEntries(layers, results, data.series, theme) : []),
     [showLegend, layers, results, data.series, theme]
   );
+  const problems = useMemo(
+    () => (options.showWarnings === false ? [] : panelProblems(results, bound, data.series)),
+    [options.showWarnings, results, bound, data.series]
+  );
   const dataBounds = useMemo(() => drawnBounds(layers, results), [layers, results]);
   const requestId = data.request?.requestId;
   // While a query runs, the data may still be the previous response's.
@@ -354,6 +360,7 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
         </div>
       )}
       <div className={styles.notices}>
+        <MapWarnings problems={problems} />
         <MapLegend entries={legend} maxHeight={height / 2} />
         {noGeometry && (
           <div className={styles.notice} data-testid="geoflow-no-geometry">
@@ -376,10 +383,7 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
           {results.map((result, i) => {
             const warning = firstWarning(result);
             const layer = bound.find(({ frameIndex }) => frameIndex === i);
-            const styleProblems = [
-              ...layerProblems(layer, data.series[i]),
-              ...(result.noGeometry ? [] : dataStyleFields(data.series[i], result).problems),
-            ];
+            const settingProblems = layerSettingProblems(layer, data.series[i], result);
             const named = layer && (layer.name !== `Query ${result.layerId}` || !layer.visible);
             return (
               <div key={result.layerId} className={styles.frame} data-testid={`geoflow-frame-${result.layerId}`}>
@@ -391,7 +395,7 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
                   </div>
                 )}
                 {warning && <div className={styles.secondary}>{warning}</div>}
-                {styleProblems.map((problem) => (
+                {settingProblems.map((problem) => (
                   <div key={problem} className={styles.secondary}>
                     {problem}
                   </div>
@@ -446,12 +450,6 @@ function drawnBounds(layers: LayerSpec[], results: ConversionResult[]): Bounds |
     (bounds, result) => (drawn.has(result.layerId) ? unionBounds(bounds, result.bounds) : bounds),
     undefined
   );
-}
-
-/** What's wrong with a layer's settings for its frame, as data summary lines. */
-function layerProblems(layer: BoundLayer | undefined, frame: DataFrame): string[] {
-  const missing = layer?.idField && !frame.fields.some(({ name }) => name === layer.idField);
-  return missing ? [`ID column: no column named ${layer.idField}`] : [];
 }
 
 function mapFailureMessage(error: unknown): string {
