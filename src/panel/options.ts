@@ -43,6 +43,8 @@ export interface GeoFlowOptions {
   /** The legend of colors from Color by (docs/phase_6.md, Design §4). */
   legend: { show: boolean };
   showSummary: boolean;
+  /** A small warning on the map when something's wrong (docs/phase_9.md, Design §1). */
+  showWarnings: boolean;
   /** Layer settings, top layer first (docs/phase_7.md, Design §1). Layers without any get defaults. */
   layers: LayerConfig[];
   /** Saved for Phase 11, which adds a second mode; not shown in the editor yet. */
@@ -65,6 +67,7 @@ export const DEFAULT_OPTIONS: GeoFlowOptions = {
   tooltip: 'hover',
   legend: { show: true },
   showSummary: false,
+  showWarnings: true,
   layers: [],
   layerBinding: DEFAULT_LAYER_BINDING,
 };

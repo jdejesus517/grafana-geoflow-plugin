@@ -48,6 +48,9 @@ export const ERROR_THROTTLE_MS = 10_000;
 /** Hover and click look this many pixels around the pointer, so 2 px lines can be hit. */
 export const HIT_TOLERANCE_PX = 4;
 
+/** Renderer names of drawing on the CPU (docs/phase_9.md, step 9.1). */
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|softpipe|software|basic render/i;
+
 /** Keeps the hover tooltip clear of the pointer. */
 const TOOLTIP_OFFSET_PX = 12;
 /** The least distance between the tooltip and the map's edges. */
@@ -274,6 +277,12 @@ export class MapLibreEngine implements MapEngine {
 
   setSelected(feature: FeatureRef | undefined): void {
     this.highlight(SELECTED_STATE, feature);
+  }
+
+  softwareRendering(): boolean {
+    const gl = this.map?.getCanvas().getContext('webgl2');
+    const info = gl?.getExtension('WEBGL_debug_renderer_info');
+    return !!info && SOFTWARE_RENDERER.test(String(gl!.getParameter(info.UNMASKED_RENDERER_WEBGL)));
   }
 
   resize(): void {

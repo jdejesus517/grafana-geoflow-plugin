@@ -56,7 +56,14 @@ class FakeMap {
   });
   setFeatureState = jest.fn();
   removeFeatureState = jest.fn();
-  canvas = { style: { cursor: '' } };
+  renderer = 'ANGLE (AMD, AMD Radeon Graphics, OpenGL ES 3.2)';
+  canvas = {
+    style: { cursor: '' },
+    getContext: () => ({
+      getExtension: () => ({ UNMASKED_RENDERER_WEBGL: 1 }),
+      getParameter: () => this.renderer,
+    }),
+  };
   canvasContainer = document.createElement('div');
   container = { clientWidth: 800, clientHeight: 400 };
   /** Where project() puts every point. */
@@ -435,6 +442,23 @@ describe('MapLibreEngine', () => {
     engine.fitBounds([0, 0, 1, 1], { padding: 40, maxZoom: 17 });
 
     expect(map.fitBounds.mock.lastCall![1]).toMatchObject({ padding: 25 });
+  });
+
+  it.each([
+    ['ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero)), SwiftShader driver)', true],
+    ['llvmpipe (LLVM 15.0.7, 256 bits)', true],
+    ['Microsoft Basic Render Driver', true],
+    ['ANGLE (AMD, AMD Radeon Graphics, OpenGL ES 3.2)', false],
+    ['Apple GPU', false],
+  ])('tells software rendering from the renderer name: %s', async (renderer, software) => {
+    const { engine, map } = await mounted();
+    map.renderer = renderer;
+
+    expect(engine.softwareRendering()).toBe(software);
+  });
+
+  it('does not know about software rendering before the map exists', () => {
+    expect(new MapLibreEngine().softwareRendering()).toBe(false);
   });
 
   it('resizes the map', async () => {

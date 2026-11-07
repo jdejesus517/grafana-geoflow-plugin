@@ -317,6 +317,12 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         defaultValue: DEFAULT_OPTIONS.legend.show,
       })
       .addBooleanSwitch({
+        path: 'showWarnings',
+        name: 'Show warnings',
+        description: 'A small warning on the map when rows are skipped or a column is missing. Viewers see it too.',
+        defaultValue: DEFAULT_OPTIONS.showWarnings,
+      })
+      .addBooleanSwitch({
         path: 'showSummary',
         name: 'Show data summary',
         description: 'Lists each query result and what GeoFlow made of it. Useful for checking a query.',

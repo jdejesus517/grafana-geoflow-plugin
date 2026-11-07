@@ -1,0 +1,259 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 9: warnings on the map, failed queries, and a dashboard without WebGL2.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Problems",
+      "description": "Rows with bad geometry, and a Color by column the query doesn't return: the warning lists both.",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fit",
+          "lat": 20,
+          "lon": 0,
+          "zoom": 1,
+          "fitOnRefresh": false,
+          "padding": 40,
+          "maxZoom": 17
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "showWarnings": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "colorBy": "gone"
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name,\n  CASE WHEN id % 3 = 0 THEN 'not GeoJSON' ELSE ST_AsGeoJSON(geom, 6) END AS geometry\nFROM geoflow.buildings\nORDER BY id",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Empty geometry",
+      "description": "Assets without a location: left out of the map, and not a problem.",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fit",
+          "lat": 20,
+          "lon": 0,
+          "zoom": 1,
+          "fitOnRefresh": false,
+          "padding": 40,
+          "maxZoom": 17
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "showWarnings": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name,\n  CASE WHEN id % 2 = 0 THEN ST_AsGeoJSON(geom, 6) END AS geometry\nFROM geoflow.buildings\nORDER BY id",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 10
+      },
+      "id": 3,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Two queries",
+      "description": "The e2e tests make these queries fail on a refresh.",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fit",
+          "lat": 20,
+          "lon": 0,
+          "zoom": 1,
+          "fitOnRefresh": false,
+          "padding": 40,
+          "maxZoom": 17
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "showWarnings": true
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {}
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.buildings\nORDER BY id",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.fiber_cables\nORDER BY id",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 10
+      },
+      "id": 4,
+      "type": "table",
+      "title": "Not a map",
+      "description": "A table: the rest of the dashboard works without WebGL2.",
+      "options": {},
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id, name\nFROM geoflow.buildings\nORDER BY id",
+          "refId": "A"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [
+    "geoflow"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "10 Hardening",
+  "uid": "geoflow-10-hardening",
+  "version": 1
+}

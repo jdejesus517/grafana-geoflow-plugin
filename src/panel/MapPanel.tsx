@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
-import { DataFrame, GrafanaTheme2, LoadingState, PanelProps } from '@grafana/data';
+import { GrafanaTheme2, LoadingState, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { BoundLayer, ConversionResult, bindLayers, buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
+import { ConversionResult, bindLayers, buildLayerSpecs, legendEntries } from '../adapter';
 import { BasemapSpec, EngineOptions, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { Bounds, unionBounds } from '../model';
 import { conversionSummary, firstWarning } from './conversionSummary';
@@ -15,7 +15,10 @@ import {
   tooltipMode,
   viewFromOptions,
 } from './options';
+import { HeldSeries, holdSeries } from './holdSeries';
 import { MapLegend } from './MapLegend';
+import { MapWarnings } from './MapWarnings';
+import { layerSettingProblems, panelProblems } from './panelProblems';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 import { useFeatureTooltip } from './useFeatureTooltip';
 import { useOnScreen } from './useOnScreen';
@@ -184,23 +187,34 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
     [viewMode, padding, maxZoom, fitOnRefresh]
   );
 
+  // While a query has failed, the map keeps drawing that query's last data (docs/phase_9.md).
+  const [held] = useState<HeldSeries>(() => ({ frames: [] }));
+  const series = useMemo(
+    () => holdSeries({ series: data.series, state: data.state }, held),
+    [data.series, data.state, held]
+  );
+
   const bound = useMemo(
-    () => bindLayers(data.series, options.layers, options.layerBinding),
-    [data.series, options.layers, options.layerBinding]
+    () => bindLayers(series, options.layers, options.layerBinding),
+    [series, options.layers, options.layerBinding]
   );
   // Each layer's last conversion, so a refresh with the same data reuses it (docs/phase_8.md).
   const [history] = useState<ConversionHistory>(() => new Map());
-  const results = useMemo(() => convertFrames(data.series, bound, history), [data.series, bound, history]);
+  const results = useMemo(() => convertFrames(series, bound, history), [series, bound, history]);
   const mode = tooltipMode(options);
   const interactive = mode !== 'off';
   const layers = useMemo(
-    () => buildLayerSpecs(bound, results, data.series, theme, { interactive }),
-    [bound, results, data.series, theme, interactive]
+    () => buildLayerSpecs(bound, results, series, theme, { interactive }),
+    [bound, results, series, theme, interactive]
   );
   const showLegend = options.legend?.show !== false && width >= LEGEND_MIN_WIDTH;
   const legend = useMemo(
-    () => (showLegend ? legendEntries(layers, results, data.series, theme) : []),
-    [showLegend, layers, results, data.series, theme]
+    () => (showLegend ? legendEntries(layers, results, series, theme) : []),
+    [showLegend, layers, results, series, theme]
+  );
+  const problems = useMemo(
+    () => (options.showWarnings === false ? [] : panelProblems(results, bound, series)),
+    [options.showWarnings, results, bound, series]
   );
   const dataBounds = useMemo(() => drawnBounds(layers, results), [layers, results]);
   const requestId = data.request?.requestId;
@@ -308,7 +322,7 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
     engine,
     mode,
     results,
-    frames: data.series,
+    frames: series,
     layers,
     basemap,
   });
@@ -354,6 +368,7 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
         </div>
       )}
       <div className={styles.notices}>
+        <MapWarnings problems={problems} />
         <MapLegend entries={legend} maxHeight={height / 2} />
         {noGeometry && (
           <div className={styles.notice} data-testid="geoflow-no-geometry">
@@ -376,10 +391,7 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
           {results.map((result, i) => {
             const warning = firstWarning(result);
             const layer = bound.find(({ frameIndex }) => frameIndex === i);
-            const styleProblems = [
-              ...layerProblems(layer, data.series[i]),
-              ...(result.noGeometry ? [] : dataStyleFields(data.series[i], result).problems),
-            ];
+            const settingProblems = layerSettingProblems(layer, series[i], result);
             const named = layer && (layer.name !== `Query ${result.layerId}` || !layer.visible);
             return (
               <div key={result.layerId} className={styles.frame} data-testid={`geoflow-frame-${result.layerId}`}>
@@ -391,17 +403,27 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
                   </div>
                 )}
                 {warning && <div className={styles.secondary}>{warning}</div>}
-                {styleProblems.map((problem) => (
+                {result.reordered && (
+                  <div className={styles.secondary}>
+                    Rows came back in another order: add ORDER BY, so a refresh with the same data costs nothing.
+                  </div>
+                )}
+                {settingProblems.map((problem) => (
                   <div key={problem} className={styles.secondary}>
                     {problem}
                   </div>
                 ))}
                 <div className={styles.fields}>
-                  {data.series[i].fields.map((field) => `${field.name} (${field.type})`).join(', ')}
+                  {series[i].fields.map((field) => `${field.name} (${field.type})`).join(', ')}
                 </div>
               </div>
             );
           })}
+          {engine?.softwareRendering() && (
+            <div className={styles.frame} data-testid="geoflow-summary-software">
+              This browser draws the map without a GPU, so large maps will be slow.
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -446,12 +468,6 @@ function drawnBounds(layers: LayerSpec[], results: ConversionResult[]): Bounds |
     (bounds, result) => (drawn.has(result.layerId) ? unionBounds(bounds, result.bounds) : bounds),
     undefined
   );
-}
-
-/** What's wrong with a layer's settings for its frame, as data summary lines. */
-function layerProblems(layer: BoundLayer | undefined, frame: DataFrame): string[] {
-  const missing = layer?.idField && !frame.fields.some(({ name }) => name === layer.idField);
-  return missing ? [`ID column: no column named ${layer.idField}`] : [];
 }
 
 function mapFailureMessage(error: unknown): string {

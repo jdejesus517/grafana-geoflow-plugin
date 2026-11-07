@@ -67,6 +67,9 @@ export function convertFrames(
       result = previous.result;
     } else {
       result = frameToFeatureCollection({ ...frame, refId }, mapping, layerId);
+      if (previous && sameLayer(previous, layerId, mapping) && reordered(previous.result, result)) {
+        result.reordered = true;
+      }
     }
     if (key && cached?.result !== result) {
       cache.set(key, { result, fields: frame.fields.map(({ name, values }) => ({ name, values })), mapping });
@@ -94,6 +97,18 @@ function sameLayer(
     cached.mapping.geometryField === mapping.geometryField &&
     cached.mapping.idField === mapping.idField
   );
+}
+
+/**
+ * Whether the same keys came back in another order: a query without ORDER BY, which makes every
+ * refresh count as new data (docs/phase_9.md, Design §3).
+ */
+function reordered({ featureKeys: before }: ConversionResult, { featureKeys: after }: ConversionResult): boolean {
+  if (!before || !after || before.length !== after.length || before.every((key, i) => key === after[i])) {
+    return false;
+  }
+  const keys = new Set(before);
+  return after.every((key) => keys.has(key));
 }
 
 function sameFields(fields: Cached['fields'], frame: DataFrame): boolean {
