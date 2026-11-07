@@ -5,7 +5,7 @@ import { Button, useStyles2, useTheme2 } from '@grafana/ui';
 import { BoundLayer, bindLayers, buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
 import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
 import { conversionSummary, firstWarning } from './conversionSummary';
-import { convertFrames } from './convertFrames';
+import { ConversionHistory, convertFrames } from './convertFrames';
 import { GeoFlowOptions, basemapFromOptions, tooltipMode, viewFromOptions } from './options';
 import { MapLegend } from './MapLegend';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
@@ -171,7 +171,9 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     () => bindLayers(data.series, options.layers, options.layerBinding),
     [data.series, options.layers, options.layerBinding]
   );
-  const results = useMemo(() => convertFrames(data.series, bound), [data.series, bound]);
+  // Each layer's last conversion, so a refresh with the same data reuses it (docs/phase_8.md).
+  const [history] = useState<ConversionHistory>(() => new Map());
+  const results = useMemo(() => convertFrames(data.series, bound, history), [data.series, bound, history]);
   const mode = tooltipMode(options);
   const interactive = mode !== 'off';
   const layers = useMemo(

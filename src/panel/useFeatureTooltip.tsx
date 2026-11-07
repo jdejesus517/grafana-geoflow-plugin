@@ -72,11 +72,12 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
   if (pinned && !pinnedShown) {
     setPinned(undefined);
   }
-  // New data or another map drops the hover; the next pointer move brings it back.
+  // New data or another map drops the hover; the next pointer move brings it back. A refresh that
+  // brings the same data again reuses its conversions, and keeps the hover.
   const hoverShown =
     hover &&
     hover.engine === engine &&
-    hover.results === results &&
+    sameResults(hover.results, results) &&
     mode !== 'off' &&
     hover.refs.every((ref) => reachable.has(ref.layerId))
       ? hover
@@ -258,6 +259,10 @@ function tooltipFeatures(
       },
     ];
   });
+}
+
+function sameResults(a: ConversionResult[], b: ConversionResult[]): boolean {
+  return a === b || (a.length === b.length && a.every((result, i) => result === b[i]));
 }
 
 function sameRefs(a: FeatureRef[], b: FeatureRef[]): boolean {

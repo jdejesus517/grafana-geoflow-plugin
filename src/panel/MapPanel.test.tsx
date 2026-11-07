@@ -93,9 +93,18 @@ function hexToRgb(hex: string): string {
 }
 
 /** Moves every panel on or off screen. */
-/** A query's new result after a refresh: a new frame with new values arrays. */
+/** A query's new result after a refresh with the same data: a new frame with new values arrays. */
 function refreshed(frame: DataFrame): DataFrame {
   return { ...frame, fields: frame.fields.map((field) => ({ ...field, values: [...field.values] })) };
+}
+
+/** A query's new result after a refresh with changed data: the last column's last value changes. */
+function changed(frame: DataFrame): DataFrame {
+  const next = refreshed(frame);
+  const values = next.fields.at(-1)!.values;
+  // A trailing space keeps GeoJSON text valid.
+  values[values.length - 1] = `${values[values.length - 1]} `;
+  return next;
 }
 
 /** What Grafana does when field config changes: new frame and field objects around the same values. */
@@ -564,11 +573,34 @@ describe('MapPanel', () => {
       expect(engine.closeTooltip).toHaveBeenCalled();
     });
 
+    it('keeps a hover tooltip through a refresh with the same data, and drops it when the data changes', async () => {
+      const { rerender } = await renderPanel({ data: { series } });
+      fire('hover', hit(['B', 0]));
+      engine.closeTooltip.mockClear();
+      rerender(<MapPanel {...props({ data: { series: series.map(refreshed) } })} />);
+
+      expect(engine.closeTooltip).not.toHaveBeenCalled();
+      expect(tooltip().content.getByText('Cable 1')).toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [series[0], changed(noKeys)] } })} />);
+      expect(engine.closeTooltip).toHaveBeenCalled();
+    });
+
+    it('keeps a pinned feature without a key through a refresh with the same data', async () => {
+      const { rerender } = await renderPanel({ data: { series } });
+      fire('click', hit(['B', 0]));
+      engine.closeTooltip.mockClear();
+      rerender(<MapPanel {...props({ data: { series: series.map(refreshed) } })} />);
+
+      expect(engine.closeTooltip).not.toHaveBeenCalled();
+      expect(tooltip().content.getByText('Cable 1')).toBeInTheDocument();
+    });
+
     it("closes when a pinned feature's layer has no keys and its data changed", async () => {
       const { rerender } = await renderPanel({ data: { series } });
       fire('click', hit(['B', 0]));
       engine.closeTooltip.mockClear();
-      rerender(<MapPanel {...props({ data: { series: [series[0], refreshed(noKeys)] } })} />);
+      rerender(<MapPanel {...props({ data: { series: [series[0], changed(noKeys)] } })} />);
 
       expect(engine.closeTooltip).toHaveBeenCalled();
     });
@@ -733,11 +765,22 @@ describe('MapPanel', () => {
     it('reuses the data of frames that did not change', async () => {
       const { rerender } = await renderPanel({ data: { series: [points, lines] } });
       const before = lastLayers();
-      rerender(<MapPanel {...props({ data: { series: [points, refreshed(lines)] } })} />);
+      rerender(<MapPanel {...props({ data: { series: [points, changed(lines)] } })} />);
       const after = lastLayers();
 
       expect(after[0].data).toBe(before[0].data);
       expect(after[1].data).not.toBe(before[1].data);
+    });
+
+    it('keeps the data of every layer through a refresh that brings the same data in new arrays', async () => {
+      const { rerender } = await renderPanel({ data: { series: [points, lines] } });
+      const before = lastLayers();
+      rerender(<MapPanel {...props({ data: { series: [refreshed(points), refreshed(lines)] } })} />);
+      const after = lastLayers();
+
+      expect(after.map((layer) => layer.data)).toEqual(before.map((layer) => layer.data));
+      expect(after[0].data).toBe(before[0].data);
+      expect(after[1].data).toBe(before[1].data);
     });
 
     it('restyles a layer from new field config, keeping its data', async () => {

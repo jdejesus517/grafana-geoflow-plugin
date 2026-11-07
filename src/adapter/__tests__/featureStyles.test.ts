@@ -222,6 +222,25 @@ describe('featureStyles', () => {
       expect(second.radii).toBe(first.radii);
     });
 
+    it('gives the same arrays back for a reused conversion, after a refresh with the same data', () => {
+      const pct = number('pct', [10, 90], { thresholds: THRESHOLDS, color: { mode: FieldColorModeId.Thresholds } });
+      const data = frame({ colorBy: 'pct' }, [pct]);
+      const result = frameToFeatureCollection(data);
+      const first = featureStyles(data, result, theme)!;
+      // The panel reuses the conversion only when the new values equal the old (docs/phase_8.md).
+      const refreshed = { ...data, fields: data.fields.map((field) => ({ ...field, values: [...field.values] })) };
+
+      expect(featureStyles(refreshed, result, theme)!.colors).toBe(first.colors);
+    });
+
+    it('works them out again for a new conversion', () => {
+      const pct = number('pct', [10, 90], { thresholds: THRESHOLDS, color: { mode: FieldColorModeId.Thresholds } });
+      const data = frame({ colorBy: 'pct' }, [pct]);
+      const first = featureStyles(data, frameToFeatureCollection(data), theme)!;
+
+      expect(featureStyles(data, frameToFeatureCollection(data), theme)!.colors).not.toBe(first.colors);
+    });
+
     it('works them out again when the config changes', () => {
       const pct = number('pct', [10, 90], { thresholds: THRESHOLDS, color: { mode: FieldColorModeId.Thresholds } });
       const data = frame({ colorBy: 'pct' }, [pct]);
