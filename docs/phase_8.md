@@ -1,6 +1,6 @@
 # Phase 8: Refresh, view and theme
 
-Status: **Approved** (2026-11-06). Decisions 1–10 accepted as proposed.
+Status: **Implemented** (2026-11-06). Decisions 1–10 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §2.2 (panel), §2.4 (engine contract, `fitToData`), §4.2 (redundant work on refresh), §5.3 (Phase 8 row).
 
 ## Goal
@@ -246,6 +246,56 @@ Accepted as proposed (2026-11-06):
 ---
 
 ## Outcome
+
+Implemented on branch `phase-8` in eight commits: one per step, and one that gives the basemap e2e tests time for the map's canvas and tiles (see Findings):
+- 491 unit and component tests pass, and 55 e2e tests (plus the login setup), in two full-suite runs in a row.
+- the new refresh e2e tests compare one stored screenshot. The Phase 3, 5, 6 and 7 screenshots still match, so panels saved before Phase 8 keep their fixed view.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Unchanged refresh | Met. No conversion and no `setData` (component tests); the hover tooltip stays open (e2e; the test fails without the change). On 100k points with the GPU, an unchanged refresh causes no main-thread task over 50 ms. That needs an `ORDER BY`: without one, PostgreSQL returned the 100k rows in another order on each refresh, which is changed data, and costs one task of about 360 ms, as every refresh did before. |
+| 2 | Changed refresh | Met. Only the changed layer gets new data (component test); the Phase 4 test of a pinned tooltip followed through a refresh still passes. |
+| 3 | View kept | Met. A refresh keeps the view the user zoomed to (e2e); option changes and a map created again after scrolling keep it too (component tests). |
+| 4 | Fit to data | Met. A panel whose fixed view is the whole world frames all 24 features (e2e, stored screenshot); without data, it shows the fixed view (component test). |
+| 5 | Fit on refresh | Met. A refresh after zooming in frames the data again (e2e). Not while the query is loading, nor on a style change, which keeps the `requestId` (component tests). |
+| 6 | New and saved panels | Met. The migration keeps saved panels fixed, and the earlier screenshots match. In Grafana 13.2, a panel saved with version 0.2.0 and no view fits, and one saved without a mode keeps its view. |
+| 7 | Use current view | Met (e2e): the view shown follows the map, and the button fills in Latitude, Longitude and Zoom and selects Fixed. |
+| 8 | Dark basemap | Met. The dark tile URL is requested in dark theme only, and the light one in light theme only (e2e). The switch keeps the map, and without a dark URL, a theme switch keeps a pinned tooltip (component tests). |
+| 9 | Engine boundary | Met. The engine gets `Bounds` and `FitOptions`, and `dimInDark` in a raster `BasemapSpec`. |
+| 10 | Tests | Met locally; CI to be filled in. |
+
+### Bundle sizes (production build)
+
+| File | Size | gzip | Change from Phase 7 |
+|---|---|---|---|
+| `module.js` | 66.5 KiB | 19.5 KiB | +7.8 KiB: the view options and editor, the refresh history, the dark URLs |
+| `maplibre.js` (engine and MapLibre CSS) | 42.1 KiB | 11.8 KiB | +0.4 KiB: `fitBounds` and `dimInDark` |
+| `36.js` (MapLibre) | 1139 KiB | 295 KiB | none |
+
+### Differences from the plan
+
+| Plan | Actual | Why |
+|---|---|---|
+| The cache compares new data with the arrays it last converted | It keeps a shallow copy of them | Step 8.1: Grafana empties the previous arrays once new data arrives. |
+| — | Per-feature colors and sizes are cached by conversion and column, not by `values` array | Otherwise an unchanged refresh would work out every feature's color again. |
+| The first fit is made once the engine is ready | It's passed to `mount` (`EngineOptions.fit`) | The map would otherwise draw the fallback view, often the whole world, for a frame. |
+| — | `fitBounds` reduces the padding for maps too small for it | MapLibre refuses to fit, with a console warning, when the padding leaves no room. |
+| The panel publishes its view as the map moves | It also answers a `MapViewRequestEvent` | The options pane can open after the map last moved. |
+| — | The panel keeps the basemap object while its content is unchanged | A theme switch made a new one, which closed pinned tooltips even without a dark URL. |
+| E2E: a vehicle moved by `now()` | Zooming in, then refreshing | Deterministic: a moved point races the refresh. It checks the same thing: whether a refresh fits again. |
+| — | The README asks for `ORDER BY` | Without it, rows can come back in another order, which counts as changed data. |
+| — | The basemap e2e tests wait up to 30 s for the map's canvas and tiles | They failed now and then in full-suite runs, which Phase 8's tests add to (Phase 7, Findings). |
+
+### Findings for later phases
+
+- **`ORDER BY` decides whether a refresh is free.** Phase 9's performance benchmark should use ordered queries, and its notices could point out a layer whose rows keep changing order.
+- **Grafana empties the previous query's arrays** after a refresh. Nothing may read old frames later; tooltips already read the current ones.
+- **E2E:** clicking Refresh moves the pointer off the map and drops a hover tooltip; Grafana's `d r` shortcut doesn't. In 13.2's view-panel mode (`viewPanel`), a side pane covers the map's controls, so the tests use the whole dashboard and wait for the panel's query by its `X-Panel-Id` header.
+- **Migrations need a version bump.** Grafana runs the handler only on panels saved with another plugin version, and on provisioned dashboards, which have none, on every load.
+- **Phase 12** can build its light and dark presets on `basemapFromOptions(basemap, dark)` and `dimInDark`.
 
 ### Step 8.1 findings
 

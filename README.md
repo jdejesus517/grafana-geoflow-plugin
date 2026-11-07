@@ -2,7 +2,7 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** Phase 7 is complete: the panel draws each query as a named layer on an interactive basemap, styled per query and by value, with tooltips that show each feature's attributes. Refresh behavior comes in Phase 8. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: pre-MVP.** Phase 8 is complete: the panel draws each query as a named layer on an interactive basemap, styled per query and by value, with tooltips that show each feature's attributes. It fits the view to the data, and keeps the view and tooltips through refreshes. Hardening comes in Phase 9. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
@@ -20,6 +20,7 @@ SELECT
   ST_AsGeoJSON(ST_Transform(geom, 4326), 6) AS geometry
 FROM assets
 WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
+ORDER BY id
 ```
 
 - **Geometry types:** Point, MultiPoint, LineString, MultiLineString, Polygon and MultiPolygon. Points are drawn as circles, lines as lines, and polygons filled with an outline.
@@ -28,6 +29,7 @@ WHERE $__timeFilter(updated_at)   -- optional; any Grafana macro works
 - **Precision `6`:** about 0.1 m, which roughly halves the size of the result compared with the default.
 - **Other columns:** become the feature's properties, shown in its tooltip.
 - **An `id` column** (any column named `id`) identifies features. Keep it unique: a pinned tooltip then follows its feature when the dashboard refreshes. Text ids work too.
+- **`ORDER BY`:** a refresh that returns the same rows in the same order costs almost nothing: GeoFlow reuses what it drew, and a tooltip under the pointer stays open. Without `ORDER BY`, PostgreSQL may return rows in another order each time, and the layer is redrawn. On 100k rows, that's a pause of about 0.4 s per refresh.
 - **Other geometry or id columns:** pick them in the [Layers](#layers) list when detection chooses the wrong ones, or a query returns two geometry columns.
 
 **Each query is a layer.** Queries A, B, C… are drawn in that order, later ones on top, each in its own color from the Grafana theme unless styled otherwise (see [Styling](#styling)). Queries without a geometry column are left out. The [Layers](#layers) list names, reorders and hides them.
@@ -116,14 +118,14 @@ A tooltip's color marker shows the feature's own color. Changing a threshold, ma
 
 Pick the basemap in the panel options under **Basemap**:
 
-| Option                  | What it shows                                                                                                                                             |
-| ----------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| OpenStreetMap (default) | OpenStreetMap's standard raster tiles, with the "© OpenStreetMap contributors" attribution.                                                               |
-| Custom tiles            | Any XYZ raster tile server. Enter a URL template with `{z}`, `{x}` and `{y}`, and the attribution your provider requires (shown as plain text).           |
-| Style URL               | A [MapLibre style](https://maplibre.org/maplibre-style-spec/) JSON, for vector-tile basemaps. The style controls the whole look, including in dark theme. |
-| None                    | A plain background. Use it for air-gapped installs.                                                                                                       |
+| Option                  | What it shows                                                                                                                                   |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| OpenStreetMap (default) | OpenStreetMap's standard raster tiles, with the "© OpenStreetMap contributors" attribution.                                                     |
+| Custom tiles            | Any XYZ raster tile server. Enter a URL template with `{z}`, `{x}` and `{y}`, and the attribution your provider requires (shown as plain text). |
+| Style URL               | A [MapLibre style](https://maplibre.org/maplibre-style-spec/) JSON, for vector-tile basemaps. The style controls the whole look.                |
+| None                    | A plain background. Use it for air-gapped installs.                                                                                             |
 
-**Initial view** sets the latitude, longitude and zoom the map opens at. In dark theme, raster basemaps are dimmed to match the dashboard.
+**Dark theme:** raster basemaps are dimmed to match a dark dashboard. For tiles or a style made for dark theme, enter a **Dark theme tile URL** or **Dark theme style URL**: GeoFlow uses it, undimmed, while Grafana's theme is dark, and switches back in light theme. A pinned tooltip closes when the basemap switches.
 
 **OpenStreetMap's tile servers are for light use.** Their [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy use. For production dashboards with many viewers, use your own tile server or a commercial provider through **Custom tiles** or **Style URL**.
 
@@ -135,7 +137,7 @@ Pick the basemap in the panel options under **Basemap**:
 
 ### Content Security Policy
 
-If Grafana's [Content Security Policy](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-security-hardening/#add-a-content-security-policy) is enabled (`content_security_policy = true`), add every tile server the basemap uses to `connect-src`. MapLibre fetches tiles with `fetch()`, and Grafana's default template allows only `'self' grafana.com *.cartocdn.com`.
+If Grafana's [Content Security Policy](https://grafana.com/docs/grafana/latest/setup-grafana/configure-security/configure-security-hardening/#add-a-content-security-policy) is enabled (`content_security_policy = true`), add every tile server the basemap uses to `connect-src`, including those of a dark theme URL. MapLibre fetches tiles with `fetch()`, and Grafana's default template allows only `'self' grafana.com *.cartocdn.com`.
 
 For the OpenStreetMap basemap, the `connect-src` part of `content_security_policy_template` becomes:
 
@@ -144,6 +146,17 @@ connect-src 'self' grafana.com *.cartocdn.com https://tile.openstreetmap.org ws:
 ```
 
 For a **Style URL**, also add the hosts of the style JSON and of the tiles, glyphs and sprites it references. Nothing else needs to change: the map's web worker is a same-origin file in the plugin, so `worker-src` and `blob:` aren't needed. When a tile server is blocked, the panel shows a "Basemap: … Failed to fetch" notice.
+
+## View
+
+Under **View** in the panel options, **View mode** sets where the map looks:
+
+- **Fit to data** (the default for new panels) frames the visible layers when the panel loads. **Padding** leaves room around them, and **Max zoom** keeps a single feature from filling the map. Until there's data, it shows the fixed view below, the whole world by default.
+- **Fixed** opens at a **Latitude**, **Longitude** and **Zoom**. Panels made before Phase 8 keep their fixed view.
+
+Either way, once you pan or zoom, the map stays there through refreshes, option changes and scrolling. **Fit on refresh** fits the data again on every refresh instead, undoing any panning: use it on wall displays.
+
+To set a fixed view, move the map in the panel editor, then click **Use current view**. It shows the map's view as it moves, saves it, and switches the mode to Fixed.
 
 ## Development
 
@@ -173,6 +186,7 @@ Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 | 06 Style       | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                  |
 | 07 Data-driven | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.             |
 | 08 Layers      | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values. |
+| 09 Refresh     | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.   |
 
 ### Docker environment
 
@@ -223,7 +237,7 @@ E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers e
 Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
 
 - **Drawn-feature counts.** `renderedFeatures(panel)` in `tests/fixtures/` asks the panel's map which features it drew. This goes through a small test hook in the plugin ([src/panel/testHook.ts](src/panel/testHook.ts)), which does nothing unless a test triggers it. All test-only code in `src/` is marked with a `// Test hook:` comment: `grep -rn "Test hook:" src/` lists it.
-- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style, 07 Data-driven and 08 Layers dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
+- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style, 07 Data-driven, 08 Layers and 09 Refresh dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
 
 To hover or click a known feature, `mapPoint(panel, [lon, lat], view)` in `tests/fixtures/` works out where a coordinate is on screen from the panel's view in the dashboard JSON. It's plain Web Mercator math, so it needs no test hook.
 
@@ -239,7 +253,7 @@ node scripts/capture-frames.mjs
 
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
-- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md)
+- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md), [8](docs/phase_8.md)
 
 ## License
 
