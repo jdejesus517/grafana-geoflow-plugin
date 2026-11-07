@@ -133,9 +133,11 @@ The Grafana and Postgres directories don't depend on each other. Each one can be
   - On mount: create a `div`, call `engine.mount(div, initialView, basemap)`.
   - On `data` / `options` change: call the adapter to build `LayerSpec[]`, then call `engine.setLayers(specs)`.
   - On `width` / `height` change: call `engine.resize()`.
-  - On theme change (`useTheme2()`): call `engine.setBasemap()` if a light/dark style pair is configured.
+  - On theme change (`useTheme2()`): call `engine.setTheme()`, and `engine.setBasemap()` when the basemap has a dark theme URL (Phase 8).
+  - On a query response (a new `requestId`), or a change to the fit settings: call `engine.fitBounds()` with the drawn layers' bounds, when the view mode is Fit to data (Phase 8).
   - On unmount: call `engine.destroy()`.
   - Shows conversion warnings (for example "12 rows had invalid geometry") through Grafana's panel notice mechanism. Shows "No data" or a configuration hint when no geometry field is found.
+- **`ViewEditor.tsx`**: **Use current view**, which saves the map's current view as the panel's fixed view. It hears the view from the panel through the panel's `eventBus` (Phase 8).
 - **`LayersEditor.tsx`**: A custom option editor for the ordered list of spatial layers (reorder, show and hide, per-layer settings). In `perFrame` mode the list follows the queries, so it has no Add button; settings of a query that has gone can be removed (Phase 7). Style isn't among them: it lives in field config (Phase 5).
 
 ### 2.3 Adapter layer (`src/adapter`)
@@ -157,7 +159,7 @@ interface MapEngine {
   mount(container: HTMLElement, view: ViewState, basemap: BasemapSpec): void;
   setBasemap(basemap: BasemapSpec): void;
   setLayers(layers: LayerSpec[]): void;      // diffed: add/update/remove
-  fitToData(padding?: number): void;
+  fitBounds(bounds: Bounds, options: { padding: number; maxZoom: number }): void; // bounds from the panel (Phase 8)
   setView(view: ViewState): void;
   resize(): void;
   on(event: 'hover' | 'click' | 'viewChange', cb: (...) => void): () => void;
@@ -368,7 +370,7 @@ Design rules that keep later modes cheap to add:
 | **PostgreSQL / PostGIS versions.** | Support PostgreSQL 16+ with PostGIS 3.x. The dev image is pinned to `postgis/postgis:16-3.6`. An optional CI job runs the fixtures against the newest Postgres major to catch SQL differences in the documented queries. |
 | **Content Security Policy.** Grafana's optional CSP limits `connect-src` to `'self' grafana.com *.cartocdn.com`, and MapLibre fetches raster tiles with `fetch()`. | Checked in Phase 2 with Grafana's default template. The worker, chunks and CSS load without changes, because the worker is a same-origin file set with `setWorkerUrl()` (no `blob:`). Tile servers are blocked until they're added to `connect-src`. The README documents the directive. |
 | **WebGL availability.** MapLibre 6 requires WebGL2. Headless renderers, old GPUs and VDI environments may lack it. | Detect support on mount and show a clear message instead of a blank panel. Document the image renderer limitation. |
-| **Basemap tiles and air-gapped installs.** Public tile servers have usage policies and need internet access. | The default is OpenStreetMap's standard raster tiles (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). They're wrapped in a minimal inline MapLibre style, because OSM serves tiles, not a style JSON. Caveats: OSM's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy or bulk use and requires the attribution "© OpenStreetMap contributors". The panel always shows that attribution through MapLibre's attribution control. The basemap is configurable (raster tile URL template or a vector style URL) so production users can point at their own tile server. A "no basemap" (blank background) option covers air-gapped installs. |
+| **Basemap tiles and air-gapped installs.** Public tile servers have usage policies and need internet access. | The default is OpenStreetMap's standard raster tiles (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`). They're wrapped in a minimal inline MapLibre style, because OSM serves tiles, not a style JSON. Caveats: OSM's [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy or bulk use and requires the attribution "© OpenStreetMap contributors". The panel always shows that attribution through MapLibre's attribution control. The basemap is configurable (raster tile URL template or a vector style URL) so production users can point at their own tile server. A "no basemap" (blank background) option covers air-gapped installs. Phase 12 adds presets for other services whose terms allow it (§5.3). |
 | **MapLibre CSS.** Without it, controls and tooltips render broken. | The lazily loaded engine module imports `maplibre-gl/dist/maplibre-gl.css`. It is injected after the panel's Emotion styles and wins ties: `.maplibregl-map { position: relative }` collapsed an absolutely positioned map container to zero height, so the container is sized with `width`/`height: 100%`. Overrides that match controls to the Grafana theme are scoped under the panel's class. |
 | **Panel lifecycle.** Grafana mounts panels lazily as they scroll into view but doesn't unmount them when they scroll away. Chromium allows 16 live WebGL contexts per page and drops the oldest beyond that. | Found in Phase 2 with a 20-panel dashboard. A panel creates its map only while it is on screen or within 200 px of it (`IntersectionObserver`), and destroys it straight away when it leaves. `map.remove()` releases the context, and a recreated map resumes the user's last view. If a context is still lost, the panel shows "Map paused" with a Reload button. Option changes never recreate the map. The `03-many-panels` e2e test covers this. |
 | **Theme switching** (light/dark). | OSM raster tiles have no dark variant. In dark theme the engine adjusts `raster-brightness-max` / `raster-saturation` paint properties to dim the basemap, which needs no second tile source. Users can also configure an explicit dark basemap. Default layer colors come from `theme.visualization`. |
@@ -382,7 +384,7 @@ Design rules that keep later modes cheap to add:
 | **Payload size.** GeoJSON text is verbose. | Recommend `ST_AsGeoJSON(geom, 6)`. For detailed polygons, recommend `ST_SimplifyPreserveTopology`. Mention the data source row limit (`row_limit` in Grafana config). |
 | **Main-thread parsing.** `JSON.parse` per row plus FeatureCollection construction blocks the UI on large results. | Benchmark at 1k, 10k, 100k features in Phase 9. If 100k blocks too long, move conversion to a web worker. MapLibre's own `geojson-vt` tiling already runs in its worker. A first measurement in Phase 3: 100k points draw about 2.5 s after the query returns, with main-thread tasks of up to about 0.5 s. |
 | **Hover on large data.** Hit testing runs on every pointer move, and a highlight changes feature-state on a large source. | Measured on 100k points in Phase 4 with the machine's GPU: hover is as fast as plain panning, with no main-thread task over 50 ms. Headless Chromium's default software rendering (SwiftShader) is far slower for anything that redraws a large layer, including panning, so performance has to be judged with the GPU (`--enable-gpu --ignore-gpu-blocklist --use-angle=gl`), not in the default e2e browser. |
-| **Redundant work on refresh.** | Conversion is cached per frame data (Phase 3, keyed on the frames' `values` arrays since Phase 5), so a frame whose data Grafana didn't replace keeps its FeatureCollection and the engine skips `setData`. That includes every style change. Skipping frames that are new objects with the same content (structural hash) and keeping the viewport across refreshes unless "fit to data on refresh" is on come in Phase 8. |
+| **Redundant work on refresh.** | Conversion is cached per frame data (Phase 3, keyed on the frames' `values` arrays since Phase 5), so a frame whose data Grafana didn't replace keeps its FeatureCollection and the engine skips `setData`. That includes every style change. Phase 8 adds frames that are new objects with the same content: a refresh with unchanged data is compared value by value with the layer's previous data, and reuses its conversion. The viewport is kept across refreshes unless **Fit on refresh** is on. |
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
 | **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` stays about 19 KiB. The Bundle Stats workflow reports size changes on every PR. |
 | **Beyond about 100k features.** | Out of scope for the MVP. The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |
@@ -424,7 +426,7 @@ Each phase ends with something demonstrable and its own tests. I will stop for r
 | 5 | Basic styling options (color, opacity, point size, line width, line style, fill opacity) in field config, per query through overrides | Unit tests + e2e option change |
 | 6 | Data-driven styling: feature color and point size from a column's value, with Grafana's color schemes (thresholds, gradients, value mappings), and a legend | Unit tests on per-feature styles + e2e dashboard styled by value |
 | 7 | Multiple layers in `perFrame` mode: a layer list that follows the queries (names, geometry and id columns, tooltips per layer; style stays in field config), ordering, visibility, a layer per frame when a query returns several, settings keyed by layer id, `LayerBinding` option (saved as `perFrame`, not shown yet) | Unit tests on `buildLayerSpecs` + e2e multi-layer dashboard |
-| 8 | Refresh behavior: in-place `setData`, viewport preservation, fit-to-data option, theme switching | Component tests + e2e refresh |
+| 8 | Refresh, view and theme: unchanged refreshes skip conversion and `setData`, Fit to data view mode (on load or on every refresh; new panels fit, saved panels keep their view), **Use current view**, a dark theme basemap URL | Unit and component tests + e2e refresh dashboard with moving data |
 | 9 | Hardening: warnings/notices, WebGL detection, CSP docs, performance benchmark and any resulting optimization | Perf dashboard results recorded in docs |
 | 10 | Dependency license compatibility review (§5.4) | `docs/licenses.md` report; CI license gate passing |
 
@@ -435,6 +437,21 @@ Phases 0–10 make up the **MVP**. Post-MVP phases each add one capability:
 | Phase | Deliverable | Verified by |
 |---|---|---|
 | 11 | `byColumn` layer binding (§3.4): split column picker, layer cap + "Other", per-value colors (reusing Phase 6's value mappings), line style by value through per-layer overrides, stable ids across refresh | Unit tests on `bindByColumn` (cardinality, nulls, id stability) + e2e dashboard split by a category column |
+| 12 | Basemap presets: OpenFreeMap vector styles (Liberty, Bright, Positron, and a dark style) picked by name, a light and dark pair that follows Grafana's theme (building on Phase 8's theme switching), keyed providers (MapTiler, Stadia Maps, Thunderforest, Esri) with the user's own API key, each preset's required attribution, and the CSP (Phase 9) and `NOTICE` (Phase 10) updates for the new tile hosts | Unit tests on preset styles and attribution + e2e dashboard per preset kind, with no external tiles in CI |
+
+Phase 12 is post-MVP because the MVP's basemap options can already use any of these services: a vector style URL (for example `https://tiles.openfreemap.org/styles/liberty`) or a raster tile URL with an attribution. The phase makes them a pick from a list, with the attribution filled in. The default stays OpenStreetMap raster, so saved dashboards don't change.
+
+The presets only include services whose terms allow use from any Grafana install without an agreement with the provider:
+- **OpenFreeMap:** no key, no view limits, commercial use allowed, funded by donations with no SLA.
+- **Keyed providers:** usable on each provider's free tier, under an account the user creates.
+
+API keys are saved in the panel options, not `secureJsonData`: a tile key reaches every viewer's browser anyway, so providers protect it by restricting the domains it works from. The docs must say so.
+
+Left out:
+- **CARTO:** its hosted basemaps need an enterprise agreement or a non-profit grant, and aren't for free public use. Its styles are open (BSD-3, CC-BY 4.0) and work with self-hosted tiles.
+- **Google:** the Map Tiles API needs a billing account and session tokens, and Google's terms restrict how its tiles are shown and cached.
+
+Check each service's terms again when the phase is planned.
 
 ### 5.4 License compliance
 
@@ -487,4 +504,5 @@ Features that have come up but aren't in a phase yet. Each one would get its own
 | **Line width by value** | Phase 6 sizes points by a column's value. Lines keep the layer's Line width. | A Size by for lines, scaling `line-width` through feature-state between a minimum and maximum width, like point size. |
 | **Antimeridian-crossing geometries** | §4.1. Documented rather than solved. | Splitting or unwrapping geometries that cross ±180° in the adapter. |
 | **Layer switcher on the map** | Phase 7 hides layers from the Layers list in the panel editor, a setting saved with the dashboard (Phase 7, decision 5). Viewers can't show or hide layers without editing the panel. | A toggle per layer on the map, for example in the legend or a control beside the zoom buttons, kept in the panel's state rather than the dashboard. Needs a decision on where it sits beside the legend, and whether a viewer's choice survives a refresh (Phase 8) or a page reload. |
+| **Self-hosted PMTiles basemaps** | Air-gapped and enterprise installs can already point the Style URL at their own tile server (§4.1). A single PMTiles file (Protomaps) on any static host is simpler to run, but MapLibre reads it only through the `pmtiles` protocol library. Left out of Phase 12, which needs no new dependency. | Register the `pmtiles://` protocol in the engine, loaded with the MapLibre chunk. It's a new bundled dependency (license review, §5.4) and adds to the bundle size. The basemap data is OpenStreetMap's, under ODbL, so the attribution rules don't change. |
 | **Zoom ranges per layer** | Show a layer only within a zoom range: splice cases from zoom 14, a service-area outline only when zoomed out. Left out of Phase 7, which adds the layer list. | **Min zoom** and **Max zoom** in a layer's settings in the Phase 7 layer list, passed in `LayerSpec` to the style layers' `minzoom` and `maxzoom`. The data still loads at every zoom, so it saves drawing, not query or transfer time. Needs a decision on whether the legend shows a layer outside its range. |
