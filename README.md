@@ -293,3 +293,5 @@ node scripts/capture-frames.mjs
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The plugin bundles MapLibre GL JS and the packages it uses, under MIT, ISC and BSD licenses. The packaged plugin includes their license texts in `THIRD_PARTY_NOTICES.txt`, and the build fails if a bundled package's license falls outside the project's policy. The review behind this is in [docs/licenses.md](docs/licenses.md).

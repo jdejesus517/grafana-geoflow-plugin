@@ -51,7 +51,7 @@ The packages, from the build of 2026-11-07:
 | `css-loader` | 7.1.5 | MIT | Runtime helper that webpack adds for MapLibre's CSS. |
 | `style-loader` | 4.0.0 | MIT | As `css-loader`. |
 
-The notices file also lists eight packages from MapLibre's dependency tree that its build doesn't inline: `@mapbox/jsonlint-lines-primitives`, `json-stringify-pretty-compact`, `minimist`, `protocol-buffers-schema`, `quickselect`, `require-from-string` and `resolve-protobuf-schema` (all MIT or ISC). The notices plugin adds MapLibre's whole tree, because webpack only sees MapLibre's one prebuilt file. An extra notice is harmless (Phase 10, decision 6).
+The notices file also lists seven packages from MapLibre's dependency tree that its build doesn't inline: `@mapbox/jsonlint-lines-primitives`, `json-stringify-pretty-compact`, `minimist`, `protocol-buffers-schema`, `quickselect`, `require-from-string` and `resolve-protobuf-schema` (all MIT or ISC). The notices plugin adds MapLibre's whole tree, because webpack only sees MapLibre's one prebuilt file. An extra notice is harmless (Phase 10, decision 6).
 
 **How this was checked:**
 - MapLibre's source maps list every file in its `maplibre-gl.mjs` and `maplibre-gl-worker.mjs`. They come from MapLibre itself and the 16 packages above it in the table, all declared dependencies. Its other imports (`vitest`, `nise`, `canvas`, `fs` …) are in tests and benchmarks only.

@@ -1,4 +1,4 @@
-import { test, expect } from './fixtures';
+import { DRAWN, test, expect } from './fixtures';
 
 // Row counts of the seeded fixtures in docker/postgres/init/03_seed_fixtures.sql.
 const BUILDING_COUNT = 9;
@@ -18,7 +18,7 @@ test('smoke dashboard shows frames from PostGIS', async ({ readProvisionedDashbo
   const dashboardPage = await gotoDashboardPage(dashboard);
   const panel = dashboardPage.getPanelByTitle('GeoFlow smoke test');
 
-  await expect(panel.locator.getByTestId('geoflow-frame-A')).toContainText(`A: ${BUILDING_COUNT} rows`);
+  await expect(panel.locator.getByTestId('geoflow-frame-A')).toContainText(`A: ${BUILDING_COUNT} rows`, DRAWN);
   await expect(panel.locator.getByTestId('geoflow-frame-B')).toContainText(`B: ${FIBER_CABLE_COUNT} rows`);
   await expect(panel.locator.getByTestId('geoflow-frame-A')).toContainText('geometry (string)');
 });
