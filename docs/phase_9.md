@@ -232,7 +232,7 @@ Accepted as proposed (2026-11-07):
 
 Implemented on branch `phase-9` in seven commits, one per step:
 - 520 unit and component tests pass, and 58 e2e tests (plus the login setup), in two full-suite runs in a row. The earlier stored screenshots still match.
-- CI: to be filled in from the pull request.
+- CI on PR #29 passes build, lint, 520 unit tests and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 58 e2e tests each (plus the login setup), on the first run. The failed-refresh and no-WebGL2 tests pass on all three. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
@@ -248,7 +248,7 @@ Implemented on branch `phase-9` in seven commits, one per step:
 | 8 | Budgets | Met at 100k points: 215 ms to load, 334 ms for a refresh with new data, nothing over 200 ms for interactions. 100k polygons take 587 ms to load, above the figure for points; it's nearly all inside MapLibre, and recorded in the README's Sizing. |
 | 9 | Sizing | Met. A **Sizing** section in the README. |
 | 10 | Saved dashboards unchanged | Met. The stored screenshots match. |
-| 11 | Tests | Met locally; CI to be filled in. |
+| 11 | Tests | Met, locally and in CI on Grafana 13.2.5, 13.3.0 and nightly. |
 
 ### Benchmark results
 

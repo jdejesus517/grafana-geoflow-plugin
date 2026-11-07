@@ -345,9 +345,8 @@ How data frames become map layers is a panel option, `layerBinding.mode`:
 | Mode | Behavior | Delivered in |
 |---|---|---|
 | `perFrame` (default) | Each data frame becomes one layer. Layer id = `refId`, or `${refId}:${frame name}` for each frame when a query returns several (Phase 7). Layer config, keyed by layer id, can override the geometry field and id field; tooltip fields come from field overrides. Style comes from field config, per query through overrides (Phase 5, decision 1). | MVP (Phases 3–7) |
-| `byColumn` | The user picks a source frame and a **split column**. Each distinct value of that column becomes its own layer with id `${refId}:${value}`. Layer names come from the values. | Phase 11 |
 
-Design rules that keep later modes cheap to add:
+Splitting one query into a layer per value is left to Grafana's **Partition by values** transformation (below), with Phase 11 filling its gaps. A `byColumn` mode that splits in the adapter is a feature for later (§7). The design rules below keep that, or any other mode, cheap to add:
 
 - The option type is a discriminated union from day one:
 
@@ -357,16 +356,18 @@ Design rules that keep later modes cheap to add:
     | { mode: 'byColumn'; refId: string; splitField: string; maxLayers: number };
   ```
 
-  Saved MVP dashboards stay valid when `byColumn` ships, because no migration is needed. Until then the editor offers only `perFrame`.
-- Binding is resolved in `bindLayers` (adapter) through a small strategy per mode: `bindPerFrame` and later `bindByColumn`. Each strategy returns the same `BoundLayer[]`, which `buildLayerSpecs` turns into `LayerSpec`s. The engine is unaffected, which is the payoff of requirement 7.
-- **`perFrame` layer ids** (Phase 7): the refId when a query returns one frame. When it returns several, each frame's id is `${refId}:${key}`: the frame's name, else its fields' labels (`placement=aerial`), else `#n` by position. Layer settings are keyed by layer id, so `byColumn`'s `${refId}:${value}` layers can use the same settings.
-- **Partition by values** (checked in Phase 7, step 7.1), Grafana's transformation that splits a query into a frame per value, already gives `perFrame` one layer per value. Each split frame gets the refId `${refId}-${frame name}`. With its **As frame name** naming, frames are named by value, so a **Fields returned by query** override on `A-aerial` styles that value alone, line style included. With the default **As label**, frames keep the query's (often empty) name and share one refId, so GeoFlow tells them apart by their labels. Phase 11 should weigh this against splitting in the adapter: the transformation gives per-value styling through overrides today, while `byColumn` would add the layer cap, "Other", "(none)" and palette colors per value.
-- `byColumn` specifics, scoped for Phase 11:
-  - **Stable ids across refresh.** Per-layer settings such as visibility and style overrides survive a refresh, and new values get defaults.
-  - **Layer cap.** `maxLayers`, default 50, guards against splitting on a high-cardinality column. Values beyond the cap are grouped into an "Other" layer and reported as a panel warning.
-  - **Per-value colors.** Values get colors from the Grafana theme's classic palette, overridable through standard Grafana value mappings.
-  - **Null or empty split values** go into a "(none)" layer.
-  - **Line style by value.** Each value's layer takes its line style from an override, so no value-to-line-style mapping is needed (Phase 6, decision 5).
+  Saved dashboards would stay valid if `byColumn` shipped, because no migration is needed. Until then the editor offers only `perFrame`.
+- Binding is resolved in `bindLayers` (adapter) through a small strategy per mode: `bindPerFrame`, and `bindByColumn` if it ships. Each strategy returns the same `BoundLayer[]`, which `buildLayerSpecs` turns into `LayerSpec`s. The engine is unaffected, which is the payoff of requirement 7.
+- **`perFrame` layer ids** (Phase 7): the refId when a query returns one frame. When it returns several, each frame's id is `${refId}:${key}`: the frame's name, else its fields' labels (`placement=aerial`), else `#n` by position. Layer settings are keyed by layer id, so a later `byColumn`'s `${refId}:${value}` layers could use the same settings.
+- **Partition by values** (checked in Phase 7, step 7.1), Grafana's transformation that splits a query into a frame per value, already gives `perFrame` one layer per value. Each split frame gets the refId `${refId}-${frame name}`. With its **As frame name** naming, frames are named by value, so a **Fields returned by query** override on `A-aerial` styles that value alone, line style included. With the default **As label**, frames keep the query's (often empty) name and share one refId, so GeoFlow tells them apart by their labels.
+- **Why the transformation rather than `byColumn`** (weighed after Phase 9). It already gives what `byColumn` was scoped for:
+  - **Stable ids across refresh.** Ids come from the values, not row positions, so layer settings such as visibility stay with a value.
+  - **Per-value colors.** The classic palette colors each layer by position. **Classic palette (by series name)** hashes the layer name, so a value keeps its color when other values come and go.
+  - **Per-value color and line style.** A **Fields returned by query** override on a value's frame, with **As frame name** naming, so no value-to-line-style mapping is needed (Phase 6, decision 5).
+- **Phase 11 fills the gaps** the transformation leaves:
+  - **Many layers.** Splitting on a high-cardinality column (an id, say) makes thousands of layers, each a MapLibre source, which slows the panel with no explanation. A panel warning (Phase 9) when a panel gets more than a set number of layers, about 50, whatever produced the frames. The plan decides whether layers beyond it are still drawn.
+  - **Null or empty split values.** How the transformation names and ids them is unchecked. Phase 11 checks it and handles it if needed.
+  - **Setting it up.** The split lives in the Transform tab, and per-value overrides need **As frame name**, which isn't the default. A README walk-through covers it.
 
 ---
 
@@ -440,13 +441,13 @@ Each phase ends with something demonstrable and its own tests. I will stop for r
 | 9 | Hardening: warnings on the map, failed queries and WebGL proven in a real browser, software rendering and row order hints, CSP checked for vector styles, a repeatable benchmark with budgets and any resulting optimization, sizing guidance | Unit and component tests + e2e hardening dashboard; benchmark results recorded in docs |
 | 10 | Dependency license compatibility review (§5.4) | `docs/licenses.md` report; CI license gate passing |
 
-Phase 6 comes straight after Phase 5 because it extends Phase 5's field config styling, needs no layer editor, and should be in place before the refresh (Phase 8) and performance (Phase 9) work, which have to account for per-feature styles. Its value-mapping colors are what `byColumn`'s per-value colors reuse in Phase 11.
+Phase 6 comes straight after Phase 5 because it extends Phase 5's field config styling, needs no layer editor, and should be in place before the refresh (Phase 8) and performance (Phase 9) work, which have to account for per-feature styles.
 
 Phases 0–10 make up the **MVP**. Post-MVP phases each add one capability:
 
 | Phase | Deliverable | Verified by |
 |---|---|---|
-| 11 | `byColumn` layer binding (§3.4): split column picker, layer cap + "Other", per-value colors (reusing Phase 6's value mappings), line style by value through per-layer overrides, stable ids across refresh | Unit tests on `bindByColumn` (cardinality, nulls, id stability) + e2e dashboard split by a category column |
+| 11 | Splitting by value with Partition by values (§3.4): a panel warning when a panel gets too many layers, null and empty split values checked and handled if needed, a README walk-through | Unit tests on the layer count warning (and null handling, if any) + e2e dashboard split with Partition by values, including null values and a high-cardinality column |
 | 12 | Basemap presets: OpenFreeMap vector styles (Liberty, Bright, Positron, and a dark style) picked by name, a light and dark pair that follows Grafana's theme (building on Phase 8's theme switching), keyed providers (MapTiler, Stadia Maps, Thunderforest, Esri) with the user's own API key, each preset's required attribution, and the CSP (Phase 9) and `NOTICE` (Phase 10) updates for the new tile hosts | Unit tests on preset styles and attribution + e2e dashboard per preset kind, with no external tiles in CI |
 
 Phase 12 is post-MVP because the MVP's basemap options can already use any of these services: a vector style URL (for example `https://tiles.openfreemap.org/styles/liberty`) or a raster tile URL with an attribution. The phase makes them a pick from a list, with the attribution filled in. The default stays OpenStreetMap raster, so saved dashboards don't change.
@@ -488,7 +489,7 @@ All open items are resolved.
 |---|---|
 | Plugin name | GeoFlow |
 | Plugin id | `jdejesusio-geoflow-panel` (org slug `jdejesusio`) |
-| Layer binding | Selectable mode: `perFrame` in the MVP, `byColumn` in Phase 11 |
+| Layer binding | `perFrame`; splitting by value through Grafana's Partition by values (Phase 11). `byColumn` is a feature for later (§7). |
 | Grafana version | 13.2+ |
 | PostgreSQL version | 16+ (PostGIS 3.x) |
 | Default basemap | OpenStreetMap standard raster tiles, with attribution |
@@ -516,4 +517,5 @@ Features that have come up but aren't in a phase yet. Each one would get its own
 | **Antimeridian-crossing geometries** | §4.1. Documented rather than solved. | Splitting or unwrapping geometries that cross ±180° in the adapter. |
 | **Layer switcher on the map** | Phase 7 hides layers from the Layers list in the panel editor, a setting saved with the dashboard (Phase 7, decision 5). Viewers can't show or hide layers without editing the panel. | A toggle per layer on the map, for example in the legend or a control beside the zoom buttons, kept in the panel's state rather than the dashboard. Needs a decision on where it sits beside the legend, and whether a viewer's choice survives a refresh (Phase 8) or a page reload. |
 | **Self-hosted PMTiles basemaps** | Air-gapped and enterprise installs can already point the Style URL at their own tile server (§4.1). A single PMTiles file (Protomaps) on any static host is simpler to run, but MapLibre reads it only through the `pmtiles` protocol library. Left out of Phase 12, which needs no new dependency. | Register the `pmtiles://` protocol in the engine, loaded with the MapLibre chunk. It's a new bundled dependency (license review, §5.4) and adds to the bundle size. The basemap data is OpenStreetMap's, under ODbL, so the attribution rules don't change. |
+| **`byColumn` layer binding** | §3.4. Scoped as Phase 11 until Partition by values turned out to cover most of it: a layer per value, stable ids, palette colors, and per-value color and line style through overrides. Phase 11 became filling that transformation's gaps. | A split column picker in the panel options and `bindByColumn` in the adapter, with ids `${refId}:${value}` and no migration (the `LayerBinding` union). It would add what the transformation can't: grouping values beyond a cap into an "Other" layer, a "(none)" layer, and one value-mapping table coloring every value. Worth it if users find the transformation too awkward to set up. |
 | **Zoom ranges per layer** | Show a layer only within a zoom range: splice cases from zoom 14, a service-area outline only when zoomed out. Left out of Phase 7, which adds the layer list. | **Min zoom** and **Max zoom** in a layer's settings in the Phase 7 layer list, passed in `LayerSpec` to the style layers' `minzoom` and `maxzoom`. The data still loads at every zoom, so it saves drawing, not query or transfer time. Needs a decision on whether the legend shows a layer outside its range. |
