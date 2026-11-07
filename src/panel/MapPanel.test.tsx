@@ -53,6 +53,7 @@ class FakeEngine implements MapEngine {
   setHovered = jest.fn();
   setSelected = jest.fn();
   resize = jest.fn();
+  softwareRendering = jest.fn(() => false);
   renderedFeatureCounts = jest.fn(() => Promise.resolve({}));
   destroy = jest.fn();
   errorListeners: Array<(error: EngineError) => void> = [];
@@ -1224,6 +1225,66 @@ describe('MapPanel', () => {
 
       expect(screen.getByTestId('geoflow-warnings')).toHaveAccessibleName('1 warning');
       expect(screen.getByTestId('geoflow-frame-A')).toHaveTextContent('ID column: no column named key');
+    });
+  });
+
+  describe('a failed query', () => {
+    const geometry = (lon: number) => `{"type":"Point","coordinates":[${lon},2]}`;
+    const frame = (refId: string, lon = 1) =>
+      toDataFrame({ refId, fields: [{ name: 'geometry', type: FieldType.string, values: [geometry(lon)] }] });
+    const drawn = () => engine.setLayers.mock.lastCall![0] as LayerSpec[];
+
+    it('keeps drawing the last data, without sending it to the map again', async () => {
+      const series = [frame('A'), frame('B')];
+      const { rerender } = await renderPanel({ data: { series } });
+      const before = drawn();
+      series.forEach((f) => f.fields.forEach((field) => (field.values.length = 0)));
+      rerender(<MapPanel {...props({ data: { series: [], state: LoadingState.Error } })} />);
+
+      expect(drawn().map(({ id }) => id)).toEqual(['A', 'B']);
+      expect(drawn()[0].data).toBe(before[0].data);
+      expect(drawn()[1].data).toBe(before[1].data);
+    });
+
+    it('keeps only the query that failed, and recovers without redrawing', async () => {
+      const { rerender } = await renderPanel({ data: { series: [frame('A'), frame('B')] } });
+      const before = drawn();
+      rerender(<MapPanel {...props({ data: { series: [frame('B', 5)], state: LoadingState.Error } })} />);
+      expect(drawn()[0].data).toBe(before[0].data);
+      expect(drawn()[1].data).not.toBe(before[1].data);
+
+      rerender(<MapPanel {...props({ data: { series: [frame('A'), frame('B', 5)] } })} />);
+      expect(drawn()[0].data).toBe(before[0].data);
+    });
+  });
+
+  describe('data summary hints', () => {
+    const rows = (ids: number[]) =>
+      toDataFrame({
+        refId: 'A',
+        fields: [
+          { name: 'id', type: FieldType.number, values: ids },
+          { name: 'geometry', type: FieldType.string, values: ids.map(() => '{"type":"Point","coordinates":[1,2]}') },
+        ],
+      });
+
+    it('says to add ORDER BY when a refresh brings the same ids in another order', async () => {
+      const options = { showSummary: true };
+      const { rerender } = await renderPanel({ data: { series: [rows([1, 2])] }, options });
+      expect(screen.queryByText(/add ORDER BY/)).not.toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [rows([2, 1])] }, options })} />);
+      expect(screen.getByText(/add ORDER BY/)).toBeInTheDocument();
+
+      rerender(<MapPanel {...props({ data: { series: [rows([3, 1])] }, options })} />);
+      expect(screen.queryByText(/add ORDER BY/)).not.toBeInTheDocument();
+    });
+
+    it('says when the browser draws without a GPU', async () => {
+      engine.softwareRendering.mockReturnValue(true);
+      await renderPanel({ data: { series: [rows([1])] }, options: { showSummary: true } });
+
+      expect(screen.getByTestId('geoflow-summary-software')).toHaveTextContent('without a GPU');
     });
   });
 });

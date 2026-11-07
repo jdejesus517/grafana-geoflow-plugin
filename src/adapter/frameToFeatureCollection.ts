@@ -43,6 +43,8 @@ export interface ConversionResult {
   featureKeys?: FeatureKey[];
   /** The box around every feature, for fitting the map to the data; undefined without features. */
   bounds?: Bounds;
+  /** Set by the panel when a refresh brought the same features in another order. */
+  reordered?: boolean;
   /** Name of the geometry column used, when one was found. */
   geometryField?: string;
   noGeometry?: { reason: NoGeometryReason; detail: string };

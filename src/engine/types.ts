@@ -161,6 +161,11 @@ export interface MapEngine {
   /** Highlights the selected (pinned) feature; undefined clears it. Independent of the hovered one. */
   setSelected(feature: FeatureRef | undefined): void;
   resize(): void;
+  /**
+   * Whether the browser draws the map without a GPU, as far as it says: browsers can mask the
+   * renderer's name. False before the map exists.
+   */
+  softwareRendering(): boolean;
   // Test hook: e2e tests can't see features on the WebGL canvas, so they read these counts
   // through MapPanel's inspect event (docs/phase_3.md, Design §5). Nothing else calls it.
   /**
