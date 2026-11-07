@@ -242,3 +242,20 @@ Accepted as proposed (2026-11-06):
 | 8 | How the editor reaches the map | **Events on the panel's `eventBus`**, if step 8.1 confirms it's shared; a module-level map otherwise. | Grafana's internal instance state, as Geomap uses: not in the public API. |
 | 9 | Dark basemap | **A dark URL for raster and style basemaps**, without dimming. A pinned tooltip closes on the switch, as on any basemap change. | Dimming only, as now: a dark style can't be configured. Or keeping the pinned tooltip: needs feature-state restored after a style reload. |
 | 10 | E2E checks | **A moving point from `now()`, stored screenshots for fits, and the stub tile host's requests for the dark URL**, as in Phases 2 and 7. | Reading the map's view through a new test hook: one more test-only path in `src/`. |
+
+---
+
+## Outcome
+
+### Step 8.1 findings
+
+Checked on Grafana 13.2.4, with temporary logging in a development build and a dashboard created through the API. The cost was measured with Jest on this machine, on 100k rows of the adapter benchmark's shape, with fresh string objects as a refresh brings.
+
+| Check | Result |
+|---|---|
+| `requestId` | A new one for each refresh and each time range change (`SQR100` → `SQR103` → `SQR106`). A field config change keeps it, along with the frames' `values` arrays. So a new `requestId` means a query response. |
+| Option editors and the panel's `eventBus` | **The same object.** In the panel editor, `context.eventBus` is the panel's `PanelProps.eventBus`, and an event published by the panel reaches the editor's subscriber. No fallback is needed (decision 8). Grafana 13.3 is covered by the e2e test in CI. |
+| Migration | `setMigrationHandler` runs for a panel saved without a `pluginVersion` or with another version, and not for one saved with the plugin's version. Its result is kept: a `view.mode` it sets survives the option defaults, while a panel it doesn't touch gets the default. Provisioned dashboards have no `pluginVersion`, so the handler runs on every load for them: it has to leave a panel with a mode alone. |
+| Refresh data | Every field gets a new `values` array on each refresh, even when nothing changed. **Grafana then empties the previous arrays** (their length drops to 0), so they can't be compared with the new data afterwards. The cache keeps its own shallow copy of each layer's values (Differences from the plan). |
+| Cost at 100k rows | Copying the arrays: 1.7 ms. Comparing them with the new data, equal: 2.7 ms. Converting: 310 ms. The comparison stays far below the 200 ms budget. |
+| MapLibre `fitBounds` | Works right after `new Map(...)`, before the style loads: the camera is set at once (zoom 12.2 for the cable network's bounds, padding 40). |
