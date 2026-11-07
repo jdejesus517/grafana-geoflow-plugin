@@ -6,16 +6,19 @@ import { MapPanel } from './panel/MapPanel';
 import {
   BasemapKind,
   DEFAULT_OPTIONS,
+  FIT_RANGES,
   GeoFlowFieldConfig,
   GeoFlowOptions,
   TooltipMode,
+  ViewMode,
+  migrateOptions,
   styleUrlProblem,
   tileUrlProblem,
 } from './panel/options';
 
 const LAYERS = ['Layers'];
 const BASEMAP = ['Basemap'];
-const VIEW = ['Initial view'];
+const VIEW = ['View'];
 const TOOLTIP = ['Tooltip'];
 const MAP_STYLE = ['Map style'];
 
@@ -195,12 +198,26 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         settings: { placeholder: 'https://tiles.example.com/styles/basic/style.json', validate: styleUrlProblem },
         showIf: (options) => options.basemap?.kind === 'style',
       })
+      .addRadio<ViewMode, { options: Array<{ value: ViewMode; label: string }> }>({
+        path: 'view.mode',
+        name: 'View mode',
+        description: 'Fit to data frames the visible layers. Without data, the map shows the fixed view.',
+        category: VIEW,
+        defaultValue: DEFAULT_OPTIONS.view.mode,
+        settings: {
+          options: [
+            { value: 'fixed', label: 'Fixed' },
+            { value: 'fit', label: 'Fit to data' },
+          ],
+        },
+      })
       .addNumberInput({
         path: 'view.lat',
         name: 'Latitude',
         category: VIEW,
         defaultValue: DEFAULT_OPTIONS.view.lat,
         settings: { min: -85, max: 85 },
+        showIf: isFixed,
       })
       .addNumberInput({
         path: 'view.lon',
@@ -208,6 +225,7 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         category: VIEW,
         defaultValue: DEFAULT_OPTIONS.view.lon,
         settings: { min: -180, max: 180 },
+        showIf: isFixed,
       })
       .addNumberInput({
         path: 'view.zoom',
@@ -215,6 +233,34 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         category: VIEW,
         defaultValue: DEFAULT_OPTIONS.view.zoom,
         settings: { min: 0, max: 22 },
+        showIf: isFixed,
+      })
+      .addBooleanSwitch({
+        path: 'view.fitOnRefresh',
+        name: 'Fit on refresh',
+        description:
+          'Fits the data again on every refresh, undoing any panning: for wall displays. Off, the map fits when the panel loads.',
+        category: VIEW,
+        defaultValue: DEFAULT_OPTIONS.view.fitOnRefresh,
+        showIf: (options) => !isFixed(options),
+      })
+      .addNumberInput({
+        path: 'view.padding',
+        name: 'Padding',
+        description: 'Room around the data, in pixels.',
+        category: VIEW,
+        defaultValue: DEFAULT_OPTIONS.view.padding,
+        settings: { ...FIT_RANGES.padding, integer: true },
+        showIf: (options) => !isFixed(options),
+      })
+      .addNumberInput({
+        path: 'view.maxZoom',
+        name: 'Max zoom',
+        description: "The closest a fit zooms in, so a single feature doesn't fill the map.",
+        category: VIEW,
+        defaultValue: DEFAULT_OPTIONS.view.maxZoom,
+        settings: FIT_RANGES.maxZoom,
+        showIf: (options) => !isFixed(options),
       })
       .addRadio<TooltipMode, { options: Array<{ value: TooltipMode; label: string }> }>({
         path: 'tooltip',
@@ -243,4 +289,11 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         description: 'Lists each query result and what GeoFlow made of it. Useful for checking a query.',
         defaultValue: DEFAULT_OPTIONS.showSummary,
       })
-  );
+  )
+  // Panels saved before Phase 8 keep their fixed view (docs/phase_8.md, Design §2).
+  .setMigrationHandler((panel) => migrateOptions(panel.options) as GeoFlowOptions);
+
+/** A view saved before Phase 8 has no mode, and is fixed. */
+function isFixed(options: GeoFlowOptions): boolean {
+  return options.view?.mode !== 'fit';
+}

@@ -1,4 +1,12 @@
-import { basemapFromOptions, styleUrlProblem, tileUrlProblem, tooltipMode, viewFromOptions } from './options';
+import {
+  basemapFromOptions,
+  fitFromOptions,
+  migrateOptions,
+  styleUrlProblem,
+  tileUrlProblem,
+  tooltipMode,
+  viewFromOptions,
+} from './options';
 
 const TILES = 'https://tiles.example.com/{z}/{x}/{y}.png';
 
@@ -87,5 +95,47 @@ describe('viewFromOptions', () => {
   it('clamps out-of-range values and replaces non-numbers', () => {
     expect(viewFromOptions({ lat: 95, lon: -200, zoom: 30 })).toEqual({ center: [-180, 85], zoom: 22 });
     expect(viewFromOptions({ lat: NaN, lon: undefined, zoom: null as never })).toEqual({ center: [0, 20], zoom: 1 });
+  });
+});
+
+describe('fitFromOptions', () => {
+  const view = { lat: 0, lon: 0, zoom: 1 };
+
+  it('is undefined for a fixed view, and for one saved without a mode', () => {
+    expect(fitFromOptions({ ...view, mode: 'fixed' })).toBeUndefined();
+    expect(fitFromOptions(view)).toBeUndefined();
+    expect(fitFromOptions(undefined)).toBeUndefined();
+  });
+
+  it('fills in the defaults', () => {
+    expect(fitFromOptions({ ...view, mode: 'fit' })).toEqual({ padding: 40, maxZoom: 17, onRefresh: false });
+  });
+
+  it('clamps out-of-range values and replaces non-numbers', () => {
+    expect(fitFromOptions({ mode: 'fit', padding: 500, maxZoom: -3, fitOnRefresh: true })).toEqual({
+      padding: 200,
+      maxZoom: 0,
+      onRefresh: true,
+    });
+    expect(fitFromOptions({ mode: 'fit', padding: NaN, maxZoom: null as never })).toMatchObject({
+      padding: 40,
+      maxZoom: 17,
+    });
+  });
+});
+
+describe('migrateOptions', () => {
+  it('keeps the fixed view of a panel saved before Phase 8', () => {
+    expect(migrateOptions({ view: { lat: 35.78, lon: -78.78, zoom: 14 } as never, tooltip: 'click' })).toEqual({
+      view: { mode: 'fixed', lat: 35.78, lon: -78.78, zoom: 14 },
+      tooltip: 'click',
+    });
+    expect(migrateOptions(undefined)).toEqual({ view: { mode: 'fixed' } });
+  });
+
+  it('leaves a panel with a view mode alone', () => {
+    const options = { view: { mode: 'fit' as const, lat: 0, lon: 0, zoom: 1 } };
+
+    expect(migrateOptions(options)).toBe(options);
   });
 });

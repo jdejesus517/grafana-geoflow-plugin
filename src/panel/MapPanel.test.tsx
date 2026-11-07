@@ -40,6 +40,7 @@ class FakeEngine implements MapEngine {
   setBasemap = jest.fn();
   setTheme = jest.fn();
   setView = jest.fn();
+  fitBounds = jest.fn();
   setLayers = jest.fn();
   /** Attaches the content, as MapLibre's popup does, so tests can query and click it. */
   openTooltip = jest.fn((_lngLat: [number, number], content: HTMLElement, _options: { interactive: boolean }) => {
@@ -142,7 +143,8 @@ function props({ options, data, width = 400, height = 300 }: PanelOverrides = {}
   return {
     id: 1,
     data: { state: LoadingState.Done, series: [], timeRange: getDefaultTimeRange(), ...data },
-    options: { ...DEFAULT_OPTIONS, ...options },
+    // A fixed view, as most of these tests expect; the fit tests set Fit to data.
+    options: { ...DEFAULT_OPTIONS, view: { ...DEFAULT_OPTIONS.view, mode: 'fixed' }, ...options },
     fieldConfig: { defaults: {}, overrides: [] },
     width,
     height,
@@ -159,7 +161,7 @@ async function renderPanel(overrides?: PanelOverrides) {
 describe('MapPanel', () => {
   describe('map lifecycle', () => {
     it('mounts the engine once with the current options', async () => {
-      await renderPanel({ options: { view: { lat: 35.79, lon: -78.78, zoom: 15 } } });
+      await renderPanel({ options: { view: { mode: 'fixed', lat: 35.79, lon: -78.78, zoom: 15 } } });
 
       expect(createMapEngine).toHaveBeenCalledTimes(1);
       expect(engine.mount).toHaveBeenCalledTimes(1);
@@ -182,7 +184,7 @@ describe('MapPanel', () => {
 
     it('moves to a new initial view without remounting', async () => {
       const { rerender } = await renderPanel();
-      rerender(<MapPanel {...props({ options: { view: { lat: 1, lon: 2, zoom: 3 } } })} />);
+      rerender(<MapPanel {...props({ options: { view: { mode: 'fixed', lat: 1, lon: 2, zoom: 3 } } })} />);
 
       expect(engine.setView).toHaveBeenLastCalledWith({ center: [2, 1], zoom: 3 });
       expect(engine.mount).toHaveBeenCalledTimes(1);
@@ -266,7 +268,7 @@ describe('MapPanel', () => {
     it('applies a view changed while off screen when the map comes back', async () => {
       const { rerender } = await renderPanel();
       setOnScreen(false);
-      rerender(<MapPanel {...props({ options: { view: { lat: 1, lon: 2, zoom: 3 } } })} />);
+      rerender(<MapPanel {...props({ options: { view: { mode: 'fixed', lat: 1, lon: 2, zoom: 3 } } })} />);
 
       const second = new FakeEngine();
       jest.mocked(createMapEngine).mockResolvedValue(second);
@@ -990,6 +992,141 @@ describe('MapPanel', () => {
 
       expect(screen.getByTestId('geoflow-map')).toBeInTheDocument();
       expect(screen.queryByTestId('geoflow-summary')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('fit to data', () => {
+    const geometryFrame = (refId: string, coordinates: Array<[number, number]>) =>
+      toDataFrame({
+        refId,
+        fields: [
+          {
+            name: 'geometry',
+            type: FieldType.string,
+            values: coordinates.map((position) => JSON.stringify({ type: 'Point', coordinates: position })),
+          },
+        ],
+      });
+    const a = geometryFrame('A', [
+      [1, 2],
+      [3, 4],
+    ]);
+    const b = geometryFrame('B', [[10, 20]]);
+    const fitView: GeoFlowOptions['view'] = { ...DEFAULT_OPTIONS.view, mode: 'fit', lat: 5, lon: 6, zoom: 7 };
+    /** Data from a query run; a new requestId is a new query response. */
+    const response = (requestId: string, series: DataFrame[] = [a, b], state = LoadingState.Done) =>
+      ({ series, state, request: { requestId } }) as unknown as Partial<PanelData>;
+    const options = (view: Partial<GeoFlowOptions['view']> = {}, more: Partial<GeoFlowOptions> = {}) => ({
+      view: { ...fitView, ...view },
+      ...more,
+    });
+
+    it('frames the visible layers when the map is created, before anything is drawn', async () => {
+      await renderPanel({ data: response('Q1'), options: options() });
+
+      expect(engine.mount.mock.lastCall![1].fit).toEqual({
+        bounds: [1, 2, 10, 20],
+        padding: 40,
+        maxZoom: 17,
+      });
+      expect(engine.fitBounds).not.toHaveBeenCalled();
+    });
+
+    it('starts at the fixed view without data, and fits when data with geometry arrives', async () => {
+      const { rerender } = await renderPanel({ options: options() });
+      expect(engine.mount.mock.lastCall![1]).toMatchObject({ view: { center: [6, 5], zoom: 7 } });
+      expect(engine.mount.mock.lastCall![1].fit).toBeUndefined();
+
+      rerender(<MapPanel {...props({ data: response('Q1', [a]), options: options() })} />);
+
+      expect(engine.fitBounds).toHaveBeenCalledTimes(1);
+      expect(engine.fitBounds).toHaveBeenLastCalledWith([1, 2, 3, 4], expect.objectContaining({ padding: 40 }));
+    });
+
+    it('leaves out hidden layers', async () => {
+      await renderPanel({ data: response('Q1'), options: options({}, { layers: [{ id: 'B', visible: false }] }) });
+
+      expect(engine.mount.mock.lastCall![1].fit?.bounds).toEqual([1, 2, 3, 4]);
+    });
+
+    it('does not fit again on a refresh, a style change, hiding a layer or a change to the fixed view', async () => {
+      const { rerender } = await renderPanel({ data: response('Q1'), options: options() });
+      rerender(<MapPanel {...props({ data: response('Q2'), options: options() })} />);
+      rerender(
+        <MapPanel {...props({ data: response('Q2', [withFieldConfig(a, { lineWidth: 3 }), b]), options: options() })} />
+      );
+      rerender(
+        <MapPanel
+          {...props({ data: response('Q2'), options: options({}, { layers: [{ id: 'B', visible: false }] }) })}
+        />
+      );
+      rerender(<MapPanel {...props({ data: response('Q2'), options: options({ lat: 50 }) })} />);
+
+      expect(engine.fitBounds).not.toHaveBeenCalled();
+      expect(engine.setView).not.toHaveBeenCalled();
+    });
+
+    it('with Fit on refresh, fits on every query response once it has arrived', async () => {
+      const refreshing = options({ fitOnRefresh: true });
+      const { rerender } = await renderPanel({ data: response('Q1'), options: refreshing });
+      rerender(<MapPanel {...props({ data: response('Q2', [a, b], LoadingState.Loading), options: refreshing })} />);
+      expect(engine.fitBounds).not.toHaveBeenCalled();
+
+      rerender(<MapPanel {...props({ data: response('Q2', [a]), options: refreshing })} />);
+      expect(engine.fitBounds).toHaveBeenCalledTimes(1);
+      expect(engine.fitBounds).toHaveBeenLastCalledWith([1, 2, 3, 4], expect.anything());
+
+      // A style change keeps the requestId.
+      rerender(
+        <MapPanel {...props({ data: response('Q2', [withFieldConfig(a, { lineWidth: 3 })]), options: refreshing })} />
+      );
+      expect(engine.fitBounds).toHaveBeenCalledTimes(1);
+    });
+
+    it('fits again when a fit setting changes', async () => {
+      const { rerender } = await renderPanel({ data: response('Q1'), options: options() });
+      rerender(<MapPanel {...props({ data: response('Q1'), options: options({ padding: 10, maxZoom: 12 }) })} />);
+
+      expect(engine.fitBounds).toHaveBeenLastCalledWith([1, 2, 10, 20], { padding: 10, maxZoom: 12 });
+    });
+
+    it('moves to the fixed view on switching to Fixed, and fits again on switching back', async () => {
+      const { rerender } = await renderPanel({ data: response('Q1'), options: options() });
+      rerender(<MapPanel {...props({ data: response('Q1'), options: options({ mode: 'fixed' }) })} />);
+      expect(engine.setView).toHaveBeenLastCalledWith({ center: [6, 5], zoom: 7 });
+
+      rerender(<MapPanel {...props({ data: response('Q1'), options: options() })} />);
+      expect(engine.fitBounds).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps the view of a map created again after scrolling, without fitting', async () => {
+      const { rerender } = await renderPanel({ data: response('Q1'), options: options() });
+      const moved = { center: [9, 9] as [number, number], zoom: 11 };
+      act(() =>
+        jest
+          .mocked(engine.on)
+          .mock.calls.find(([event]) => event === 'viewChange')![1](moved as never)
+      );
+      setOnScreen(false);
+      rerender(<MapPanel {...props({ data: response('Q2'), options: options() })} />);
+
+      const second = new FakeEngine();
+      jest.mocked(createMapEngine).mockResolvedValue(second);
+      setOnScreen(true);
+      await act(async () => {});
+
+      expect(second.mount.mock.lastCall![1]).toMatchObject({ view: moved });
+      expect(second.mount.mock.lastCall![1].fit).toBeUndefined();
+      expect(second.fitBounds).not.toHaveBeenCalled();
+    });
+
+    it('treats a view saved without a mode as fixed', async () => {
+      await renderPanel({
+        data: response('Q1'),
+        options: { view: { lat: 5, lon: 6, zoom: 7 } as GeoFlowOptions['view'] },
+      });
+
+      expect(engine.mount.mock.lastCall![1].fit).toBeUndefined();
     });
   });
 });

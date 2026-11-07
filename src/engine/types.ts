@@ -1,6 +1,6 @@
 // Engine contract: the subset of docs/architecture.md §2.4 built so far (docs/phase_2.md and
-// docs/phase_3.md, Design §1). fitToData and featureClick arrive with the phases that need them.
-import type { FeatureCollection, SupportedGeometry } from '../model';
+// docs/phase_3.md, Design §1), with fitBounds from Phase 8.
+import type { Bounds, FeatureCollection, SupportedGeometry } from '../model';
 
 export type BasemapSpec =
   | { kind: 'osm' }
@@ -85,8 +85,15 @@ export interface PointerHit {
   features: FeatureRef[];
 }
 
+export interface FitOptions {
+  padding: number;
+  maxZoom: number;
+}
+
 export interface EngineOptions {
   view: ViewState;
+  /** Framed at once instead of `view`, before anything is drawn. */
+  fit?: FitOptions & { bounds: Bounds };
   basemap: BasemapSpec;
   theme: EngineTheme;
   layers: LayerSpec[];
@@ -123,6 +130,12 @@ export interface MapEngine {
   setBasemap(basemap: BasemapSpec): void;
   setTheme(theme: EngineTheme): void;
   setView(view: ViewState): void;
+  /**
+   * Frames `bounds` at once, without animation, leaving `padding` px around them where the map is
+   * big enough, and zooming in no closer than `maxZoom`. Bounds of a single point center it at
+   * `maxZoom`.
+   */
+  fitBounds(bounds: Bounds, options: FitOptions): void;
   /**
    * Replaces the drawn layers, updating the map in place: unchanged layers are left alone, and new
    * data (compared by reference) or styles are applied to existing ones. Array order is drawing

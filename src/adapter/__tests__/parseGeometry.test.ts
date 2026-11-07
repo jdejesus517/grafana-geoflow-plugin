@@ -25,7 +25,7 @@ describe('parseGeometry', () => {
       ['Polygon', { type: 'Polygon', coordinates: [ring] }],
       ['MultiPolygon', { type: 'MultiPolygon', coordinates: [[ring], [ring]] }],
     ])('%s as an object (jsonb)', (_type, geometry) => {
-      expect(parseGeometry(geometry)).toEqual({ ok: true, geometry, properties: undefined });
+      expect(parseGeometry(geometry)).toEqual({ ok: true, geometry, bounds: expect.any(Array), properties: undefined });
     });
 
     it('GeoJSON text, including leading whitespace', () => {
@@ -38,6 +38,7 @@ describe('parseGeometry', () => {
       expect(parseGeometry(JSON.stringify(feature))).toEqual({
         ok: true,
         geometry: point,
+        bounds: expect.any(Array),
         properties: { id: 1, name: 'SC-01' },
       });
     });
@@ -46,6 +47,7 @@ describe('parseGeometry', () => {
       expect(parseGeometry({ type: 'Feature', geometry: point, properties: null })).toEqual({
         ok: true,
         geometry: point,
+        bounds: expect.any(Array),
         properties: undefined,
       });
     });
@@ -61,9 +63,35 @@ describe('parseGeometry', () => {
       (name) => {
         const result = parseGeometry({ ...point, crs: { type: 'name', properties: { name } } });
 
-        expect(result).toEqual({ ok: true, geometry: point, properties: undefined });
+        expect(result).toEqual({ ok: true, geometry: point, bounds: expect.any(Array), properties: undefined });
       }
     );
+
+    it.each([
+      ['a Point', point, [-78.786, 35.788, -78.786, 35.788]],
+      ['a LineString', line, [-78.786, 35.788, -78.783, 35.788]],
+      ['a Polygon', { type: 'Polygon', coordinates: [ring] }, [-78.79, 35.78, -78.78, 35.79]],
+      [
+        'a MultiPolygon',
+        {
+          type: 'MultiPolygon',
+          coordinates: [
+            [ring],
+            [
+              [
+                [-79, 36],
+                [-78.9, 36],
+                [-78.9, 36.1],
+                [-79, 36],
+              ],
+            ],
+          ],
+        },
+        [-79, 35.78, -78.78, 36.1],
+      ],
+    ])('the box around %s', (_name, geometry, bounds) => {
+      expect(parseGeometry(geometry)).toMatchObject({ ok: true, bounds });
+    });
 
     it('returns a new geometry object rather than the frame value', () => {
       const result = parseGeometry(point);

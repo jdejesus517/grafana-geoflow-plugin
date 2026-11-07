@@ -13,6 +13,7 @@ import {
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint } from '../basemapStyle';
+import type { Bounds } from '../../model';
 import { WebGLUnavailableError } from '../errors';
 import { StyledFeatures, featureStateChanges } from '../featureState';
 import {
@@ -33,6 +34,7 @@ import {
   EngineOptions,
   EngineTheme,
   FeatureRef,
+  FitOptions,
   LayerSpec,
   MapEngine,
   PointerHit,
@@ -97,7 +99,7 @@ export class MapLibreEngine implements MapEngine {
   private overFeatures = false;
   private lastPointer: [number, number] = [0, 0];
 
-  async mount(container: HTMLElement, { view, basemap, theme, layers }: EngineOptions): Promise<void> {
+  async mount(container: HTMLElement, { view, fit, basemap, theme, layers }: EngineOptions): Promise<void> {
     if (this.destroyed || this.map) {
       return;
     }
@@ -127,6 +129,7 @@ export class MapLibreEngine implements MapEngine {
       touchPitch: false,
       maxPitch: 0,
     });
+    this.map = map;
     map.touchZoomRotate.disableRotation();
     map.keyboard.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }));
@@ -159,7 +162,11 @@ export class MapLibreEngine implements MapEngine {
       this.applyTheme();
       this.syncLayers();
     });
-    this.map = map;
+    if (fit) {
+      // Sets the camera at once, before the first frame is drawn (docs/phase_8.md, step 8.1), and
+      // reports it as a viewChange like any other move.
+      this.fitBounds(fit.bounds, fit);
+    }
   }
 
   setBasemap(basemap: BasemapSpec): void {
@@ -184,6 +191,24 @@ export class MapLibreEngine implements MapEngine {
 
   setView(view: ViewState): void {
     this.map?.jumpTo({ center: view.center, zoom: view.zoom });
+  }
+
+  fitBounds([west, south, east, north]: Bounds, { padding, maxZoom }: FitOptions): void {
+    const map = this.map;
+    if (!map) {
+      return;
+    }
+    // MapLibre refuses to fit, with a console warning, when the padding leaves no room; a small
+    // panel gets less padding instead.
+    const { clientWidth, clientHeight } = map.getContainer();
+    const room = Math.max(0, Math.floor((Math.min(clientWidth, clientHeight) - 1) / 2));
+    map.fitBounds(
+      [
+        [west, south],
+        [east, north],
+      ],
+      { padding: Math.min(padding, room), maxZoom, animate: false }
+    );
   }
 
   setLayers(layers: LayerSpec[]): void {

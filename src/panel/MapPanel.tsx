@@ -1,12 +1,20 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
-import { DataFrame, GrafanaTheme2, PanelProps } from '@grafana/data';
+import { DataFrame, GrafanaTheme2, LoadingState, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { BoundLayer, bindLayers, buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
-import { BasemapSpec, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
+import { BoundLayer, ConversionResult, bindLayers, buildLayerSpecs, dataStyleFields, legendEntries } from '../adapter';
+import { BasemapSpec, EngineOptions, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
+import { Bounds, unionBounds } from '../model';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { ConversionHistory, convertFrames } from './convertFrames';
-import { GeoFlowOptions, basemapFromOptions, tooltipMode, viewFromOptions } from './options';
+import {
+  FitSettings,
+  GeoFlowOptions,
+  basemapFromOptions,
+  fitFromOptions,
+  tooltipMode,
+  viewFromOptions,
+} from './options';
 import { MapLegend } from './MapLegend';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 import { useFeatureTooltip } from './useFeatureTooltip';
@@ -164,8 +172,12 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     () => ({ dark: theme.isDark, background: theme.colors.background.primary }),
     [theme.isDark, theme.colors.background.primary]
   );
-  const { lat, lon, zoom } = options.view ?? {};
+  const { mode: viewMode, lat, lon, zoom, padding, maxZoom, fitOnRefresh } = options.view ?? {};
   const view = useMemo(() => viewFromOptions({ lat, lon, zoom }), [lat, lon, zoom]);
+  const fit = useMemo(
+    () => fitFromOptions({ mode: viewMode, padding, maxZoom, fitOnRefresh }),
+    [viewMode, padding, maxZoom, fitOnRefresh]
+  );
 
   const bound = useMemo(
     () => bindLayers(data.series, options.layers, options.layerBinding),
@@ -185,17 +197,25 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     () => (showLegend ? legendEntries(layers, results, data.series, theme) : []),
     [showLegend, layers, results, data.series, theme]
   );
+  const dataBounds = useMemo(() => drawnBounds(layers, results), [layers, results]);
+  const requestId = data.request?.requestId;
+  // While a query runs, the data may still be the previous response's.
+  const loading = data.state === LoadingState.Loading;
   // Data arrived, but no frame has a geometry column: say why instead of showing an empty map.
   const noGeometry = layers.length === 0 ? results.find((result) => result.noGeometry)?.noGeometry : undefined;
 
-  // Where the map is looking: the configured view until the user moves it. A map that is
-  // released off screen and created again picks up from here.
+  // Where the map is looking: the configured view until the user moves it or the map fits the
+  // data. A map that is released off screen and created again picks up from here.
   const currentView = useRef(view);
-  const appliedView = useRef(view);
-  // The engine loads asynchronously; it mounts with whatever the options are by then.
-  const latest = useRef({ basemap, theme: engineTheme, layers });
+  // The fixed view last applied; undefined in Fit to data.
+  const appliedView = useRef(fit ? undefined : view);
+  // The last fit (docs/phase_8.md, Design §3): fit settings that change, and in Fit on refresh, a
+  // new query response, fit again. Nothing else does, scrolling back on screen included.
+  const lastFit = useRef<LastFit>({});
+  // The engine loads asynchronously; it mounts with whatever the options and data are by then.
+  const latest = useRef({ basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading });
   useEffect(() => {
-    latest.current = { basemap, theme: engineTheme, layers };
+    latest.current = { basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading };
   });
 
   // A map holds a WebGL context, and browsers cap them per page (16 in Chromium), so the map
@@ -220,7 +240,13 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
         );
         loaded.on('viewChange', (next) => (currentView.current = next));
         loaded.on('contextLost', () => setPaused(true));
-        return loaded.mount(containerRef.current!, { ...latest.current, view: currentView.current }).then(() => {
+        const { basemap, theme, layers, fit, dataBounds, requestId, loading } = latest.current;
+        const options: EngineOptions = { basemap, theme, layers, view: currentView.current };
+        if (fitDue(lastFit.current, fit, dataBounds, requestId, loading)) {
+          options.fit = { bounds: dataBounds!, padding: fit!.padding, maxZoom: fit!.maxZoom };
+          lastFit.current = fitDone(fit!, requestId);
+        }
+        return loaded.mount(containerRef.current!, options).then(() => {
           if (!cancelled) {
             setEngine(loaded);
           }
@@ -242,13 +268,24 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
   useEffect(() => engine?.setTheme(engineTheme), [engine, engineTheme]);
   useEffect(() => engine?.setLayers(layers), [engine, layers]);
   useEffect(() => {
-    // Only a change to the configured view moves the map; a recreated map keeps the user's view.
-    if (view !== appliedView.current) {
-      appliedView.current = view;
-      currentView.current = view;
-      engine?.setView(view);
+    // Only a change to the fixed view, or switching to Fixed, moves the map; a recreated map keeps
+    // the user's view. In Fit to data, the fixed view is only the fallback until there is data.
+    const fixed = fit ? undefined : view;
+    if (fixed && fixed !== appliedView.current) {
+      currentView.current = fixed;
+      engine?.setView(fixed);
     }
-  }, [engine, view]);
+    appliedView.current = fixed;
+  }, [engine, view, fit]);
+  useEffect(() => {
+    if (!fit) {
+      // Switching back to Fit to data fits again.
+      lastFit.current = {};
+    } else if (engine && fitDue(lastFit.current, fit, dataBounds, requestId, loading)) {
+      engine.fitBounds(dataBounds!, { padding: fit.padding, maxZoom: fit.maxZoom });
+      lastFit.current = fitDone(fit, requestId);
+    }
+  }, [engine, fit, dataBounds, requestId, loading]);
   useEffect(() => engine?.resize(), [engine, width, height]);
 
   const tooltip = useFeatureTooltip({
@@ -354,6 +391,46 @@ export const MapPanel = ({ data, options, width, height }: Props) => {
     </div>
   );
 };
+
+interface LastFit {
+  /** The fit settings it used, as fitKey gives them. */
+  settings?: string;
+  requestId?: string;
+}
+
+function fitKey({ padding, maxZoom, onRefresh }: FitSettings): string {
+  return `${padding},${maxZoom},${onRefresh}`;
+}
+
+/**
+ * Whether the map should fit the data now: on the first data with geometry, when the fit settings
+ * change, and in Fit on refresh, on each new query response once it has arrived.
+ */
+function fitDue(
+  last: LastFit,
+  fit: FitSettings | undefined,
+  bounds: Bounds | undefined,
+  requestId: string | undefined,
+  loading: boolean
+): boolean {
+  if (!fit || !bounds || loading) {
+    return false;
+  }
+  return last.settings !== fitKey(fit) || (fit.onRefresh && last.requestId !== requestId);
+}
+
+function fitDone(fit: FitSettings, requestId: string | undefined): LastFit {
+  return { settings: fitKey(fit), requestId };
+}
+
+/** The box around the features of the visible layers, which are the ones a fit frames. */
+function drawnBounds(layers: LayerSpec[], results: ConversionResult[]): Bounds | undefined {
+  const drawn = new Set(layers.filter((layer) => layer.visible).map(({ id }) => id));
+  return results.reduce<Bounds | undefined>(
+    (bounds, result) => (drawn.has(result.layerId) ? unionBounds(bounds, result.bounds) : bounds),
+    undefined
+  );
+}
 
 /** What's wrong with a layer's settings for its frame, as data summary lines. */
 function layerProblems(layer: BoundLayer | undefined, frame: DataFrame): string[] {

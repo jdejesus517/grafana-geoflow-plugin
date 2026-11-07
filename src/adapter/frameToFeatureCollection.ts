@@ -1,5 +1,5 @@
 import { DataFrame, Field } from '@grafana/data';
-import { Feature, FeatureCollection, SupportedGeometry } from '../model';
+import { Bounds, Feature, FeatureCollection, SupportedGeometry } from '../model';
 import { NoGeometryReason, detectGeometryField } from './detectGeometryField';
 import { WarningKind, parseGeometry } from './parseGeometry';
 
@@ -41,6 +41,8 @@ export interface ConversionResult {
   keyField?: string;
   /** Each feature's key, in feature order; set with keyField. */
   featureKeys?: FeatureKey[];
+  /** The box around every feature, for fitting the map to the data; undefined without features. */
+  bounds?: Bounds;
   /** Name of the geometry column used, when one was found. */
   geometryField?: string;
   noGeometry?: { reason: NoGeometryReason; detail: string };
@@ -111,6 +113,7 @@ export function frameToFeatureCollection(
     };
     features.push(feature);
     result.featureRows.push(row);
+    growBounds(result, parsed.bounds);
   }
 
   if (idField) {
@@ -121,6 +124,15 @@ export function frameToFeatureCollection(
     }
   }
   return result;
+}
+
+/** Grows the result's bounds, in place, to cover `bounds`. */
+function growBounds(result: ConversionResult, [west, south, east, north]: Bounds) {
+  const box = (result.bounds ??= [west, south, east, north]);
+  box[0] = Math.min(box[0], west);
+  box[1] = Math.min(box[1], south);
+  box[2] = Math.max(box[2], east);
+  box[3] = Math.max(box[3], north);
 }
 
 /** Convert every frame; results keep the frames' order and carry their refIds. */

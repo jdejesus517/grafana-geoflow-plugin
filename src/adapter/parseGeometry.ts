@@ -1,10 +1,10 @@
-import { SupportedGeometry, isSupportedGeometryType } from '../model';
+import { Bounds, SupportedGeometry, isSupportedGeometryType } from '../model';
 
 /** Why a row produced no feature (docs/phase_1.md, Design §3). */
 export type WarningKind = 'empty' | 'invalid' | 'unsupported' | 'projected' | 'outOfRange';
 
 export type ParsedGeometry =
-  | { ok: true; geometry: SupportedGeometry; properties?: Record<string, unknown> }
+  | { ok: true; geometry: SupportedGeometry; bounds: Bounds; properties?: Record<string, unknown> }
   | { ok: false; kind: WarningKind; detail: string };
 
 // Nesting depth of `coordinates` below a single position, per geometry type.
@@ -87,7 +87,9 @@ export function parseGeometry(raw: unknown): ParsedGeometry {
   if (Array.isArray(coordinates) && coordinates.length === 0) {
     return fail('empty', `empty ${type}`);
   }
-  const problem = checkCoordinates(coordinates, COORDINATE_DEPTH[type]);
+  // Grown by checkCoordinates as it visits each position, so bounds cost no extra pass.
+  const bounds: Bounds = [Infinity, Infinity, -Infinity, -Infinity];
+  const problem = checkCoordinates(coordinates, COORDINATE_DEPTH[type], bounds);
   if (problem) {
     return problem === 'outOfRange'
       ? fail('outOfRange', 'coordinates outside lon ±180 / lat ±90; is the data in EPSG:4326?')
@@ -95,7 +97,7 @@ export function parseGeometry(raw: unknown): ParsedGeometry {
   }
 
   // A clean object: drops crs/bbox and never aliases a value owned by the data frame.
-  return { ok: true, geometry: { type, coordinates } as SupportedGeometry, properties };
+  return { ok: true, geometry: { type, coordinates } as SupportedGeometry, bounds, properties };
 }
 
 /** Cheap check used to recognize a geometry column by its content. */
@@ -121,7 +123,8 @@ export function looksLikeWkbHex(raw: unknown): boolean {
 }
 
 // Returns undefined when valid, 'outOfRange' for lon/lat outside WGS84 bounds, 'malformed' otherwise.
-function checkCoordinates(coordinates: unknown, depth: number): 'malformed' | 'outOfRange' | undefined {
+// Grows `bounds` to cover each valid position.
+function checkCoordinates(coordinates: unknown, depth: number, bounds: Bounds): 'malformed' | 'outOfRange' | undefined {
   if (!Array.isArray(coordinates)) {
     return 'malformed';
   }
@@ -135,11 +138,18 @@ function checkCoordinates(coordinates: unknown, depth: number): 'malformed' | 'o
       }
     }
     const [lon, lat] = coordinates as number[];
-    return lon < -180 || lon > 180 || lat < -90 || lat > 90 ? 'outOfRange' : undefined;
+    if (lon < -180 || lon > 180 || lat < -90 || lat > 90) {
+      return 'outOfRange';
+    }
+    bounds[0] = Math.min(bounds[0], lon);
+    bounds[1] = Math.min(bounds[1], lat);
+    bounds[2] = Math.max(bounds[2], lon);
+    bounds[3] = Math.max(bounds[3], lat);
+    return undefined;
   }
   let outOfRange = false;
   for (const child of coordinates) {
-    const problem = checkCoordinates(child, depth - 1);
+    const problem = checkCoordinates(child, depth - 1, bounds);
     if (problem === 'malformed') {
       return problem;
     }

@@ -26,6 +26,11 @@ class FakeMap {
   setPaintProperty = jest.fn();
   setLayoutProperty = jest.fn();
   jumpTo = jest.fn();
+  /** The events with handlers when fitBounds was last called. */
+  handledAtFit: string[] = [];
+  fitBounds = jest.fn((_bounds: unknown, _options: Record<string, unknown>) => {
+    this.handledAtFit = Object.keys(this.handlers);
+  });
   resize = jest.fn();
   remove = jest.fn();
   addSource = jest.fn((id: string) => {
@@ -375,6 +380,46 @@ describe('MapLibreEngine', () => {
     engine.setView({ center: [1, 2], zoom: 3 });
 
     expect(map.jumpTo).toHaveBeenCalledWith({ center: [1, 2], zoom: 3 });
+  });
+
+  it('fits bounds at once, with the padding and max zoom', async () => {
+    const { engine, map } = await mounted();
+    engine.fitBounds([-78.8, 35.7, -78.7, 35.8], { padding: 40, maxZoom: 17 });
+
+    expect(map.fitBounds).toHaveBeenCalledWith(
+      [
+        [-78.8, 35.7],
+        [-78.7, 35.8],
+      ],
+      { padding: 40, maxZoom: 17, animate: false }
+    );
+  });
+
+  it('fits at mount when asked, after its event handlers are set, so the fit is reported', async () => {
+    const { map } = await mounted({ ...options, fit: { bounds: [0, 0, 1, 1], padding: 20, maxZoom: 15 } });
+
+    expect(map.fitBounds).toHaveBeenCalledWith(
+      [
+        [0, 0],
+        [1, 1],
+      ],
+      { padding: 20, maxZoom: 15, animate: false }
+    );
+    expect(map.handledAtFit).toContain('moveend');
+  });
+
+  it('does not fit at mount without bounds', async () => {
+    const { map } = await mounted();
+
+    expect(map.fitBounds).not.toHaveBeenCalled();
+  });
+
+  it('pads a fit less in a map too small for the padding', async () => {
+    const { engine, map } = await mounted();
+    map.container = { clientWidth: 300, clientHeight: 51 };
+    engine.fitBounds([0, 0, 1, 1], { padding: 40, maxZoom: 17 });
+
+    expect(map.fitBounds.mock.lastCall![1]).toMatchObject({ padding: 25 });
   });
 
   it('resizes the map', async () => {

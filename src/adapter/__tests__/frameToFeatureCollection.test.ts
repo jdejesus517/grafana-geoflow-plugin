@@ -151,6 +151,31 @@ describe('frameToFeatureCollection', () => {
       });
     });
 
+    it('records the box around the features, leaving out skipped rows', () => {
+      const frame = toDataFrame({
+        fields: [
+          {
+            name: 'geometry',
+            type: FieldType.string,
+            values: [
+              point,
+              '{"type":"LineString","coordinates":[[-78.79,35.78],[-78.77,35.79]]}',
+              '{"type":"Point","coordinates":[-200,35.78]}',
+              null,
+            ],
+          },
+        ],
+      });
+
+      expect(frameToFeatureCollection(frame).bounds).toEqual([-78.79, 35.78, -78.77, 35.79]);
+    });
+
+    it('has no bounds without features', () => {
+      const frame = toDataFrame({ fields: [{ name: 'geometry', type: FieldType.string, values: [null] }] });
+
+      expect(frameToFeatureCollection(frame).bounds).toBeUndefined();
+    });
+
     it('lets column values override Feature properties on a name clash', () => {
       const frame = toDataFrame({
         fields: [
