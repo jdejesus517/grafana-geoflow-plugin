@@ -42,8 +42,10 @@ describe('frameToFeatureCollection', () => {
     });
 
     it('keeps the courtyard hole of the data center polygon', () => {
-      const { features } = frameToFeatureCollection(loadFixture('buildings')).featureCollection;
-      const dataCenter = features.find((f) => f.properties?.name === 'Triangle Data Hub')!;
+      const frame = loadFixture('buildings');
+      const { featureCollection, featureRows } = frameToFeatureCollection(frame);
+      const row = frame.fields.find(({ name }) => name === 'name')!.values.indexOf('Triangle Data Hub');
+      const dataCenter = featureCollection.features[featureRows.indexOf(row)];
 
       expect(dataCenter.geometry.type).toBe('Polygon');
       expect(dataCenter.geometry.type === 'Polygon' && dataCenter.geometry.coordinates).toHaveLength(2);
@@ -63,31 +65,21 @@ describe('frameToFeatureCollection', () => {
       });
     });
 
-    it('turns every other column into a property, with time as epoch milliseconds', () => {
+    it('keeps columns out of the features: tooltips read them from the frame', () => {
       const [first] = frameToFeatureCollection(loadFixture('buildings')).featureCollection.features;
 
-      expect(first).toMatchObject({
-        id: 1,
-        properties: {
-          id: 1,
-          name: 'Cary Central Office',
-          building_type: 'central_office',
-          floors: 2,
-          status: 'in_service',
-          updated_at: Date.parse('2026-10-01T14:00:00Z'),
-        },
-      });
-      expect(first.properties).not.toHaveProperty('geometry');
+      expect(first).toMatchObject({ id: 1, properties: {} });
+      expect(first.properties).toEqual({});
     });
 
-    it('merges Feature properties with the other columns', () => {
+    it("keeps a GeoJSON Feature's own properties", () => {
       const [first] = frameToFeatureCollection(loadFixture('splice_cases_feature')).featureCollection.features;
 
       expect(first).toEqual({
         type: 'Feature',
         id: 1,
         geometry: { type: 'Point', coordinates: [-78.786, 35.788] },
-        properties: { id: 1, name: 'SC-01', enclosure_type: 'dome', mount: 'handhole' },
+        properties: expect.objectContaining({ enclosure_type: 'dome' }),
       });
     });
 
@@ -95,13 +87,12 @@ describe('frameToFeatureCollection', () => {
       const { features } = frameToFeatureCollection(loadFixture('network_assets')).featureCollection;
 
       expect(features.map((f) => f.id)).toEqual(features.map((_, i) => i));
-      expect(features[0].properties?.asset_id).toBe('building:1');
     });
 
     it('skips and counts the edge-case geometries', () => {
       const result = frameToFeatureCollection(loadFixture('edge_cases'));
 
-      expect(result.featureCollection.features.map((f) => f.properties?.name)).toEqual(['EC-TRUNCATED']);
+      expect(result.featureCollection.features).toHaveLength(1);
       expect(result.warnings.counts).toEqual({ ...noWarnings, empty: 4, unsupported: 1 });
       expect(result.warnings.samples.map((s) => [s.row, s.kind])).toEqual([
         [0, 'empty'],
@@ -176,25 +167,6 @@ describe('frameToFeatureCollection', () => {
       expect(frameToFeatureCollection(frame).bounds).toBeUndefined();
     });
 
-    it('lets column values override Feature properties on a name clash', () => {
-      const frame = toDataFrame({
-        fields: [
-          {
-            name: 'feature',
-            type: FieldType.string,
-            values: [
-              '{"type":"Feature","geometry":{"type":"Point","coordinates":[1,2]},"properties":{"name":"from feature","kept":true}}',
-            ],
-          },
-          { name: 'name', type: FieldType.string, values: ['from column'] },
-        ],
-      });
-
-      const [feature] = frameToFeatureCollection(frame).featureCollection.features;
-
-      expect(feature.properties).toEqual({ name: 'from column', kept: true });
-    });
-
     it('falls back to row indexes for every feature when ids repeat', () => {
       const frame = toDataFrame({
         fields: [
@@ -206,7 +178,6 @@ describe('frameToFeatureCollection', () => {
       const { features } = frameToFeatureCollection(frame).featureCollection;
 
       expect(features.map((f) => f.id)).toEqual([0, 1, 2]);
-      expect(features.map((f) => f.properties?.id)).toEqual([3, 1, 3]);
     });
 
     it('uses an explicit id column', () => {
@@ -253,21 +224,6 @@ describe('frameToFeatureCollection', () => {
       });
 
       expect(frameToFeatureCollection(frame).featureCollection.features.map((f) => f.id)).toEqual([1]);
-    });
-
-    it('stringifies nested values and turns undefined into null', () => {
-      const frame = toDataFrame({
-        fields: [
-          { name: 'geometry', type: FieldType.string, values: [point] },
-          { name: 'tags', type: FieldType.other, values: [{ owner: 'ops', ports: [1, 2] }] },
-          { name: 'note', type: FieldType.string, values: [undefined] },
-          { name: 'unset', type: FieldType.string, values: [null] },
-        ],
-      });
-
-      const [feature] = frameToFeatureCollection(frame).featureCollection.features;
-
-      expect(feature.properties).toEqual({ tags: '{"owner":"ops","ports":[1,2]}', note: null, unset: null });
     });
 
     it('stringifies nested Feature properties', () => {

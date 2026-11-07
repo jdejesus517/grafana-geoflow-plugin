@@ -230,6 +230,32 @@ Accepted as proposed (2026-11-07):
 
 ## Outcome
 
+### Benchmark baseline
+
+Before any optimization, on this machine: Playwright's Chromium on an AMD Radeon integrated GPU, median of 3 runs. **drawn** is the time from the query response to every feature drawn, including about 0.3 s for the count at 100k. The other columns are the longest main-thread task in ms, for the load, a pan, a hover path, a refresh, hiding and showing the layer, and a basemap switch. Browsers don't report tasks under 50 ms. The **changing** rows' refresh is a refresh with new data; the others' are unchanged.
+
+| Kind | Rows | drawn | load | pan | hover | refresh | hide | show | basemap |
+|---|---|---|---|---|---|---|---|---|---|
+| points | 1,000 | 0.3 s | 54 | <50 | <50 | <50 | <50 | <50 | <50 |
+| points | 10,000 | 0.6 s | 52 | <50 | <50 | <50 | <50 | <50 | <50 |
+| points | 100,000 | 2.6 s | 249 | <50 | <50 | <50 | <50 | <50 | 115 |
+| lines | 1,000 | 0.3 s | 51 | <50 | <50 | <50 | <50 | <50 | <50 |
+| lines | 10,000 | 0.6 s | 53 | <50 | <50 | <50 | <50 | <50 | <50 |
+| lines | 100,000 | 3.0 s | 374 | <50 | <50 | 50 | <50 | <50 | 149 |
+| polygons | 1,000 | 0.3 s | <50 | <50 | <50 | <50 | <50 | <50 | <50 |
+| polygons | 10,000 | 0.9 s | 68 | <50 | <50 | <50 | <50 | <50 | <50 |
+| polygons | 100,000 | 5.4 s | 627 | <50 | <50 | 64 | <50 | <50 | 280 |
+| colored | 1,000 | 0.3 s | 52 | <50 | <50 | <50 | <50 | <50 | <50 |
+| colored | 10,000 | 0.6 s | 54 | <50 | <50 | <50 | <50 | <50 | <50 |
+| colored | 100,000 | 2.8 s | 290 | <50 | <50 | <50 | <50 | 127 | 115 |
+| changing | 1,000 | 0.3 s | 53 | <50 | <50 | <50 | <50 | <50 | <50 |
+| changing | 10,000 | 0.6 s | 54 | <50 | <50 | <50 | <50 | <50 | <50 |
+| changing | 100,000 | 2.7 s | 274 | <50 | <50 | 425 | <50 | <50 | 122 |
+
+At 100k points, every budget is already met: 249 ms to load and 425 ms for a refresh with new data, against 500 ms, and nothing over 200 ms for interactions. So no web worker is needed (decision 4).
+
+Lean features (decision 5) take a refresh with new data from 425 ms to 335 ms, and the time to draw 100k points from 2.6 s to 2.3 s. Polygons barely change, 627 ms to 604 ms: a profile of that task shows it's nearly all MapLibre serializing the GeoJSON for its worker, with no GeoFlow code in it.
+
 ### Step 9.1 findings
 
 Checked on Grafana 13.2.4, with temporary logging in a development build, failures injected with Playwright's request routing, and a dashboard created through the API.

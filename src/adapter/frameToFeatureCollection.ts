@@ -52,9 +52,13 @@ export interface ConversionResult {
 export const MAX_WARNING_SAMPLES = 5;
 
 /**
- * Convert one data frame to a GeoJSON FeatureCollection (docs/architecture.md §3.3).
- * Every non-geometry column becomes a feature property; rows that can't be converted are
- * skipped and counted by warning kind. Never throws.
+ * Convert one data frame to a GeoJSON FeatureCollection (docs/architecture.md §3.3). Rows that
+ * can't be converted are skipped and counted by warning kind. Never throws.
+ *
+ * Features hold their geometry and id, and only a GeoJSON Feature's own properties. Column values
+ * stay in the frame, where tooltips read them: nothing draws from them, and copying them here and
+ * serializing them to MapLibre's worker costs a fifth of a refresh with new data
+ * (docs/phase_9.md, Outcome).
  */
 export function frameToFeatureCollection(
   frame: DataFrame,
@@ -78,7 +82,6 @@ export function frameToFeatureCollection(
   result.geometryField = detection.field.name;
 
   const geometryValues = detection.field.values;
-  const propertyFields = frame.fields.filter((_, i) => i !== detection.index);
   const idField = findIdField(frame, mapping.idField);
   const ids = idField && featureIds(idField, frame.length);
   const { features } = result.featureCollection;
@@ -99,10 +102,6 @@ export function frameToFeatureCollection(
       for (const key of Object.keys(parsed.properties)) {
         properties[key] = propertyValue(parsed.properties[key]);
       }
-    }
-    // Columns override Feature properties on a name clash (docs/phase_1.md, decision 3).
-    for (const field of propertyFields) {
-      properties[field.name] = propertyValue(field.values[row]);
     }
 
     const feature: Feature<SupportedGeometry> = {
