@@ -204,7 +204,7 @@ Design §2 and §3. Unit and component tests.
 | Lean features break something that reads properties. | Only `featureDetails` does, and unit tests cover it. The benchmark shows whether it's worth the change; if it saves little, it's dropped. |
 | Budgets depend on this machine. | They're recorded with the machine's GPU and browser, and the benchmark can be run again anywhere. The results are for comparison, not a promise. |
 | A web worker needs copying frames across, and webpack and Grafana's CSP have to allow it. | It's the last resort, measured before it's built. The worker would be same-origin, like MapLibre's. |
-| Holding the last data after a failed query shows stale features. | Grafana's error indicator is on the panel, and it matches what time series panels do. Step 9.1 confirms what they do. |
+| Holding the last data after a failed query shows stale features. | Grafana's error indicator stays on the panel. Grafana's own panels go blank instead (step 9.1); a map of assets is more use with its last data. |
 | The reorder check adds work to changed refreshes. | It runs only when the row count is the same and the layer has keys. It's included in the benchmark. |
 
 ---
@@ -225,3 +225,21 @@ Accepted as proposed (2026-11-07):
 | 8 | Software rendering | **A line in the data summary.** It explains slow maps without alarming viewers on maps that are small enough to be fine. | A warning for everyone: most small maps run well without a GPU. Or nothing: users can't tell why a map is slow. |
 | 9 | Rows that change order | **A hint in the data summary**, for layers with keys. Not a warning: the map is correct, just slower. | The README only, as now: the people affected won't have read it. Or an order-insensitive comparison: tooltips read rows by position, so a reused conversion would point at the wrong rows. |
 | 10 | Splitting `module.js` | **Leave it** (66.5 KiB, 19.5 KiB gzip). It only loads on dashboards with a GeoFlow panel, which then need nearly all of it. Phase 4 raised this as a possibility. | Moving tooltips into the lazy chunk: a few KiB, and more moving parts. |
+
+---
+
+## Outcome
+
+### Step 9.1 findings
+
+Checked on Grafana 13.2.4, with temporary logging in a development build, failures injected with Playwright's request routing, and a dashboard created through the API.
+
+| Check | Result |
+|---|---|
+| A query that fails on refresh | `data.state` is `Error`, and `series` holds no frame for that query. If every query fails, `series` is empty and the map goes blank. If one of two fails, the other's frames arrive and only the failed layer goes. `data.errors` names the failed `refId`, except on an HTTP 500, where only `data.error` is set. |
+| Grafana's own panels | A table panel shows "No data", with the red error icon in its header. So holding the last data is GeoFlow's choice, not Grafana's behavior. |
+| The old frames | **Grafana empties their arrays on a failed refresh too.** The panel can't keep showing them: it needs its own copy, per query (Differences from the plan). |
+| Header notices | `PanelProps` offers no way to add one, and they come from the query result. Confirms decision 1. |
+| Turning WebGL2 off | Chromium's `--disable-webgl2` flag: `getContext('webgl2')` returns null. |
+| Renderer name | `WEBGL_debug_renderer_info` gives `ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)` without a GPU, and `ANGLE (AMD, AMD Radeon Graphics (radeonsi renoir ACO), OpenGL ES 3.2)` with one. Firefox and Safari can mask the name, so the check can only say yes when it recognizes a software renderer. |
+| CSP | With Grafana's default template and the tile host added to `connect-src`, nothing else is needed. Raster tiles, a dark tile URL, a style and a dark style URL, vector tiles, glyphs and sprites all load, in both themes, with the worker running. The only violation is the development build's `livereload.js`. |
