@@ -12,6 +12,7 @@ Much of the Phase 10 row is already in place. A license check over production de
 - **A gate on what ships.** The CI check scans 476 packages, all but 27 of them from Grafana's own packages, which Grafana provides at runtime and GeoFlow never ships. To pass, its allow-list has grown five licenses beyond §5.4's list, plus an exclusion, all for packages that aren't in the plugin. Meanwhile, nothing checks the licenses of the packages that are.
 - **`NOTICE` in the package.** It's in the repository, but the build doesn't copy it into `dist/`, so the plugin archive leaves it out, along with the map data attribution it carries.
 - **The logo.** `img/logo.svg` is still the create-plugin scaffold's logo, drawn in Grafana's colors.
+- **The catalog README** (added to the scope after approval). The build ships `src/README.md`, which Grafana.com and Grafana's plugin pages show, in place of the root README. It's still the scaffold's template: a heading, with everything else in comments.
 
 ## Exit criteria
 
@@ -20,7 +21,8 @@ Much of the Phase 10 row is already in place. A license check over production de
 3. **Gate tested.** Tests cover an allowed license, `OR` and `AND` expressions, a disallowed license, a missing or unknown license and a package without license text, and run in CI. A build with a disallowed license, tried by hand, fails, and the result is recorded in this document.
 4. **`NOTICE` in the package.** `dist/` contains `NOTICE`, and `npm run check:dist` requires it alongside `LICENSE` and `THIRD_PARTY_NOTICES.txt`.
 5. **Logo.** The plugin ships an original logo at the same path, so `plugin.json` doesn't change.
-6. **Nothing else changes.** `module.js` and the chunks are byte-identical to a build before the phase (`THIRD_PARTY_NOTICES.txt` aside, if its header changes). The stored screenshots still match. Unit and e2e tests pass locally and in CI.
+6. **Catalog README** (added after approval). `src/README.md` describes GeoFlow for people installing it: what it does, requirements, getting started with an example query, and short sections on styling, basemaps, sizing and limitations, linking to the full documentation. Every link is absolute, so it works on Grafana.com.
+7. **Nothing else changes.** `module.js` and the chunks are byte-identical to a build before the phase (`THIRD_PARTY_NOTICES.txt` aside, if its header changes). The stored screenshots still match. Unit and e2e tests pass locally and in CI.
 
 ## Out of scope
 
@@ -106,6 +108,10 @@ A new `src/img/logo.svg`, drawn for GeoFlow, replaces the scaffold's (decision 5
 
 The table is written at review time and dated; the build's `THIRD_PARTY_NOTICES.txt` is the current list (decision 7).
 
+### 7. Catalog README (`src/README.md`)
+
+Added after approval. Written for Grafana users deciding whether to install GeoFlow, and then setting it up. It keeps to what a user needs, without development phases or setup, and links to the root README for every option. Badges are static (Grafana version, license): the catalog's dynamic badges show errors until the plugin is published. There are no screenshots yet, since `plugin.json` has none and images need a public URL.
+
 ---
 
 ## Steps
@@ -127,6 +133,7 @@ Design §4–5, and `check:dist`.
 ### 10.4 Docs
 
 - README: the License section and the `npm` scripts
+- `src/README.md`: the catalog README (Design §7), as its own commit
 - `NOTICE`: anything the review finds missing
 - architecture.md: §2, §5, §5.4, §6
 - This document's Outcome
@@ -164,7 +171,7 @@ Accepted as proposed (2026-11-07):
 
 ## Outcome
 
-Implemented on branch `phase-10` in four commits, one per step:
+Implemented on branch `phase-10` in six commits: one per step, the catalog README, and a fix for Node 22:
 - 520 unit and component tests and 8 build tool tests pass, and 58 e2e tests (plus the login setup), in two full-suite runs in a row. The stored screenshots still match.
 - CI: to be filled in from the pull request.
 
@@ -177,10 +184,12 @@ Implemented on branch `phase-10` in four commits, one per step:
 | 3 | Gate tested | Met. 8 tests (`npm run test:build`, in CI). By hand: with BSD-2-Clause and BSD-3-Clause removed from the allow-list, `npm run build` exits 1 with an error for each of the five BSD packages (`maplibre-gl`, `pbf`, `@mapbox/vector-tile`, `@mapbox/tiny-sdf`, `@mapbox/unitbezier`); a development build lists the same as warnings and completes. |
 | 4 | `NOTICE` in the package | Met. `check:dist` requires it. |
 | 5 | Logo | Met, with two files instead of one (below). |
-| 6 | Nothing else changes | Met. Before the logo and `NOTICE`, `dist/` was byte-identical to the build before the phase, `THIRD_PARTY_NOTICES.txt` included. After them, only `NOTICE`, the logos and `plugin.json` differ. |
+| 6 | Catalog README | Met. The build ships it as the package's `README.md`. |
+| 7 | Nothing else changes | Met. Before the logo and `NOTICE`, `dist/` was byte-identical to the build before the phase, `THIRD_PARTY_NOTICES.txt` included. After them, only `NOTICE`, the logos and `plugin.json` differ. |
 
 ### Differences from the plan
 
+- **The catalog README** was added to the scope after the plan was approved (criterion 6, Design §7).
 - **Two logos, and a `plugin.json` change.** The logo was drawn to the user's brief: a folded map with great-circle arcs between locations, a large orange pin, and the name below. The name can't be read at the panel picker's 24–32 px, so the small logo (`img/logo.svg`) is the map alone and the large one (`img/logo-large.svg`) adds the name. `plugin.json`'s `logos.large` points at the new file, so **Grafana needs a restart**, against criterion 5 and decision 8. The version stays 0.2.0.
 - **Package counts.** The plan counted 27 packages in the notices file; there are 26. Of those, 19 ship (MapLibre's source maps show 17 in its build, plus the two webpack helpers), and 7 are listed only because the whole tree of MapLibre's dependencies is added (decision 6).
 - **`spdx-satisfies` 6.0.0, pinned exactly.** 6.0.1 was published the day of the change. 6.0.0 dates from January 2025.
