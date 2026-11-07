@@ -92,3 +92,13 @@ Installing GeoFlow's dependencies also installs about 450 packages that come wit
 - **Map data.** The default basemap shows OpenStreetMap tiles. The data is under the Open Database License, which asks for visible attribution: "© OpenStreetMap contributors" shows in the map's corner whenever the default basemap is used, and is in `NOTICE` and the README. The tiles come from the OpenStreetMap Foundation's servers, whose usage policy `NOTICE` links to. The plugin ships no map data.
 - **Fixture data** (`docker/postgres/init/`) is GeoFlow's own: a fictional fiber network, drawn by hand rather than traced from real buildings, and 100k generated points.
 - **Test images.** The e2e tests replace map tiles with `tests/fixtures/tile.png`, a plain gray tile made for the tests, so the stored screenshots contain no OpenStreetMap tiles.
+
+## Keeping it true
+
+The production build checks every bundled package as it writes `THIRD_PARTY_NOTICES.txt` (`webpack/ThirdPartyNoticesPlugin.ts`, `webpack/licenseCheck.ts`). It fails when a package's license isn't on the allow-list in `webpack/licenses.ts` (Apache-2.0, MIT, BSD-2-Clause, BSD-3-Clause, ISC, 0BSD, CC0-1.0), isn't a valid SPDX expression, or has no license text to reproduce, and names the package. A development build reports the same as warnings. CI runs the production build on every pull request.
+
+To accept a package under another license after reviewing it, add it to `LICENSE_EXCEPTIONS` in `webpack/licenses.ts` by name and exact version, with the reason, and add a row here:
+
+| Package | Version | License | Reason |
+|---|---|---|---|
+| (none) | | | |

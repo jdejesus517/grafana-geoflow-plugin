@@ -257,9 +257,9 @@ docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -
 npm run typecheck
 npm run lint
 npm run test:ci          # unit tests (Jest)
-npm run build
+npm run test:build       # tests of the build's license check (Node's test runner)
+npm run build            # fails if a bundled package's license is outside the policy
 npm run check:dist       # dist/ holds only expected files, including THIRD_PARTY_NOTICES.txt
-npm run license:check    # production dependency license gate
 npm run e2e              # Playwright end-to-end tests; needs `npm run server` running
 npm run bench:adapter    # 100k-row conversion timing (not part of CI)
 npm run bench:map        # the panel in a real browser with the GPU; needs a build and `npm run server` (not part of CI)

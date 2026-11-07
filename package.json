@@ -27,7 +27,7 @@
     "e2e": "playwright test",
     "server": "docker compose up --build",
     "sign": "sign-plugin",
-    "license:check": "license-checker-rseidelsohn --summary --production --excludePrivatePackages --excludePackages \"get-document@1.0.0\" --onlyAllow \"Apache-2.0;MIT;BSD-2-Clause;BSD-3-Clause;ISC;0BSD;CC0-1.0;Unlicense;BlueOak-1.0.0;Python-2.0;Public Domain;Zlib\""
+    "test:build": "node --test webpack/"
   },
   "devDependencies": {
     "@grafana/eslint-config": "^10.0.0",
@@ -63,12 +63,12 @@
     "jest": "^30.5.0",
     "jest-canvas-mock": "^2.5.2",
     "jest-environment-jsdom": "^30.5.0",
-    "license-checker-rseidelsohn": "^5.0.1",
     "prettier": "^3.6.0",
     "replace-in-file-webpack-plugin": "^1.0.0",
     "sass": "^1.89.0",
     "sass-loader": "^16.0.0",
     "semver": "^7.7.0",
+    "spdx-satisfies": "6.0.0",
     "style-loader": "^4.0.0",
     "swc-loader": "^0.2.0",
     "terser-webpack-plugin": "^5.3.0",
