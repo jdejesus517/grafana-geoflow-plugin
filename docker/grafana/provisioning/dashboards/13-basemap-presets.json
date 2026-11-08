@@ -1,0 +1,206 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Phase 12: basemap presets. The keys are made up: the e2e tests answer every provider request locally. To see the real services, open a panel and enter your own key.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "links": [],
+  "panels": [
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "OpenFreeMap",
+      "description": "Positron, with Dark in dark theme.",
+      "options": {
+        "basemap": {
+          "kind": "openfreemap",
+          "preset": {
+            "style": "positron"
+          }
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.7868,
+          "lon": -78.7823,
+          "zoom": 12
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        }
+      }
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      },
+      "id": 2,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Stadia Maps",
+      "description": "Stamen Toner, with a key, and Toner Dark in dark theme.",
+      "options": {
+        "basemap": {
+          "kind": "stadia",
+          "preset": {
+            "style": "stamen_toner"
+          },
+          "stadiaKey": "stadia-test-key"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.7868,
+          "lon": -78.7823,
+          "zoom": 12
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        }
+      }
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "id": 3,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "MapTiler",
+      "description": "Dataviz, with its logo, and Dataviz Dark in dark theme.",
+      "options": {
+        "basemap": {
+          "kind": "maptiler",
+          "preset": {
+            "style": "dataviz-v4"
+          },
+          "maptilerKey": "maptiler-test-key"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.7868,
+          "lon": -78.7823,
+          "zoom": 12
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        }
+      }
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 8
+      },
+      "id": 4,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Thunderforest",
+      "description": "Transport raster tiles, with Transport Dark in dark theme.",
+      "options": {
+        "basemap": {
+          "kind": "thunderforest",
+          "preset": {
+            "style": "transport"
+          },
+          "thunderforestKey": "thunderforest-test-key"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.7868,
+          "lon": -78.7823,
+          "zoom": 12
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        }
+      }
+    },
+    {
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 16
+      },
+      "id": 5,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "MapTiler without a key",
+      "description": "No basemap until a key is entered.",
+      "options": {
+        "basemap": {
+          "kind": "maptiler"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.7868,
+          "lon": -78.7823,
+          "zoom": 12
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        }
+      }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": [
+    "geoflow"
+  ],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "utc",
+  "title": "13 Basemap presets",
+  "uid": "geoflow-13-basemap-presets",
+  "version": 1
+}

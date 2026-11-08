@@ -1,6 +1,8 @@
 // Project test entry point: @grafana/plugin-e2e's test, plus tile stubbing for every test.
 // Every GeoFlow panel shows a basemap, and OpenStreetMap's tile policy forbids automated
 // traffic, so all tile requests are answered with a local PNG and never reach the network.
+// The basemap presets' providers (Phase 12) are stubbed the same way: no test needs a key, and
+// none counts against a provider's quota.
 import { PanelEditPage, test as base, expect } from '@grafana/plugin-e2e';
 import type { Locator } from '@playwright/test';
 import { join } from 'node:path';
@@ -10,10 +12,38 @@ import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from '../../src/panel/test
 export const STUB_TILE_HOST = 'tiles.geoflow.test';
 
 const TILE = join(__dirname, 'tile.png');
-const TILE_URLS = ['https://tile.openstreetmap.org/**', `https://${STUB_TILE_HOST}/**`];
+const TILE_URLS = [
+  'https://tile.openstreetmap.org/**',
+  `https://${STUB_TILE_HOST}/**`,
+  'https://tile.thunderforest.com/**',
+];
+
+/** Hosts of the presets' vector styles: each answers with stubStyle, and its tiles, fonts and sprite. */
+export const STYLE_HOSTS = ['tiles.openfreemap.org', 'tiles.stadiamaps.com', 'api.maptiler.com'];
+
+/**
+ * A small style in place of a provider's: the stub tile, and a label so the map also asks for
+ * fonts and a sprite, all on the provider's host, as the real styles are (docs/phase_12.md, step
+ * 12.1). Tests check the requests, not how the stub looks.
+ */
+function stubStyle(host: string) {
+  return {
+    version: 8,
+    sprite: `https://${host}/stub/sprite`,
+    glyphs: `https://${host}/stub/fonts/{fontstack}/{range}.pbf`,
+    sources: {
+      tiles: { type: 'raster', tiles: [`https://${host}/stub/tiles/{z}/{x}/{y}.png`], tileSize: 256 },
+      label: { type: 'geojson', data: { type: 'Point', coordinates: [-78.7823, 35.7868] } },
+    },
+    layers: [
+      { id: 'tiles', type: 'raster', source: 'tiles' },
+      { id: 'label', type: 'symbol', source: 'label', layout: { 'text-field': 'GeoFlow', 'text-font': ['Stub'] } },
+    ],
+  };
+}
 
 export const test = base.extend<{ tileRequests: string[] }>({
-  /** URLs of the tile requests the stub answered, in order. */
+  /** URLs of the tile, style, font and sprite requests the stubs answered, in order. */
   tileRequests: [
     async ({ context }, use) => {
       const requests: string[] = [];
@@ -21,6 +51,30 @@ export const test = base.extend<{ tileRequests: string[] }>({
         await context.route(url, (route) => {
           requests.push(route.request().url());
           return route.fulfill({ path: TILE, contentType: 'image/png' });
+        });
+      }
+      for (const host of STYLE_HOSTS) {
+        await context.route(`https://${host}/**`, (route) => {
+          const url = new URL(route.request().url());
+          requests.push(url.toString());
+          if (url.pathname.endsWith('.svg')) {
+            // MapTiler's logo.
+            return route.fulfill({
+              body: '<svg xmlns="http://www.w3.org/2000/svg" width="80" height="20"/>',
+              contentType: 'image/svg+xml',
+            });
+          }
+          if (url.pathname.startsWith('/stub/fonts/')) {
+            // An empty glyph set is a valid one.
+            return route.fulfill({ body: Buffer.alloc(0), contentType: 'application/x-protobuf' });
+          }
+          if (url.pathname.endsWith('.json') && url.pathname.startsWith('/stub/')) {
+            return route.fulfill({ json: {} });
+          }
+          if (url.pathname.startsWith('/stub/')) {
+            return route.fulfill({ path: TILE, contentType: 'image/png' });
+          }
+          return route.fulfill({ json: stubStyle(host) });
         });
       }
       await use(requests);
