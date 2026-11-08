@@ -194,7 +194,7 @@ To measure your own machine, run `npm run bench:map`. [docs/phase_9.md](docs/pha
 
 ### Prerequisites
 
-- Node.js 22 or later (`.nvmrc` pins the recommended version) and npm 10 or later
+- Node.js 22.18 or later (`.nvmrc` pins the recommended version, which CI uses) and npm 10 or later
 - Docker Engine with Docker Compose v2.24 or later
 
 ### Quick start
@@ -257,9 +257,9 @@ docker compose exec postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -
 npm run typecheck
 npm run lint
 npm run test:ci          # unit tests (Jest)
-npm run build
+npm run test:build       # tests of the build's license check (Node's test runner)
+npm run build            # fails if a bundled package's license is outside the policy
 npm run check:dist       # dist/ holds only expected files, including THIRD_PARTY_NOTICES.txt
-npm run license:check    # production dependency license gate
 npm run e2e              # Playwright end-to-end tests; needs `npm run server` running
 npm run bench:adapter    # 100k-row conversion timing (not part of CI)
 npm run bench:map        # the panel in a real browser with the GPU; needs a build and `npm run server` (not part of CI)
@@ -293,3 +293,5 @@ node scripts/capture-frames.mjs
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+
+The plugin bundles MapLibre GL JS and the packages it uses, under MIT, ISC and BSD licenses. The packaged plugin includes their license texts in `THIRD_PARTY_NOTICES.txt`, and the build fails if a bundled package's license falls outside the project's policy. The review behind this is in [docs/licenses.md](docs/licenses.md).

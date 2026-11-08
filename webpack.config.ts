@@ -2,9 +2,11 @@
 // https://grafana.com/developers/plugin-tools/how-to-guides/extend-configurations
 // Keep this minimal: anything added here has to survive `create-plugin update`.
 import path from 'node:path';
+import CopyWebpackPlugin from 'copy-webpack-plugin';
 import type { Configuration } from 'webpack';
 import { merge } from 'webpack-merge';
 import grafanaConfig, { type Env } from './.config/webpack/webpack.config';
+import { ALLOWED_LICENSES, LICENSE_EXCEPTIONS, NOTICES_HEADER } from './webpack/licenses';
 import { ThirdPartyNoticesPlugin } from './webpack/ThirdPartyNoticesPlugin';
 
 const config = async (env: Env): Promise<Configuration> => {
@@ -19,15 +21,14 @@ const config = async (env: Env): Promise<Configuration> => {
       },
     },
     plugins: [
+      // The scaffold copies LICENSE but not NOTICE, which carries the map data attribution.
+      new CopyWebpackPlugin({ patterns: [{ from: path.resolve(process.cwd(), 'NOTICE'), to: '.' }] }),
       new ThirdPartyNoticesPlugin({
         filename: 'THIRD_PARTY_NOTICES.txt',
         prebundled: ['maplibre-gl'],
-        header: `GeoFlow bundles the third-party packages listed below. Each is distributed under
-its own license, reproduced here. GeoFlow itself is licensed under the Apache
-License, Version 2.0 (see LICENSE).
-
-Map data shown by the default basemap is © OpenStreetMap contributors, available
-under the Open Database License: https://www.openstreetmap.org/copyright`,
+        header: NOTICES_HEADER,
+        allowedLicenses: ALLOWED_LICENSES,
+        licenseExceptions: LICENSE_EXCEPTIONS,
       }),
     ],
     ignoreWarnings: [

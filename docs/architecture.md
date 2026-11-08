@@ -12,7 +12,7 @@ Status: **Proposal, awaiting approval.** Nothing here is implemented yet.
 | Target Grafana | 13.2+ (`grafanaDependency: ">=13.2.0"`) |
 | Database | PostgreSQL 16+ with PostGIS 3.x |
 | Default basemap | OpenStreetMap standard raster tiles |
-| License | Apache-2.0; dependency license compatibility check pending (§5.4) |
+| License | Apache-2.0, confirmed by the Phase 10 review (§5.4, [licenses.md](licenses.md)) |
 | Dev environment | Docker Compose; deployment files under `docker/grafana/` and `docker/postgres/` |
 
 This document responds to the five pre-implementation items in [project_overview.md](project_overview.md):
@@ -200,7 +200,7 @@ MapLibre GL JS 6 shapes how the engine is built and shipped:
 - **ESM only.** The package has no CommonJS build. Webpack bundles it without extra configuration. Jest can't load it, so unit tests mock `maplibre-gl` as a virtual module.
 - **Lazy loading.** `createMapEngine()` loads the engine, MapLibre and its CSS with a dynamic `import()`, so they stay out of the plugin's initial `module.js`.
 - **Worker.** MapLibre's worker is a separate file. MapLibre looks for it relative to its own `import.meta.url`, which webpack rewrites, so that lookup fails inside a plugin bundle. Instead, `src/engine/maplibre/workerUrl.ts` uses `new URL('maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url)`: webpack emits the worker as an asset and resolves its served URL, and the engine passes that to `setWorkerUrl()`. The worker is same-origin, so it starts as a module worker without a `blob:` URL.
-- **License notices.** The minified build only links to its license. A root `webpack.config.ts` (extending the scaffold config) adds a plugin that writes `THIRD_PARTY_NOTICES.txt` from the modules webpack bundled. MapLibre's dist file inlines its own dependencies, so their dependency trees are added too.
+- **License notices.** The minified build only links to its license. A root `webpack.config.ts` (extending the scaffold config) adds a plugin that writes `THIRD_PARTY_NOTICES.txt` from the modules webpack bundled. MapLibre's dist file inlines its own dependencies, so their dependency trees are added too. Since Phase 10 the same plugin checks each package's license, and the config copies `NOTICE` into the package.
 
 #### Drawing data (Phase 3)
 
@@ -421,7 +421,7 @@ Splitting one query into a layer per value is left to Grafana's **Partition by v
 | End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Hovering and clicking known features shows tooltips with the expected attributes and data links. Option changes take effect. Dashboard refresh updates features. Runs against the minimum supported Grafana (13.2) and the latest release. |
 | Manual / perf | Provisioned "large" dashboard + browser profiler | Conversion and render timings at 1k, 10k and 100k features. |
 
-CI runs lint (including the engine import boundary), typecheck, unit tests, build, `@grafana/plugin-validator`, the license check (§5.4) and e2e on every PR.
+CI runs lint (including the engine import boundary), typecheck, unit tests, build (which includes the license check, §5.4), `@grafana/plugin-validator` and e2e on every PR.
 
 ### 5.3 Incremental delivery plan
 
@@ -468,16 +468,13 @@ Check each service's terms again when the phase is planned.
 
 The project is licensed under **Apache-2.0**. Every dependency that ends up in the shipped bundle (`dist/`) must have a license compatible with distributing it under Apache-2.0. Dev-only tooling matters less, because it isn't redistributed.
 
-- **Known so far (to be confirmed in the review):**
-  - `maplibre-gl` is BSD-3-Clause, which is compatible.
-  - `@grafana/*` runtime packages are Apache-2.0. They are provided by Grafana at runtime as externals, not bundled.
-  - React is MIT.
+- **The review** (Phase 10, [licenses.md](licenses.md)) confirmed Apache-2.0. The plugin ships MapLibre (BSD-3-Clause) and its dependencies (MIT, ISC, BSD-2-Clause, BSD-3-Clause), plus two webpack runtime helpers (MIT). `@grafana/*` (Apache-2.0), React and Emotion (MIT) are provided by Grafana at runtime as externals, not bundled.
 - **Basemap data is not code.** OpenStreetMap data is under ODbL, which is not a dependency license. It obliges visible attribution ("© OpenStreetMap contributors"), which the panel always displays. This goes in `NOTICE` and the README.
 - **Process:**
-  1. From Phase 0, a license scanner (for example `license-checker-rseidelsohn` or `license-report`) runs in CI over production dependencies.
-  2. An allow-list (Apache-2.0, MIT, BSD-2/3-Clause, ISC, 0BSD, CC0-1.0) passes automatically.
-  3. Anything else, especially GPL/AGPL/LGPL, SSPL or unknown, fails the build until it's reviewed.
-  4. The Phase 10 review produces `docs/licenses.md` and a populated `NOTICE` file before the first public release.
+  1. The production build checks every package it bundles, as it writes `THIRD_PARTY_NOTICES.txt` (since Phase 10; Phases 0–9 scanned all production dependencies, most of them Grafana's, which don't ship).
+  2. An allow-list (Apache-2.0, MIT, BSD-2/3-Clause, ISC, 0BSD, CC0-1.0, in `webpack/licenses.ts`) passes automatically. SPDX expressions are read properly: `OR` needs one allowed side, `AND` both.
+  3. Anything else, especially GPL/AGPL/LGPL, SSPL or unknown, and a package without license text, fails the build until it's reviewed. An accepted package goes in the exceptions list by name and exact version, with a row in `docs/licenses.md`.
+  4. `NOTICE`, `LICENSE` and `THIRD_PARTY_NOTICES.txt` ship in the package; `npm run check:dist` requires them.
 
 ---
 
@@ -493,7 +490,7 @@ All open items are resolved.
 | Grafana version | 13.2+ |
 | PostgreSQL version | 16+ (PostGIS 3.x) |
 | Default basemap | OpenStreetMap standard raster tiles, with attribution |
-| License | Apache-2.0, pending the dependency license review |
+| License | Apache-2.0, confirmed by the dependency license review (Phase 10) |
 | Dev environment | Docker; `docker/grafana/` and `docker/postgres/` kept independent |
 
 ---

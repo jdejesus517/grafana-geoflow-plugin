@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { Compilation, Compiler, NormalModule, WebpackError, sources } from 'webpack';
+import { LicenseException, LicensedPackage, licenseProblems } from './licenseCheck';
 
 const NAME = 'ThirdPartyNoticesPlugin';
 const LICENSE_FILE = /^(licen[cs]e|copying|notice)(\.(md|txt|markdown))?$/i;
@@ -9,12 +10,8 @@ const README_LICENSE_SECTION = /^(#{1,3}) *licen[cs]e\b.*$([\s\S]*?)(?=^#{1,3} |
 // The package directory of a bundled file: the last node_modules/<name> or node_modules/@scope/<name>.
 const PACKAGE_DIR = /^(.*[\\/]node_modules[\\/](?:@[^\\/]+[\\/])?[^\\/]+)[\\/]/;
 
-interface PackageNotice {
-  name: string;
-  version: string;
-  license: string;
+interface PackageNotice extends LicensedPackage {
   homepage?: string;
-  texts: string[];
 }
 
 interface Options {
@@ -25,12 +22,19 @@ interface Options {
    * does). Webpack sees only the one file, so their production dependency trees are added too.
    */
   prebundled: string[];
+  /** Licenses a bundled package may have (SPDX ids). */
+  allowedLicenses: string[];
+  licenseExceptions: LicenseException[];
 }
 
 /**
  * Emits a notices file listing every npm package webpack bundled into the plugin, with its
  * license text. Built from the compiled modules, so it can't drift from what actually ships.
  * Licenses such as BSD-3-Clause (MapLibre) require the notice in binary distributions.
+ *
+ * It also checks each package against the license policy (licenseCheck.ts). A failure is a
+ * build error in production, so the plugin can't be built with it, and a warning in
+ * development, so `npm run dev` keeps working while a new dependency is reviewed.
  */
 export class ThirdPartyNoticesPlugin {
   constructor(private readonly options: Options) {}
@@ -53,10 +57,9 @@ export class ThirdPartyNoticesPlugin {
         }
 
         const notices = [...packageDirs].map(readNotice).sort((a, b) => a.name.localeCompare(b.name));
-        for (const notice of notices.filter((n) => n.texts.length === 0)) {
-          compilation.warnings.push(
-            new WebpackError(`${NAME}: ${notice.name} ships no license file; only its license ID is listed.`)
-          );
+        const report = compiler.options.mode === 'production' ? compilation.errors : compilation.warnings;
+        for (const problem of licenseProblems(notices, this.options.allowedLicenses, this.options.licenseExceptions)) {
+          report.push(new WebpackError(`${NAME}: ${problem} See docs/licenses.md.`));
         }
         compilation.emitAsset(this.options.filename, new sources.RawSource(format(this.options.header, notices)));
       });
