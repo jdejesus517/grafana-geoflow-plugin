@@ -3,7 +3,7 @@
 // Keep this minimal: anything added here has to survive `create-plugin update`.
 import path from 'node:path';
 import CopyWebpackPlugin from 'copy-webpack-plugin';
-import type { Configuration } from 'webpack';
+import type { Configuration, RuleSetRule } from 'webpack';
 import { merge } from 'webpack-merge';
 import grafanaConfig, { type Env } from './.config/webpack/webpack.config';
 import { ALLOWED_LICENSES, LICENSE_EXCEPTIONS, NOTICES_HEADER } from './webpack/licenses';
@@ -11,7 +11,20 @@ import { ThirdPartyNoticesPlugin } from './webpack/ThirdPartyNoticesPlugin';
 
 const config = async (env: Env): Promise<Configuration> => {
   const baseConfig = await grafanaConfig(env);
+  // MapLibre's stylesheet is imported as text (`?raw`), so the panel can scope it under the map:
+  // Grafana's plugin validator rejects CSS imports, which add global styles to the page. The
+  // scaffold's CSS rule would inject it as well, so it skips those imports.
+  const cssRule = baseConfig.module?.rules?.find(
+    (rule): rule is RuleSetRule => !!rule && typeof rule === 'object' && String(rule.test) === String(/\.css$/)
+  );
+  if (!cssRule) {
+    throw new Error("webpack.config.ts: the scaffold's .css rule wasn't found; check it after `create-plugin update`.");
+  }
+  cssRule.resourceQuery = { not: [/raw/] };
   return merge(baseConfig, {
+    module: {
+      rules: [{ test: /\.css$/, resourceQuery: /raw/, type: 'asset/source' }],
+    },
     cache: {
       type: 'filesystem',
       // The scaffold lists only its own config; changes to these must invalidate the cache too.

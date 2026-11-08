@@ -1,6 +1,6 @@
 // MapEngine implemented with MapLibre GL JS (docs/phase_2.md, Design §3). This module imports
 // MapLibre statically; createMapEngine loads it lazily, so MapLibre and its CSS stay out of the
-// plugin's initial chunk.
+// plugin's initial chunk. The CSS comes in as text, for the panel to scope under the map.
 import {
   GeoJSONSource,
   GeoJSONSourceSpecification,
@@ -12,7 +12,7 @@ import {
   StyleSpecification,
   setWorkerUrl,
 } from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import maplibreCss from 'maplibre-gl/dist/maplibre-gl.css?raw';
 import {
   BACKGROUND_LAYER_ID,
   BASEMAP_RASTER_LAYER_ID,
@@ -73,6 +73,7 @@ type LayoutProperty = Parameters<MapLibreMap['setLayoutProperty']>[1];
 type Listeners = { [E in keyof EngineEvents]: Set<(payload: EngineEvents[E]) => void> };
 
 export class MapLibreEngine implements MapEngine {
+  readonly stylesheet = maplibreCss;
   private map?: MapLibreMap;
   private destroyed = false;
   private basemap: BasemapSpec = { kind: 'none' };

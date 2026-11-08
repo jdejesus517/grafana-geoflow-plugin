@@ -38,6 +38,7 @@ jest.mock('../engine', () => ({
 }));
 
 class FakeEngine implements MapEngine {
+  stylesheet = '';
   mount = jest.fn<Promise<void>, [HTMLElement, EngineOptions]>(() => Promise.resolve());
   setBasemap = jest.fn();
   setTheme = jest.fn();
@@ -176,6 +177,24 @@ describe('MapPanel', () => {
         theme: { dark: expect.any(Boolean), background: expect.any(String) },
         layers: [],
       });
+    });
+
+    it("applies the engine's stylesheet to the map, scoped to the panel, before mounting", async () => {
+      engine.stylesheet = '.maplibregl-ctrl { background-color: salmon; }';
+      let background = '';
+      engine.mount.mockImplementation((container) => {
+        const element = container.appendChild(document.createElement('div'));
+        element.className = 'maplibregl-ctrl';
+        background = getComputedStyle(element).backgroundColor;
+        return Promise.resolve();
+      });
+      await renderPanel();
+
+      expect(background).toBe('rgb(250, 128, 114)');
+      const outside = document.body.appendChild(document.createElement('div'));
+      outside.className = 'maplibregl-ctrl';
+      expect(getComputedStyle(outside).backgroundColor).not.toBe('rgb(250, 128, 114)');
+      outside.remove();
     });
 
     it('updates the basemap in place when the options change', async () => {

@@ -165,6 +165,9 @@ jest.mock(
   }),
   { virtual: true }
 );
+jest.mock('maplibre-gl/dist/maplibre-gl.css?raw', () => ({ __esModule: true, default: '.maplibregl-map{}' }), {
+  virtual: true,
+});
 jest.mock('../workerUrl', () => ({ workerUrl: 'http://grafana/public/plugins/geoflow/worker.mjs' }));
 
 const light: EngineTheme = { dark: false, background: '#ffffff' };
@@ -237,6 +240,10 @@ async function mounted(opts: EngineOptions = options) {
 }
 
 describe('MapLibreEngine', () => {
+  it("offers MapLibre's stylesheet for the panel to scope", () => {
+    expect(new MapLibreEngine().stylesheet).toBe('.maplibregl-map{}');
+  });
+
   describe('mount', () => {
     it('creates a north-up map with the basemap style, view and controls', async () => {
       const container = document.createElement('div');
