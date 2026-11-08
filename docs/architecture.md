@@ -204,6 +204,7 @@ A neutral contract:
 
 ```ts
 interface MapEngine {
+  readonly stylesheet: string;               // the map's CSS, for the panel to scope
   mount(container: HTMLElement, options: EngineOptions): Promise<void>; // view or fit, basemap, theme, layers
   setBasemap(basemap: BasemapSpec): void;
   setTheme(theme: EngineTheme): void;         // Phase 8
@@ -256,6 +257,7 @@ interface LayerSpec {
 MapLibre GL JS 6 shapes how the engine is built and shipped:
 - **ESM only.** The package has no CommonJS build. Webpack bundles it without extra configuration. Jest can't load it, so unit tests mock `maplibre-gl` as a virtual module.
 - **Lazy loading.** `createMapEngine()` loads the engine, MapLibre and its CSS with a dynamic `import()`, so they stay out of the plugin's initial `module.js`.
+- **Scoped CSS.** Grafana's plugin validator rejects CSS imports, because they add global styles to the page. MapLibre's stylesheet is imported as text instead (`?raw`, configured in the root `webpack.config.ts`), and the engine hands it over as `MapEngine.stylesheet`. The panel applies it with Emotion, scoped to the panel, before mounting the map and ahead of its own theme overrides, which then win at the same specificity.
 - **Worker.** MapLibre's worker is a separate file. MapLibre looks for it relative to its own `import.meta.url`, which webpack rewrites, so that lookup fails inside a plugin bundle. Instead, `src/engine/maplibre/workerUrl.ts` uses `new URL('maplibre-gl/dist/maplibre-gl-worker.mjs', import.meta.url)`: webpack emits the worker as an asset and resolves its served URL, and the engine passes that to `setWorkerUrl()`. The worker is same-origin, so it starts as a module worker without a `blob:` URL.
 - **License notices.** The minified build only links to its license. A root `webpack.config.ts` (extending the scaffold config) adds a plugin that writes `THIRD_PARTY_NOTICES.txt` from the modules webpack bundled. MapLibre's dist file inlines its own dependencies, so their dependency trees are added too. Since Phase 10 the same plugin checks each package's license, and the config copies `NOTICE` into the package.
 

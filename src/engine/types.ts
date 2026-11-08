@@ -156,6 +156,11 @@ export interface EngineEvents {
 }
 
 export interface MapEngine {
+  /**
+   * The CSS the map needs. The host applies it scoped under an ancestor of the container, before
+   * `mount`, so it styles the map and nothing else on the page.
+   */
+  readonly stylesheet: string;
   /** Creates the map in `container`. Rejects with WebGLUnavailableError when WebGL2 is missing. */
   mount(container: HTMLElement, options: EngineOptions): Promise<void>;
   /** Replaces the basemap without recreating the map; the camera is kept. */

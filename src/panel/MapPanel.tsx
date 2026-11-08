@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, LoadingState, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
@@ -29,10 +30,13 @@ const ON_SCREEN_MARGIN = '200px';
 /** Narrower panels have no room for a legend beside the map's controls. */
 const LEGEND_MIN_WIDTH = 200;
 
-const getStyles = (theme: GrafanaTheme2) => ({
-  // MapLibre's controls are styled for a light page; these overrides, scoped to the panel, match
-  // them to the Grafana theme.
+const getStyles = (theme: GrafanaTheme2, mapStylesheet: string) => ({
+  // The engine's stylesheet, scoped to the panel: Grafana doesn't allow plugins global CSS. It
+  // comes first, so the overrides after it, which match MapLibre's controls to the Grafana theme,
+  // win at the same specificity.
   wrapper: css`
+    ${mapStylesheet}
+
     position: relative;
     overflow: hidden;
     font-size: ${theme.typography.bodySmall.fontSize};
@@ -49,6 +53,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
       background: ${theme.colors.action.hover};
     }
     .maplibregl-ctrl-attrib,
+    .maplibregl-ctrl-attrib.maplibregl-compact,
     .maplibregl-ctrl-attrib a {
       color: ${theme.colors.text.secondary};
     }
@@ -71,8 +76,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
       display: none;
     }
   `,
-  // Sized, not positioned: MapLibre's lazily injected CSS sets .maplibregl-map to position: relative,
-  // and it lands after these styles.
+  // Sized, not positioned: MapLibre's stylesheet sets .maplibregl-map to position: relative, and
+  // its scoped rule is more specific than this one.
   map: css`
     width: 100%;
     height: 100%;
@@ -134,7 +139,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * The legend, the warnings, the fit and the tooltips all read from these steps' results.
  */
 export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
-  const styles = useStyles2(getStyles);
+  // Empty until the engine loads: its stylesheet comes with it.
+  const [mapStylesheet, setMapStylesheet] = useState('');
+  const styles = useStyles2(getStyles, mapStylesheet);
   const theme = useTheme2();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -250,6 +257,8 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
           latest.current.eventBus?.publish(new MapViewEvent(next));
         });
         loaded.on('contextLost', () => setPaused(true));
+        // Rendered before mounting, so the map and its controls are never drawn unstyled.
+        flushSync(() => setMapStylesheet(loaded.stylesheet));
         const { basemap, theme, layers, fit, dataBounds, requestId, loading } = latest.current;
         const options: EngineOptions = { basemap, theme, layers, view: currentView.current };
         if (fitDue(lastFit.current, fit, dataBounds, requestId, loading)) {

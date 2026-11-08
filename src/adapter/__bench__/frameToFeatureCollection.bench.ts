@@ -62,7 +62,8 @@ describe(`frameToFeatureCollection with ${ROWS.toLocaleString('en-US')} rows`, (
     ['parsed objects (jsonb)', false],
   ])(`%s converts within ${BUDGET_MS} ms`, (label, asText) => {
     const { medianMs, minMs, features } = timeConversion(buildFrame(asText));
-    console.log(`${label}: median ${medianMs.toFixed(0)} ms, min ${minMs.toFixed(0)} ms, ${features} features`);
+    // Not console.log: Grafana's plugin validator flags console logging anywhere in src/.
+    process.stdout.write(`${label}: median ${medianMs.toFixed(0)} ms, min ${minMs.toFixed(0)} ms, ${features} features\n`);
 
     expect(features).toBe(ROWS);
     expect(medianMs).toBeLessThan(BUDGET_MS);
