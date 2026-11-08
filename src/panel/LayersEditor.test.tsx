@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { DataFrame, FieldType, StandardEditorsRegistryItem, toDataFrame } from '@grafana/data';
 import { LayerConfig } from '../adapter';
-import { LayersEditor } from './LayersEditor';
+import { LayersEditor, withoutDefaults } from './LayersEditor';
 import { DEFAULT_OPTIONS } from './options';
 
 const point = '{"type":"Point","coordinates":[-78.78,35.78]}';
@@ -161,5 +161,59 @@ describe('LayersEditor', () => {
     setup(undefined, []);
 
     expect(screen.getByText(/Run the panel's queries/)).toBeInTheDocument();
+  });
+});
+
+describe('withoutDefaults', () => {
+  it('keeps every setting that differs from its default', () => {
+    const full: Required<LayerConfig> = {
+      id: 'B',
+      name: 'Trunks',
+      visible: false,
+      tooltips: false,
+      geometryField: 'geom',
+      idField: 'key',
+      role: 'edges',
+      fromField: 'a_site',
+      toField: 'z_site',
+    };
+
+    expect(withoutDefaults(full)).toEqual(full);
+  });
+
+  it('leaves out defaults, and unset and empty settings', () => {
+    expect(
+      withoutDefaults({ id: 'A', name: '', visible: true, tooltips: true, role: 'geometry', idField: undefined })
+    ).toEqual({ id: 'A' });
+  });
+
+  it('drops from and to columns off layers that are not edges', () => {
+    expect(withoutDefaults({ id: 'A', role: 'nodes', fromField: 'a', toField: 'z' })).toEqual({
+      id: 'A',
+      role: 'nodes',
+    });
+    expect(withoutDefaults({ id: 'A', fromField: 'a' })).toEqual({ id: 'A' });
+  });
+});
+
+describe('LayersEditor with a network', () => {
+  const network: LayerConfig[] = [
+    { id: 'A', role: 'nodes', idField: 'id' },
+    { id: 'B', role: 'edges', fromField: 'footprint', toField: 'centroid' },
+  ];
+
+  it('keeps roles and edge columns when a layer is renamed, hidden or moved', () => {
+    const { onChange } = setup(network, [frame('A'), frame('B')]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Hide Query A' }));
+    expect(lastSaved(onChange)).toEqual([{ ...network[0], visible: false }, network[1]]);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move Query A down' }));
+    expect(lastSaved(onChange)).toEqual([network[1], network[0]]);
+
+    const name = screen.getByLabelText(/^Name/);
+    fireEvent.change(name, { target: { value: 'Sites' } });
+    fireEvent.blur(name);
+    expect(lastSaved(onChange)).toEqual([{ ...network[0], name: 'Sites' }, network[1]]);
   });
 });
