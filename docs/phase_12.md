@@ -190,7 +190,7 @@ Accepted as proposed (2026-11-08):
 
 Implemented on branch `phase-12` in four commits, steps 12.2 to 12.5. Step 12.1 was checks only, recorded below:
 - 553 unit and component tests pass, and 66 e2e tests (plus the login setup), in two full-suite runs in a row. The stored screenshots still match.
-- CI: to be filled in from the pull request.
+- CI on PR #33 passes build, lint, 553 unit tests, the 8 build tool tests, `check:dist`, and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 66 e2e tests each (plus the login setup), on the first run. Every provider host is stubbed, so CI uses no real keys. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
