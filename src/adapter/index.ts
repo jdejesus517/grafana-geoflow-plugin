@@ -13,6 +13,8 @@ export { detectGeometryField } from './detectGeometryField';
 export { dataStyleFields, featureStyles } from './featureStyles';
 export type { DataStyleFields } from './featureStyles';
 export { EMPTY_VALUE, featureDetails } from './featureDetails';
+export { EDGE_AGGREGATES, pairDetails } from './pairDetails';
+export type { EdgeAggregate, EdgeFieldConfig } from './pairDetails';
 export type { FeatureDetailItem, FeatureDetails } from './featureDetails';
 export { featureByKey, featureIndex, featureKey } from './featureLookup';
 export { legendEntries } from './legend';

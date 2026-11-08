@@ -64,7 +64,8 @@ export function featureDetails(
   return { items, links };
 }
 
-function fieldValue(field: Field, value: unknown): string {
+/** A value as its field shows it: formatted with its field config, or its No value text when empty. */
+export function fieldValue(field: Field, value: unknown): string {
   if (isEmpty(value)) {
     return field.config.noValue ?? EMPTY_VALUE;
   }
@@ -75,6 +76,7 @@ function fieldValue(field: Field, value: unknown): string {
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 }
 
-function isEmpty(value: unknown): boolean {
+/** Null, undefined or empty text. */
+export function isEmpty(value: unknown): boolean {
   return value === null || value === undefined || value === '';
 }
