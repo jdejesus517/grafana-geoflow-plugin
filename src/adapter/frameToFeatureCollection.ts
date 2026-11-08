@@ -11,6 +11,7 @@ export interface GeometryMapping {
 }
 
 export interface WarningSample {
+  /** The frame's row; for the node kinds of an edge result, the node layer's row. */
   row: number;
   kind: WarningKind;
   detail: string;
@@ -24,6 +25,19 @@ export interface ConversionWarnings {
 
 /** A feature's identity across refreshes: the id column's value, a number or a string. */
 export type FeatureKey = string | number;
+
+/**
+ * Edges between the same two nodes, drawn as one line (docs/node-edge/architecture.md, §5.2).
+ * Direction doesn't count: A→B and B→A are one pair.
+ */
+export interface EdgePair {
+  /** The two node ids, as text, sorted and joined by U+0000. */
+  key: string;
+  /** The node ids in key order: the line runs from the first to the second. */
+  nodes: [string, string];
+  /** The edge frame's rows in this pair, in query order. */
+  rows: number[];
+}
 
 export interface ConversionResult {
   /** The layer drawn from this result (docs/phase_7.md, Design §2); the refId unless set otherwise. */
@@ -47,6 +61,13 @@ export interface ConversionResult {
   reordered?: boolean;
   /** Name of the geometry column used, when one was found. */
   geometryField?: string;
+  /**
+   * The column whose field config holds the layer's Map style: the geometry column, or an edge
+   * layer's from column (docs/node-edge/phase_1.md, decision 3).
+   */
+  styleField?: string;
+  /** Edge layers only: one per feature, in feature order. */
+  pairs?: EdgePair[];
   noGeometry?: { reason: NoGeometryReason; detail: string };
   warnings: ConversionWarnings;
 }
@@ -73,7 +94,7 @@ export function frameToFeatureCollection(
     rowCount: frame.length,
     featureCollection: { type: 'FeatureCollection', features: [] },
     featureRows: [],
-    warnings: { counts: { empty: 0, invalid: 0, unsupported: 0, projected: 0, outOfRange: 0 }, samples: [] },
+    warnings: { counts: emptyWarningCounts(), samples: [] },
   };
 
   const detection = detectGeometryField(frame, mapping.geometryField);
@@ -82,6 +103,7 @@ export function frameToFeatureCollection(
     return result;
   }
   result.geometryField = detection.field.name;
+  result.styleField = detection.field.name;
 
   const geometryValues = detection.field.values;
   const idField = findIdField(frame, mapping.idField);
@@ -128,7 +150,7 @@ export function frameToFeatureCollection(
 }
 
 /** Grows the result's bounds, in place, to cover `bounds`. */
-function growBounds(result: ConversionResult, [west, south, east, north]: Bounds) {
+export function growBounds(result: ConversionResult, [west, south, east, north]: Bounds) {
   const box = (result.bounds ??= [west, south, east, north]);
   box[0] = Math.min(box[0], west);
   box[1] = Math.min(box[1], south);
@@ -136,12 +158,30 @@ function growBounds(result: ConversionResult, [west, south, east, north]: Bounds
   box[3] = Math.max(box[3], north);
 }
 
+/** Warning counts with every kind at zero. */
+export function emptyWarningCounts(): Record<WarningKind, number> {
+  return {
+    empty: 0,
+    invalid: 0,
+    unsupported: 0,
+    projected: 0,
+    outOfRange: 0,
+    unknownNode: 0,
+    selfLoop: 0,
+    missingEnd: 0,
+    duplicateId: 0,
+    notAPoint: 0,
+  };
+}
+
 /**
- * The geometry column the result was converted from, in `frame` or a newer frame object around
- * the same data. Its field config holds the layer's Map style options (docs/phase_5.md, Design §1).
+ * The column holding the layer's Map style options, in `frame` or a newer frame object around the
+ * same data (docs/phase_5.md, Design §1): the geometry column the result was converted from, or an
+ * edge layer's from column (docs/node-edge/phase_1.md, decision 3).
  */
-export function geometryFieldOf(frame: DataFrame, result: ConversionResult): Field | undefined {
-  return frame.fields.find(({ name }) => name === result.geometryField);
+export function styleFieldOf(frame: DataFrame, result: ConversionResult): Field | undefined {
+  const name = result.styleField ?? result.geometryField;
+  return frame.fields.find((field) => field.name === name);
 }
 
 /** The id column used when none is set: one named "id", in any case. */

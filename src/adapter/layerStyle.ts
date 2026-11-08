@@ -1,7 +1,7 @@
 import { DataFrame, FieldColorModeId, GrafanaTheme2, getFieldColorModeForField } from '@grafana/data';
 import { DEFAULT_LAYER_STYLE, LayerStyle, LineStyle } from '../engine';
 import { parseDashPattern } from './dashPattern';
-import { ConversionResult, geometryFieldOf } from './frameToFeatureCollection';
+import { ConversionResult, styleFieldOf } from './frameToFeatureCollection';
 
 export type LineStyleOption = 'solid' | 'dash' | 'dot' | 'custom';
 
@@ -51,9 +51,10 @@ export function mapStyleNumber(custom: MapStyleConfig, name: NumberOption): numb
 }
 
 /**
- * The style of the layer drawn from `frame`, from its geometry field's config (docs/phase_5.md,
- * Design §2). Grafana applies the panel's field options and overrides to every field, so an
- * override on one query, or on the geometry column's name, styles that layer. Bad or missing
+ * The style of the layer drawn from `frame`, from its style column's config (docs/phase_5.md,
+ * Design §2): the geometry column, or an edge layer's from column. Grafana applies the panel's
+ * field options and overrides to every field, so an override on one query, or on that column's
+ * name, styles that layer. Bad or missing
  * values fall back to the defaults, so old dashboards draw as before. `colorName` is what By name
  * hashes (BoundLayer.colorName): the frame's name or refId unless the layer has a typed name.
  */
@@ -64,7 +65,7 @@ export function layerStyle(
   theme: GrafanaTheme2,
   colorName = frame.name || frame.refId || ''
 ): LayerStyle {
-  const field = geometryFieldOf(frame, result);
+  const field = styleFieldOf(frame, result);
   const custom: MapStyleConfig = field?.config.custom ?? {};
   const option = (name: NumberOption) => mapStyleNumber(custom, name);
 

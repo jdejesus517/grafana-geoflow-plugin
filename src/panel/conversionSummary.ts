@@ -6,6 +6,11 @@ export const WARNING_LABELS: Record<WarningKind, string> = {
   unsupported: 'unsupported',
   projected: 'projected',
   outOfRange: 'out of range',
+  unknownNode: 'unknown node',
+  selfLoop: 'self-loop',
+  missingEnd: 'empty end',
+  duplicateId: 'duplicate node id',
+  notAPoint: 'node not a point',
 };
 
 /** One line per frame, e.g. "A: 6 rows → 1 feature (geom) · empty 4, unsupported 1". */

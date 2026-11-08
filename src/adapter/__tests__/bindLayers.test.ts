@@ -1,5 +1,5 @@
 import { DataFrame, FieldType, toDataFrame } from '@grafana/data';
-import { BoundLayer, bindLayers, bindPerFrame } from '../bindLayers';
+import { BoundLayer, bindLayers, bindPerFrame, networkLayers } from '../bindLayers';
 
 function frame(refId: string | undefined, name?: string, labels?: Record<string, string>): DataFrame {
   return toDataFrame({
@@ -65,6 +65,7 @@ describe('bindPerFrame', () => {
       colorName: 'A',
       visible: true,
       tooltips: true,
+      role: 'geometry',
       config: { id: 'A' },
       frameIndex: 0,
       refId: 'A',
@@ -158,5 +159,82 @@ describe('bindLayers', () => {
     expect(bindLayers(frames, [{ id: 'A' }], { mode: 'perFrame' })).toEqual(expected);
     expect(bindLayers(frames, [{ id: 'A' }], undefined)).toEqual(expected);
     expect(bindLayers(frames, undefined, undefined)).toEqual(bindPerFrame(frames, []));
+  });
+});
+
+describe('layer roles', () => {
+  it('makes a layer without a role, or with an unknown one, a geometry layer', () => {
+    const layers = bindPerFrame(
+      [frame('A'), frame('B'), frame('C')],
+      [{ id: 'A' }, { id: 'B', role: 'nodes' }, { id: 'C', role: 'other' as never }]
+    );
+
+    expect(Object.fromEntries(layers.map(({ id, role }) => [id, role]))).toEqual({
+      A: 'geometry',
+      B: 'nodes',
+      C: 'geometry',
+    });
+  });
+
+  it("keeps an edge layer's from and to columns, ignoring empty ones", () => {
+    const [named, empty] = bindPerFrame(
+      [frame('A'), frame('B')],
+      [
+        { id: 'A', role: 'edges', fromField: 'a_site', toField: 'z_site' },
+        { id: 'B', role: 'edges', fromField: ' ', toField: '' },
+      ]
+    );
+
+    expect([named.fromField, named.toField]).toEqual(['a_site', 'z_site']);
+    expect(empty).not.toHaveProperty('fromField');
+    expect(empty).not.toHaveProperty('toField');
+  });
+});
+
+describe('networkLayers', () => {
+  it('picks the first Nodes and Edges layers in the Layers list, top first', () => {
+    const layers = bindPerFrame(
+      [frame('A'), frame('B'), frame('C'), frame('D')],
+      [
+        { id: 'C', role: 'edges' },
+        { id: 'A', role: 'nodes' },
+        { id: 'B', role: 'nodes' },
+        { id: 'D', role: 'edges' },
+      ]
+    );
+    const network = networkLayers(layers);
+
+    expect(network.nodes?.id).toBe('A');
+    expect(network.edges?.id).toBe('C');
+    expect(network.extras.map(({ id }) => id)).toEqual(['B', 'D']);
+    expect(network.split).toEqual([]);
+  });
+
+  it('has no network without network roles', () => {
+    expect(networkLayers(bindPerFrame([frame('A')], []))).toEqual({ extras: [], split: [] });
+  });
+
+  it('reports a network role whose query Partition by values split into several frames', () => {
+    const layers = bindPerFrame(
+      [
+        frame('A'),
+        frame('B-undefined', undefined, { kind: 'fiber' }),
+        frame('B-undefined', undefined, { kind: 'radio' }),
+      ],
+      [
+        { id: 'A', role: 'nodes' },
+        { id: 'B', role: 'edges' },
+      ]
+    );
+    const network = networkLayers(layers);
+
+    expect(network.edges).toBeUndefined();
+    expect(network.split.map(({ id }) => id)).toEqual(['B']);
+  });
+
+  it("doesn't report settings whose query is simply gone", () => {
+    const layers = bindPerFrame([frame('A')], [{ id: 'B', role: 'edges' }]);
+
+    expect(networkLayers(layers).split).toEqual([]);
   });
 });
