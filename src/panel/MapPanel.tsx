@@ -2,23 +2,16 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { GrafanaTheme2, LoadingState, PanelProps } from '@grafana/data';
 import { Button, useStyles2, useTheme2 } from '@grafana/ui';
-import { ConversionResult, bindLayers, buildLayerSpecs, legendEntries } from '../adapter';
+import { bindLayers, buildLayerSpecs, legendEntries } from '../adapter';
 import { BasemapSpec, EngineOptions, LayerSpec, MapEngine, WebGLUnavailableError, createMapEngine } from '../engine';
-import { Bounds, unionBounds } from '../model';
-import { conversionSummary, firstWarning } from './conversionSummary';
 import { ConversionHistory, convertFrames } from './convertFrames';
-import {
-  FitSettings,
-  GeoFlowOptions,
-  basemapFromOptions,
-  fitFromOptions,
-  tooltipMode,
-  viewFromOptions,
-} from './options';
+import { DataSummary } from './DataSummary';
+import { LastFit, drawnBounds, fitDone, fitDue } from './fitData';
+import { GeoFlowOptions, basemapFromOptions, fitFromOptions, tooltipMode, viewFromOptions } from './options';
 import { HeldSeries, holdSeries } from './holdSeries';
 import { MapLegend } from './MapLegend';
 import { MapWarnings } from './MapWarnings';
-import { layerSettingProblems, panelProblems } from './panelProblems';
+import { panelProblems } from './panelProblems';
 import { INSPECT_EVENT, RENDERED_FEATURES_ATTRIBUTE } from './testHook';
 import { useFeatureTooltip } from './useFeatureTooltip';
 import { useOnScreen } from './useOnScreen';
@@ -84,19 +77,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     width: 100%;
     height: 100%;
   `,
-  overlay: css`
-    position: absolute;
-    top: ${theme.spacing(1)};
-    left: ${theme.spacing(1)};
-    max-width: calc(100% - ${theme.spacing(8)});
-    max-height: calc(100% - ${theme.spacing(2)});
-    overflow: auto;
-    padding: ${theme.spacing(1)};
-    background: ${theme.colors.background.primary};
-    border: 1px solid ${theme.colors.border.weak};
-    border-radius: ${theme.shape.radius.default};
-    box-shadow: ${theme.shadows.z1};
-  `,
   notices: css`
     position: absolute;
     left: ${theme.spacing(1)};
@@ -137,18 +117,6 @@ const getStyles = (theme: GrafanaTheme2) => ({
     text-align: center;
     color: ${theme.colors.text.secondary};
   `,
-  frame: css`
-    & + & {
-      margin-top: ${theme.spacing(1)};
-    }
-  `,
-  secondary: css`
-    color: ${theme.colors.text.secondary};
-  `,
-  fields: css`
-    color: ${theme.colors.text.secondary};
-    font-family: ${theme.typography.fontFamilyMonospace};
-  `,
 });
 
 /**
@@ -156,6 +124,14 @@ const getStyles = (theme: GrafanaTheme2) => ({
  * docs/phase_3.md, Design §5). The map is created when the panel comes on screen, updated in
  * place as data, options, theme and size change, and destroyed when the panel goes off screen or
  * unmounts.
+ *
+ * Each render takes the query results through the same steps, each memoized so that only what
+ * changed is worked out again:
+ *
+ *   data.series ─ holdSeries ─▶ frames ─ bindLayers ─▶ layers (top first, with their settings)
+ *     ─ convertFrames ─▶ conversion results ─ buildLayerSpecs ─▶ LayerSpecs ─▶ engine.setLayers
+ *
+ * The legend, the warnings, the fit and the tooltips all read from these steps' results.
  */
 export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
   const styles = useStyles2(getStyles);
@@ -188,6 +164,8 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
   );
 
   // While a query has failed, the map keeps drawing that query's last data (docs/phase_9.md).
+  // useState, not useRef, only to create it once; holdSeries updates it in place (as convertFrames
+  // does `history`), so changing it never re-renders.
   const [held] = useState<HeldSeries>(() => ({ frames: [] }));
   const series = useMemo(
     () => holdSeries({ series: data.series, state: data.state }, held),
@@ -232,6 +210,8 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
   // new query response, fit again. Nothing else does, scrolling back on screen included.
   const lastFit = useRef<LastFit>({});
   // The engine loads asynchronously; it mounts with whatever the options and data are by then.
+  // Its event listeners read this too, so they always see the current render's values without
+  // being added again on every render.
   const latest = useRef({ basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading, eventBus });
   useEffect(() => {
     latest.current = { basemap, theme: engineTheme, layers, fit, dataBounds, requestId, loading, eventBus };
@@ -386,89 +366,17 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
           </div>
         )}
       </div>
-      {options.showSummary && results.length > 0 && (
-        <div className={styles.overlay} data-testid="geoflow-summary">
-          {results.map((result, i) => {
-            const warning = firstWarning(result);
-            const layer = bound.find(({ frameIndex }) => frameIndex === i);
-            const settingProblems = layerSettingProblems(layer, series[i], result);
-            const named = layer && (layer.name !== `Query ${result.layerId}` || !layer.visible);
-            return (
-              <div key={result.layerId} className={styles.frame} data-testid={`geoflow-frame-${result.layerId}`}>
-                <div data-testid={`geoflow-summary-${result.layerId}`}>{conversionSummary(result)}</div>
-                {named && (
-                  <div className={styles.secondary} data-testid={`geoflow-summary-layer-${result.layerId}`}>
-                    {layer.name}
-                    {!layer.visible && ' · hidden'}
-                  </div>
-                )}
-                {warning && <div className={styles.secondary}>{warning}</div>}
-                {result.reordered && (
-                  <div className={styles.secondary}>
-                    Rows came back in another order: add ORDER BY, so a refresh with the same data costs nothing.
-                  </div>
-                )}
-                {settingProblems.map((problem) => (
-                  <div key={problem} className={styles.secondary}>
-                    {problem}
-                  </div>
-                ))}
-                <div className={styles.fields}>
-                  {series[i].fields.map((field) => `${field.name} (${field.type})`).join(', ')}
-                </div>
-              </div>
-            );
-          })}
-          {engine?.softwareRendering() && (
-            <div className={styles.frame} data-testid="geoflow-summary-software">
-              This browser draws the map without a GPU, so large maps will be slow.
-            </div>
-          )}
-        </div>
+      {options.showSummary && (
+        <DataSummary
+          results={results}
+          layers={bound}
+          frames={series}
+          softwareRendering={!!engine?.softwareRendering()}
+        />
       )}
     </div>
   );
 };
-
-interface LastFit {
-  /** The fit settings it used, as fitKey gives them. */
-  settings?: string;
-  requestId?: string;
-}
-
-function fitKey({ padding, maxZoom, onRefresh }: FitSettings): string {
-  return `${padding},${maxZoom},${onRefresh}`;
-}
-
-/**
- * Whether the map should fit the data now: on the first data with geometry, when the fit settings
- * change, and in Fit on refresh, on each new query response once it has arrived.
- */
-function fitDue(
-  last: LastFit,
-  fit: FitSettings | undefined,
-  bounds: Bounds | undefined,
-  requestId: string | undefined,
-  loading: boolean
-): boolean {
-  if (!fit || !bounds || loading) {
-    return false;
-  }
-  return last.settings !== fitKey(fit) || (fit.onRefresh && last.requestId !== requestId);
-}
-
-function fitDone(fit: FitSettings, requestId: string | undefined): LastFit {
-  return { settings: fitKey(fit), requestId };
-}
-
-/** The box around the features of the visible layers, which are the ones a fit frames. */
-function drawnBounds(layers: LayerSpec[], results: ConversionResult[]): Bounds | undefined {
-  const drawn = new Set(layers.filter((layer) => layer.visible).map(({ id }) => id));
-  return results.reduce<Bounds | undefined>(
-    (bounds, result) => (drawn.has(result.layerId) ? unionBounds(bounds, result.bounds) : bounds),
-    undefined
-  );
-}
 
 function mapFailureMessage(error: unknown): string {
   if (error instanceof WebGLUnavailableError) {
