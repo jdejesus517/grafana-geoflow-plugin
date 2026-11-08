@@ -173,7 +173,7 @@ Accepted as proposed (2026-11-07):
 
 Implemented on branch `phase-10` in six commits: one per step, the catalog README, and a fix for Node 22:
 - 520 unit and component tests and 8 build tool tests pass, and 58 e2e tests (plus the login setup), in two full-suite runs in a row. The stored screenshots still match.
-- CI: to be filled in from the pull request.
+- CI on PR #30 passes build, lint, 520 unit tests, the 8 build tool tests, the production build with the license gate, `check:dist` with `NOTICE`, and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 58 e2e tests each (plus the login setup), on the first run. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
