@@ -1,6 +1,6 @@
 # Phase 11: Splitting by value with Partition by values
 
-Status: **Approved** (2026-11-08). Decisions 1–8 accepted as proposed.
+Status: **Implemented** (2026-11-08). Decisions 1–8 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §3.4 (layer binding modes, the gaps Phase 11 fills), §5.3 (Phase 11 row), §4.2 (performance), §7 (`byColumn`).
 
 ## Goal
@@ -150,3 +150,42 @@ Accepted as proposed (2026-11-08):
 | 6 | Stable colors for split layers | **Document Classic palette (by series name) and `ORDER BY`.** Both already work. | Hash split layers' names by default: changes the colors of existing dashboards. |
 | 7 | Layers list with many rows | **Unchanged.** Over 50 layers, the warning is the answer. | Collapse rows beyond a count: work for a case the warning steers away from. |
 | 8 | Plugin version | **Unchanged (0.2.0).** The next release sets it. No `plugin.json` change, so no Grafana restart. | 0.3.0 for the new warning. |
+
+---
+
+## Outcome
+
+Implemented on branch `phase-11` in four commits, one per step:
+- 529 unit and component tests pass, and 62 e2e tests (plus the login setup), in two full-suite runs in a row. The stored screenshots still match.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Many layers warning | Met. Over 50 layers, the warning reads "60 layers may draw slowly", with what to do. Hidden layers count; queries without geometry and gone layers don't. Unit tests, and the 12 Partition dashboard's 60-layer panel in e2e. Every layer is still drawn. |
+| 2 | Cost measured | Met. Below. |
+| 3 | Null and empty values | Met, with names that differ from the plan (below). Each is a layer of its own in both namings, with the same ids after a refresh. The README shows naming them in SQL. |
+| 4 | Per-value styling | Met. A **Fields returned by query** override on `A-aerial` makes those cables dashed and orange, and nothing else (screenshot). |
+| 5 | README walk-through | Met. "Splitting a query by value" in the root README, a line under Features in the catalog README, and the new warning under Warnings. |
+| 6 | Nothing else changes | Met. Only the warning is new in the plugin; the stored screenshots match. |
+
+### Cost of many layers
+
+`npm run bench:map -- --kinds layers --rows 50,200,1000`: one point per layer, split by id with Partition by values, on the 11 Performance dashboard's new Many layers panel. Median of 3 runs, with the GPU, on Grafana 13.2.4. "Task" columns are the longest main-thread task in milliseconds; tasks under 50 ms aren't reported.
+
+| Layers | Drawn | Load | Pan | Hover | Refresh | Hide | Show | Basemap |
+|---|---|---|---|---|---|---|---|---|
+| 50 | 0.4 s | 52 | <50 | <50 | <50 | 50 | <50 | <50 |
+| 200 | 0.8 s | 107 | <50 | <50 | <50 | 93 | 81 | 111 |
+| 1,000 | 4.6 s | 497 | 402 | 496 | 51 | 445 | 463 | 504 |
+
+1,000 layers are slow, but nothing stalls for seconds, so decision 2 stands. 50 layers cost about what one does, and the threshold stays at 50: past 200, panning and hovering start to pause.
+
+### Differences from the plan
+
+- **Grafana names a null `''`, not `null`, with As frame name.** The plan read Grafana's `main` source; 13.2.4 behaves otherwise. A null and empty text then share the name `''` and the refId `A-`, so GeoFlow tells them apart only by position: `A-:#1` and `A-:#2`, named "Query A- (1)" and "(2)", in the order they first appear in the rows. A text `null` stays its own layer (`A-null`). With **As label**, as planned, nulls are `placement=null` and empty text `placement=`, and a text `null` collides with a real null. Decision 3 stands: naming them in SQL avoids all of these, and the README says so.
+- **Checks ran on Grafana 13.2.4,** the local dev stack, rather than 13.2.5. The e2e tests pin the behavior on 13.2.5, 13.3.0 and nightly in CI.
+- **The Many layers panel went into the 11 Performance dashboard,** whose Rows variable gains 50 and 200, so `bench:map` measures it like the other kinds. The benchmark's hide and show now use the top layer, whatever its name.
+- **The 60-layer e2e panel fits the view to the data,** so every point is in view for the drawn-feature count.
+

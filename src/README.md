@@ -10,7 +10,7 @@ GeoFlow is a panel plugin for assets that live in PostgreSQL with PostGIS: netwo
 ## Features
 
 - **Points, lines and polygons**, including their Multi* forms, from GeoJSON text, `json`/`jsonb` columns or whole GeoJSON Features.
-- **One layer per query**, which you can name, reorder and hide.
+- **One layer per query**, which you can name, reorder and hide, or [one per value of a column](https://github.com/jdejesus517/grafana-geoflow-plugin#splitting-a-query-by-value) with Grafana's Partition by values transformation.
 - **Styling with Grafana's field options:** colors, opacity, line width and dash patterns, set per query through overrides.
 - **Coloring and sizing by value** with thresholds, gradients and value mappings, as in Grafana's other panels, with a legend.
 - **Tooltips** with every column, formatted with the field's unit, value mappings and data links. Click to pin one, and page through overlapping features.

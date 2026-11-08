@@ -51,7 +51,23 @@ The list follows the queries: a new query appears on top with default settings. 
 
 Style isn't in the list: it stays in the field options, per query through overrides (see [Styling](#styling)).
 
-**A query that returns several frames** gets a layer for each, named after the frame. Grafana's **Partition by values** transformation splits one query this way, for example cables by placement: each value is then its own layer, named `placement=aerial` with the default **As label** naming, or `aerial` with **As frame name**. With **As frame name**, each value's frames can also be styled with a **Fields returned by query** override on its own query name, such as `A-aerial`.
+**A query that returns several frames** gets a layer for each, named after the frame. To split one query into a layer per value, see the next section.
+
+## Splitting a query by value
+
+To draw each value of a column as its own layer, such as cables by placement, split the query with Grafana's **Partition by values** transformation:
+
+1. In the panel editor's **Transform** tab, add **Partition by values**, and pick the column to split by (`placement`).
+2. Set **Naming** to **As frame name**. Each layer is then named by its value (`aerial`), and its frame by the query and value (`A-aerial`). With the default **As label**, layers are named `placement=aerial`, and they can't be styled one by one.
+3. To style one value, add a **Fields returned by query** override on its frame, such as `A-aerial`, with a **Color scheme** or any **Map style** option.
+4. Keep colors and order stable as the data changes. The transformation makes a frame per value in the order values first appear in the rows, so a value that moves up would recolor and restack the others. Sort by the split column first (`ORDER BY placement, id`), and set **Color scheme** to **Classic palette (by series name)**, which colors each layer by its name.
+5. Name missing values in the query. A null value gets a layer of its own, named `placement=null`, or with **As frame name**, it shares the empty name with empty text and the two are told apart only by position. Give them a name instead:
+   ```sql
+   COALESCE(NULLIF(placement, ''), 'unknown') AS placement
+   ```
+6. Split on a column with a few dozen values at most. Each value is a layer, and over 50 layers the panel warns: at 1,000, panning and hovering pause for about half a second.
+
+Layer settings, such as a value's visibility, are kept by layer id, so they stay with the value across refreshes.
 
 ## Tooltips
 
@@ -165,6 +181,7 @@ When something's wrong, a small warning shows on the map. Hover it, or focus it 
 - rows skipped as invalid, unsupported, in another coordinate system or out of range, with the reason for the first one
 - a Geometry, ID, Color by or Size by column the query doesn't return
 - more than 100,000 features in the panel
+- more than 50 layers in the panel, usually from [splitting a query](#splitting-a-query-by-value) on a column with many values
 
 Rows with empty geometry don't count, since they're usually intended, such as an asset without a location. Viewers see the warning too. To turn it off for a panel, turn off **Show warnings**.
 
@@ -220,7 +237,8 @@ Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 | 08 Layers      | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values. |
 | 09 Refresh     | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.   |
 | 10 Hardening   | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                      |
-| 11 Performance | Points, lines, polygons and colored points at up to 100k rows, picked with a variable. `npm run bench:map` measures these.                                 |
+| 11 Performance | Points, lines, polygons and colored points at up to 100k rows, and up to 1,000 layers, picked with a variable. `npm run bench:map` measures these.         |
+| 12 Partition   | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.  |
 
 ### Docker environment
 
@@ -272,7 +290,7 @@ E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers e
 Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
 
 - **Drawn-feature counts.** `renderedFeatures(panel)` in `tests/fixtures/` asks the panel's map which features it drew. This goes through a small test hook in the plugin ([src/panel/testHook.ts](src/panel/testHook.ts)), which does nothing unless a test triggers it. All test-only code in `src/` is marked with a `// Test hook:` comment: `grep -rn "Test hook:" src/` lists it.
-- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style, 07 Data-driven, 08 Layers and 09 Refresh dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
+- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style, 07 Data-driven, 08 Layers, 09 Refresh and 12 Partition dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
 
 To hover or click a known feature, `mapPoint(panel, [lon, lat], view)` in `tests/fixtures/` works out where a coordinate is on screen from the panel's view in the dashboard JSON. It's plain Web Mercator math, so it needs no test hook.
 
