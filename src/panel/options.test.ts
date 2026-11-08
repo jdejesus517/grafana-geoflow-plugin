@@ -28,6 +28,27 @@ describe('basemapFromOptions', () => {
     expect(basemapFromOptions(undefined)).toEqual({ kind: 'osm' });
   });
 
+  it('maps preset providers, each with its own key', () => {
+    const basemap = {
+      kind: 'maptiler' as const,
+      preset: { style: 'topo-v4' },
+      maptilerKey: 'mt',
+      thunderforestKey: 'tf',
+    };
+
+    expect(basemapFromOptions(basemap)).toMatchObject({
+      url: 'https://api.maptiler.com/maps/topo-v4/style.json',
+      requestParams: { params: { key: 'mt' } },
+    });
+    expect(basemapFromOptions({ ...basemap, kind: 'thunderforest' })).toMatchObject({
+      requestParams: { params: { apikey: 'tf' } },
+    });
+    expect(basemapFromOptions({ kind: 'openfreemap' }, true)).toEqual({
+      kind: 'style',
+      url: 'https://tiles.openfreemap.org/styles/dark',
+    });
+  });
+
   it('maps OpenStreetMap and None', () => {
     expect(basemapFromOptions({ kind: 'osm', tileUrl: TILES })).toEqual({ kind: 'osm' });
     expect(basemapFromOptions({ kind: 'none' })).toEqual({ kind: 'none' });
