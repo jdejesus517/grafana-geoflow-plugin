@@ -1,6 +1,6 @@
-# Target Architecture: GeoFlow, a Grafana PostGIS Map Panel
+# Architecture: GeoFlow, a Grafana PostGIS Map Panel
 
-Status: **Proposal, awaiting approval.** Nothing here is implemented yet.
+Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later.
 
 ### Project baseline
 
@@ -33,32 +33,49 @@ The plugin is a **frontend-only Grafana panel plugin**. It has no backend compon
 flowchart TD
     subgraph Grafana
         DS["PostgreSQL data source"]
-        subgraph Plugin["Panel plugin"]
+        TR["Transformations<br/>(for example Partition by values)"]
+        subgraph Plugin["GeoFlow panel plugin"]
             subgraph PanelLayer["Grafana layer: src/panel/"]
-                MOD["module.ts<br/>PanelPlugin + options builder"]
-                MP["MapPanel.tsx<br/>React glue: props → engine calls"]
+                MOD["module.ts<br/>PanelPlugin, options and field config"]
+                ED["Option editors<br/>LayersEditor, PresetEditor, ViewEditor"]
+                OPT["options.ts + basemapPresets.ts<br/>options → BasemapSpec, ViewState, fit"]
+                MP["MapPanel.tsx<br/>holdSeries → bindLayers → convertFrames → buildLayerSpecs<br/>fit to data, map dropped while off screen"]
+                UI["React overlays<br/>FeatureTooltip, MapLegend, MapWarnings, DataSummary"]
             end
             subgraph AdapterLayer["Adapter layer: src/adapter/"]
-                F2G["frameToGeoJSON<br/>DataFrame → FeatureCollection"]
-                BLS["buildLayerSpecs<br/>panel options + frames → LayerSpec[]"]
+                BL["bindLayers<br/>frames + layer configs → BoundLayer[]"]
+                F2F["frameToFeatureCollection<br/>detectGeometryField + parseGeometry → FeatureCollection"]
+                BLS["buildLayerSpecs<br/>layerStyle + featureStyles → LayerSpec[]"]
+                DET["legendEntries, featureDetails, featureLookup"]
             end
-            subgraph EngineLayer["Engine layer: src/engine/<br/>no @grafana/* imports"]
-                ENG["MapEngine interface + MapLibreEngine implementation<br/>style builders (LayerSpec → MapLibre layer specs)<br/>hit testing, highlights, tooltip anchor"]
+            subgraph EngineLayer["Engine layer: src/engine/<br/>no @grafana/* or React imports"]
+                API["MapEngine interface<br/>createMapEngine() loads the MapLibre chunk on first use"]
+                MLE["MapLibreEngine<br/>basemapStyle, styleLayers, featureState<br/>hit testing, highlights, tooltip popup, provider logo"]
             end
             ML["MapLibre GL JS"]
         end
     end
     PG[("PostGIS DB")]
-    TILES["Basemap tiles (style URL)"]
+    TILES["Basemap: OSM tiles, a tile or style URL,<br/>OpenFreeMap, Stadia Maps, MapTiler, Thunderforest"]
 
     DS -->|"SQL with ST_AsGeoJSON"| PG
-    DS -->|"DataFrame[] (one per query / refId)"| MP
+    DS -->|"DataFrame[] (one per query / refId)"| TR
+    TR -->|"PanelData.series"| MP
     MOD --> MP
-    MP --> F2G
-    F2G --> BLS
-    BLS -->|"plain TS objects"| ENG
-    ENG --> ML
-    ML --> TILES
+    MOD --> ED
+    ED <-.->|"MapViewEvent / MapViewRequestEvent on the panel event bus"| MP
+    OPT --> MP
+    MP --> BL
+    BL --> F2F
+    F2F --> BLS
+    MP --> DET
+    DET --> UI
+    BLS -->|"LayerSpec[] (plain TS objects)"| API
+    MP -->|"BasemapSpec, theme, view"| API
+    API -.->|"implemented by"| MLE
+    MLE -->|"hover / click hits"| UI
+    MLE --> ML
+    ML -->|"API key on every request to the provider host"| TILES
 ```
 
 ### Key decisions
@@ -78,7 +95,7 @@ flowchart TD
 
 ### 2.1 Directory layout
 
-Scaffolded with `npx @grafana/create-plugin@latest` (panel type). The repository then follows the standard layout, with three source subfolders and a `docker/` directory holding one independent directory per service:
+Scaffolded with `npx @grafana/create-plugin@latest` (panel type). The repository then follows the standard layout, with the three layers and a shared model as source subfolders, and a `docker/` directory holding one independent directory per service:
 
 ```
 docker-compose.yaml            # root compose file; wires the services below
@@ -90,6 +107,7 @@ docker/
     provisioning/
       datasources/datasources.yml # GeoFlow PostGIS data source → postgres service
       dashboards/              # dashboard provider + one JSON dashboard per feature
+                               # (00-smoke … 13-basemap-presets)
   postgres/                    # everything the database container needs
     Dockerfile                 # FROM postgis/postgis:16-3.6
     .env.example               # POSTGRES_USER / PASSWORD / DB, reader password
@@ -101,25 +119,55 @@ docker/
       04_seed_large.sql        # generated rows for performance testing
       05_reader_role.sh        # read-only grafana_reader role
 src/
-  module.ts                    # PanelPlugin registration + options
+  module.ts                    # PanelPlugin registration, options and field config
   plugin.json
-  panel/                       # Grafana-aware layer
-    MapPanel.tsx
+  img/                         # plugin logo
+  panel/                       # Grafana-aware layer; tests sit beside the files
+    MapPanel.tsx               # React glue: props → adapter → engine calls
+    options.ts                 # GeoFlowOptions, defaults, migration, options → BasemapSpec / ViewState
+    basemapPresets.ts          # providers, styles, keys and attribution (Phase 12)
+    holdSeries.ts              # keeps a failed query's last good frames (Phase 9)
+    convertFrames.ts           # converts frames, reusing unchanged results (Phase 8)
+    fitData.ts                 # when Fit to data fits, and the bounds it fits to
+    panelProblems.ts           # warnings shown on the map (Phase 9)
+    conversionSummary.ts       # skipped-row counts and labels
+    viewEvents.ts              # map view events on the panel event bus (Phase 8)
+    useFeatureTooltip.tsx      # hover and click → tooltip state and engine highlights
+    useOnScreen.ts             # drops the map while the panel is off screen
     FeatureTooltip.tsx         # tooltip content, with Grafana's tooltip components
-    options.ts                 # PanelOptions types + builder
-    editors/LayersEditor.tsx   # custom option editor for the layer list
+    MapLegend.tsx  MapWarnings.tsx  DataSummary.tsx
+    LayersEditor.tsx           # option editor for the layer list (Phase 7)
+    ViewEditor.tsx             # Use current view (Phase 8)
+    PresetEditor.tsx           # a preset's Style and Dark theme style (Phase 12)
+    CheckedTextEditor.tsx      # text option with inline validation
+    testHook.ts                # e2e-only inspect event (// Test hook:)
   adapter/                     # Grafana DataFrame ⇄ neutral model
-    frameToGeoJSON.ts
+    index.ts                   # the layer's public API
+    bindLayers.ts              # frames + Layers settings → BoundLayer[] (§3.4)
     detectGeometryField.ts
-    buildLayerSpecs.ts
+    parseGeometry.ts           # GeoJSON text or object → geometry, with warnings
+    frameToFeatureCollection.ts
+    buildLayerSpecs.ts         # BoundLayer[] + results → LayerSpec[]
+    layerStyle.ts  dashPattern.ts  featureStyles.ts   # field config → styles
+    legend.ts  featureDetails.ts  featureLookup.ts    # legend and tooltip content
+    __tests__/  __fixtures__/  __bench__/
+  engine/                      # framework-neutral rendering; no @grafana/* or React
+    index.ts                   # public API + createMapEngine() (lazy MapLibre chunk)
+    types.ts                   # MapEngine, LayerSpec, LayerStyle, BasemapSpec, ViewState
+    errors.ts                  # WebGLUnavailableError
+    layerStyle.ts              # pure: LayerSpec → MapLibre LayerSpecification[]
+    featureState.ts            # pure: per-feature style changes as feature-state
+    basemapStyle.ts            # pure: BasemapSpec → MapLibre style, request params, logo
+    maplibre/
+      MapLibreEngine.ts        # the MapEngine implementation
+      workerUrl.ts             # MapLibre's worker as a webpack asset
     __tests__/
-  engine/                      # framework-neutral rendering
-    types.ts                   # LayerSpec, LayerStyle, ViewState, MapEngine
-    MapLibreEngine.ts
-    styleBuilders.ts           # pure: LayerSpec → maplibre LayerSpecification[]
-    __tests__/
-  model/                       # shared plain types (GeoJSON helpers, errors)
-tests/                         # Playwright e2e (@grafana/plugin-e2e)
+  model/                       # shared plain types (GeoJSON, bounds)
+tests/                         # Playwright e2e (@grafana/plugin-e2e), one spec per dashboard
+  fixtures/                    # shared fixtures, including stubbed basemap hosts
+scripts/                       # bench-map.mjs, capture-frames.mjs, check-dist.mjs
+webpack/                       # third-party notices plugin and license check (§5.4)
+webpack.config.ts              # extends .config/webpack
 LICENSE                        # Apache-2.0
 NOTICE                         # third-party attributions (see §5.4)
 ```
@@ -130,7 +178,7 @@ The Grafana and Postgres directories don't depend on each other. Each one can be
 
 - **`module.ts`**: `new PanelPlugin<MapOptions>(MapPanel).setPanelOptions(...)`. It declares basemap, view, tooltip and layer options. `useFieldConfig()` is enabled so per-field units, decimals, value mappings and data links work in tooltips (Phase 4), and so each query's layer is styled from its geometry field: Grafana's Color scheme and GeoFlow's Map style options (Phase 5).
 - **`MapPanel.tsx`**: A thin React component.
-  - On mount: create a `div`, call `engine.mount(div, initialView, basemap)`.
+  - On mount (and when the panel scrolls back on screen): create the engine with `createMapEngine()` and call `engine.mount(div, { view, fit, basemap, theme, layers })`.
   - On `data` / `options` change: call the adapter to build `LayerSpec[]`, then call `engine.setLayers(specs)`.
   - On `width` / `height` change: call `engine.resize()`.
   - On theme change (`useTheme2()`): call `engine.setTheme()`, and `engine.setBasemap()` when the basemap has a dark theme URL (Phase 8).
@@ -156,13 +204,21 @@ A neutral contract:
 
 ```ts
 interface MapEngine {
-  mount(container: HTMLElement, view: ViewState, basemap: BasemapSpec): void;
+  mount(container: HTMLElement, options: EngineOptions): Promise<void>; // view or fit, basemap, theme, layers
   setBasemap(basemap: BasemapSpec): void;
-  setLayers(layers: LayerSpec[]): void;      // diffed: add/update/remove
-  fitBounds(bounds: Bounds, options: { padding: number; maxZoom: number }): void; // bounds from the panel (Phase 8)
+  setTheme(theme: EngineTheme): void;         // Phase 8
   setView(view: ViewState): void;
+  fitBounds(bounds: Bounds, options: FitOptions): void; // bounds from the panel (Phase 8)
+  setLayers(layers: LayerSpec[]): void;      // diffed: add/update/remove
+  openTooltip(lngLat, content: HTMLElement, options: { interactive: boolean }): void; // Phase 4
+  tooltipSpace(lngLat): { width: number; height: number };
+  closeTooltip(): void;
+  setHovered(feature: FeatureRef | undefined): void;
+  setSelected(feature: FeatureRef | undefined): void;
   resize(): void;
-  on(event: 'hover' | 'click' | 'viewChange', cb: (...) => void): () => void;
+  softwareRendering(): boolean;              // Phase 9
+  renderedFeatureCounts(): Promise<Record<string, number>>; // test hook (Phase 3)
+  on(event: 'viewChange' | 'hover' | 'click' | 'error' | 'contextLost', listener): () => void;
   destroy(): void;
 }
 
@@ -190,7 +246,7 @@ interface LayerSpec {
   - Changed style: `setPaintProperty()`.
   - Add or remove: add or remove the source and its layers.
   - A basemap `setStyle()` would drop user layers, so a `transformStyle` given at mount appends them to every new style (as built in Phase 3, below).
-- **`styleBuilders.ts`** is pure: `LayerSpec → LayerSpecification[]`. Most styling logic can therefore be tested without WebGL.
+- **`layerStyle.ts`** is pure: `LayerSpec → LayerSpecification[]`; `featureState.ts` and `basemapStyle.ts` are pure too. Most styling logic can therefore be tested without WebGL.
 - **Tooltips** (Phase 4, details below), following Grafana's own pattern: hovering a feature highlights it and shows a compact tooltip, and clicking pins a full one with a pager for overlapping features and the feature's data links.
   - The engine does the hit testing (rendered features of interactive layers, a few pixels around the pointer), emits `hover` and `click` events, sets the highlights with feature-state, and anchors one `maplibregl.Popup`.
   - The panel renders the tooltip's content with React and Grafana's tooltip components into a DOM element it hands to the engine. The engine stays Grafana-free, and React escapes every value, so attribute values never go through `innerHTML` (they're untrusted data).
@@ -419,7 +475,7 @@ Splitting one query into a layer per value is left to Grafana's **Partition by v
 
 | Level | Tooling | Covers |
 |---|---|---|
-| Unit | Jest | Adapter: `frameToFeatureCollection` across all geometry types, Feature input, string vs object values, null/invalid/unsupported rows, id handling, field detection. Engine: `styleBuilders` output and the `setLayers` diff logic with `maplibre-gl` mocked. jsdom has no WebGL, so the real map is not exercised here. |
+| Unit | Jest | Adapter: `frameToFeatureCollection` across all geometry types, Feature input, string vs object values, null/invalid/unsupported rows, id handling, field detection. Engine: the style builders' output (`layerStyle`, `basemapStyle`) and the `setLayers` diff logic with `maplibre-gl` mocked. jsdom has no WebGL, so the real map is not exercised here. |
 | Component | Jest + React Testing Library | `MapPanel` calls the engine correctly on mount, data change, resize and unmount. Uses a fake `MapEngine`, which is another payoff of the interface. Covers the "no geometry field" hint. |
 | End-to-end | Playwright + `@grafana/plugin-e2e` against the Docker stack | The panel loads in provisioned dashboards. The canvas renders. Hovering and clicking known features shows tooltips with the expected attributes and data links. Option changes take effect. Dashboard refresh updates features. Runs against the minimum supported Grafana (13.2) and the latest release. |
 | Manual / perf | Provisioned "large" dashboard + browser profiler | Conversion and render timings at 1k, 10k and 100k features. |
