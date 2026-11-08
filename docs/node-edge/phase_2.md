@@ -1,6 +1,6 @@
 # Node-edge Phase 2: Layers editor
 
-Status: **Plan accepted** (2026-11-08). Decisions 1–5 accepted as proposed.
+Status: **Implemented** (2026-11-08). Decisions 1–5 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §5.4 (panel components), §7 (options), §9.3 (Phase 2 row); decisions 1, 4, 8, 14.
 
 ## Goal
@@ -133,3 +133,32 @@ Design §5. No new seed data, so no database reset.
 | 3 | Placement on a role change | **Fix the order only when it's upside down,** moving the changed layer next to its counterpart: an edge layer just below the nodes, a node layer just above the edges. | Always moving it; never moving it, leaving edges drawn over nodes. |
 | 4 | Saving | **Keep every setting except known defaults,** dropping from/to columns off Edges. | Adding the three Phase 1 settings to the list, which is how they were missed. |
 | 5 | Plugin version | **Unchanged.** No `plugin.json` change, so no Grafana restart. | |
+
+---
+
+## Outcome
+
+Implemented on branch `node-edge-phase-2` in four commits, steps 2.1 to 2.4.
+- 617 unit and component tests pass (14 new), and 71 e2e tests (1 new, plus the login setup). No seed data changed, so the stack wasn't reset.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Settings survive editing | Met. Saving keeps every setting but known defaults. Three of the new tests fail against `main`'s code, including renaming, hiding and moving a network's layers. |
+| 2 | Role | Met. A Role radio group heads the selected layer's settings. |
+| 3 | Settings by role | Met. Edge layers show Name, From column and To column, with the detected columns as placeholders; node layers describe their ID column. |
+| 4 | Problems where they're set | Met. From/To problems on the column named, and a node layer without an ID column says edges need one. |
+| 5 | Placement | Met. Both directions, and no move when the order is already right. |
+| 6 | Rows | Met. Nodes and Edges labels, no "No geometry" on edge rows, "Not used" on extras. |
+| 7 | Tests | Met. Unit tests on saving, component tests on roles, settings, placement and rows; the e2e test makes a network in the editor and renames a layer. |
+| 8 | Docs | Met. The README's Networks section sets up a network in the Layers list. |
+
+### Differences from the plan
+
+- **The Role group is small** (`size="sm"`). Checked by eye in Grafana's options pane: at its default width (297 px of content) the default size fits, but the pane can be dragged to 244 px before it collapses, where the default size truncates its labels to "Geome…", "Nod…", "Edg…". The small size takes about 190 px and fits at both widths, so the radio group stays (decision 1), without falling back to a select.
+
+### Findings for later phases
+
+- **Grafana's radio inputs sit over their labels,** so e2e tests click the radio (`getByRole('radio', { name })`), not its text.
