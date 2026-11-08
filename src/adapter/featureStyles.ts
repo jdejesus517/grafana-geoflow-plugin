@@ -13,8 +13,8 @@ import {
   getScaleCalculator,
 } from '@grafana/data';
 import { FeatureStyles } from '../engine';
-import { ConversionResult } from './frameToFeatureCollection';
-import { MAP_STYLE_RANGES, MapStyleConfig } from './layerStyle';
+import { ConversionResult, geometryFieldOf } from './frameToFeatureCollection';
+import { MapStyleConfig, mapStyleNumber } from './layerStyle';
 
 /** Distinct colors a gradient is drawn with, across the column's range. */
 const GRADIENT_STEPS = 1024;
@@ -33,7 +33,7 @@ export interface DataStyleFields {
  * name or display name, which is what the options' field picker saves.
  */
 export function dataStyleFields(frame: DataFrame, result: ConversionResult): DataStyleFields {
-  const custom: MapStyleConfig = geometryField(frame, result)?.config.custom ?? {};
+  const custom: MapStyleConfig = geometryFieldOf(frame, result)?.config.custom ?? {};
   const fields: DataStyleFields = { problems: [] };
   if (custom.colorBy) {
     fields.colorField = findField(frame, custom.colorBy);
@@ -68,7 +68,7 @@ export function featureStyles(
   if (!colorField && !sizeField) {
     return undefined;
   }
-  const custom: MapStyleConfig = geometryField(frame, result)?.config.custom ?? {};
+  const custom: MapStyleConfig = geometryFieldOf(frame, result)?.config.custom ?? {};
   return {
     ...(colorField && { colors: featureColors(colorField, result, theme) }),
     ...(sizeField && { radii: featureRadii(sizeField, result, sizeRange(custom)) }),
@@ -76,12 +76,8 @@ export function featureStyles(
 }
 
 /** Min and Max point size, px, with their defaults and ranges. */
-function sizeRange({ sizeMin, sizeMax }: MapStyleConfig): [number, number] {
-  const option = (value: number | undefined, name: 'sizeMin' | 'sizeMax') => {
-    const { min, max, default: fallback } = MAP_STYLE_RANGES[name];
-    return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
-  };
-  return [option(sizeMin, 'sizeMin'), option(sizeMax, 'sizeMax')];
+function sizeRange(custom: MapStyleConfig): [number, number] {
+  return [mapStyleNumber(custom, 'sizeMin'), mapStyleNumber(custom, 'sizeMax')];
 }
 
 /**
@@ -220,10 +216,6 @@ function cached<T>(
   const values = compute();
   byField.set(field.name, { inputs, extra, values });
   return values;
-}
-
-function geometryField(frame: DataFrame, result: ConversionResult): Field | undefined {
-  return frame.fields.find(({ name }) => name === result.geometryField);
 }
 
 function findField(frame: DataFrame, name: string): Field | undefined {

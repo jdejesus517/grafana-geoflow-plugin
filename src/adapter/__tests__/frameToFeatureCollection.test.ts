@@ -1,6 +1,6 @@
 import { FieldType, toDataFrame } from '@grafana/data';
 import { loadFixture } from '../__fixtures__';
-import { MAX_WARNING_SAMPLES, frameToFeatureCollection, framesToFeatureCollections } from '../frameToFeatureCollection';
+import { MAX_WARNING_SAMPLES, frameToFeatureCollection } from '../frameToFeatureCollection';
 
 const point = '{"type":"Point","coordinates":[-78.786,35.788]}';
 const noWarnings = { empty: 0, invalid: 0, unsupported: 0, projected: 0, outOfRange: 0 };
@@ -284,16 +284,5 @@ describe('frameToFeatureCollection', () => {
 
       expect(frameToFeatureCollection({ ...frame, refId: undefined }).refId).toBe('');
     });
-  });
-});
-
-describe('framesToFeatureCollections', () => {
-  it('converts each frame in order, keeping refIds', () => {
-    const results = framesToFeatureCollections([loadFixture('buildings', 'A'), loadFixture('fiber_cables', 'B')]);
-
-    expect(results.map((r) => [r.refId, r.featureCollection.features.length])).toEqual([
-      ['A', 9],
-      ['B', 15],
-    ]);
   });
 });

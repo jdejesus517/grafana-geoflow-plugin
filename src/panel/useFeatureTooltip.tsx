@@ -63,6 +63,8 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
     () => new Set(layers.filter((layer) => layer.visible && layer.interactive).map(({ id }) => id)),
     [layers]
   );
+  // `pinned` and `hover` are what the user did; `pinnedShown` and `hoverShown` are what of it still
+  // applies to the current data, layers and map. Only the shown ones reach the screen.
   const pinnedShown = useMemo(
     () => (mode === 'off' ? undefined : resolvePinned(pinned, engine, basemap, results, reachable)),
     [pinned, engine, basemap, results, mode, reachable]
@@ -83,6 +85,9 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
       ? hover
       : undefined;
 
+  // The engine's listeners are added once per engine and call through this ref, which every render
+  // points at handlers closing over that render's results, mode and basemap. Hovering renders on
+  // every animation frame, so re-adding the listeners on each render would churn them constantly.
   const handlers = useRef({ click: (_: PointerHit) => {}, hover: (_: PointerHit) => {} });
   useEffect(() => {
     handlers.current = {

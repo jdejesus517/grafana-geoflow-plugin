@@ -1,5 +1,5 @@
 import { FieldType, toDataFrame } from '@grafana/data';
-import { featureByKey, featureKey, featureRow } from '../featureLookup';
+import { featureByKey, featureIndex, featureKey } from '../featureLookup';
 import { frameToFeatureCollection } from '../frameToFeatureCollection';
 
 const point = '{"type":"Point","coordinates":[-78.78,35.78]}';
@@ -76,8 +76,8 @@ describe('feature ids, rows and keys', () => {
     it('records the frame row of each feature', () => {
       expect(result.featureRows).toEqual([0, 2]);
       // Text ids, so MapLibre ids are row indexes.
-      expect(featureRow(result, 2)).toBe(2);
-      expect(featureRow(result, 1)).toBeUndefined();
+      expect(featureIndex(result, 2)).toBe(1);
+      expect(featureIndex(result, 1)).toBeUndefined();
     });
 
     it('goes between MapLibre ids and keys', () => {
