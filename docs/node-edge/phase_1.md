@@ -234,7 +234,7 @@ Design §7–8. The database is reset (`docker compose down -v`, then `docker co
 
 Implemented on branch `node-edge-phase-1` in four commits, steps 1.2 to 1.5. Step 1.1 was checks only, recorded below.
 - 603 unit and component tests pass (35 new), and 70 e2e tests (3 new, plus the login setup) on a stack started fresh with `docker compose down -v` and `docker compose up`. Every init file ran, `verify.sql` passed, and the stored screenshots of the other dashboards still match.
-- CI: to be filled in from the pull request.
+- CI on PR #37 passes build, lint, 603 unit tests, the 8 build tool tests, `check:dist`, and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 70 e2e tests each (plus the login setup), on the first run. CI starts from an empty database, so the new seed data loads with a plain `docker compose up` there too. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
@@ -266,4 +266,5 @@ Implemented on branch `node-edge-phase-1` in four commits, steps 1.2 to 1.5. Ste
 ### Findings for later phases
 
 - **`start`/`end` detection** can pick up a time range's columns on an edge query. Only edge layers detect, and the warnings would show unknown nodes, but Phase 2's editor should show the detected columns so the user sees the choice.
+- **The Layers list drops network settings** (found planning Phase 2): its `withoutDefaults` saves only the settings Phase 7 knew, so any change in the list removes every layer's `role`, `fromField` and `toField`. No test edited a network in the Layers list. Phase 2 fixes it first.
 - **The README's status line** still describes the plugin as pre-MVP at Phase 9; it predates this phase and should be brought up to date before the catalog submission.

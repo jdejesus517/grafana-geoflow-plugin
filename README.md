@@ -81,19 +81,18 @@ SELECT site_id AS id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM sites ORDER B
 SELECT trunk_id, a_site, z_site, capacity_gbps FROM trunks ORDER BY trunk_id;
 ```
 
-This is a first step: lines between nodes, with warnings. Hover totals, a click list of each line's edges and styling by value are planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)). Until the Layers list can set it up, give each layer its role in the panel JSON (the panel menu → **Inspect** → **Panel JSON**), under `options.layers`:
+This is a first step: lines between nodes, with warnings. Hover totals, a click list of each line's edges and styling by value are planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)).
 
-```json
-"layers": [
-  { "id": "A", "name": "Sites", "role": "nodes" },
-  { "id": "B", "name": "Trunks", "role": "edges" }
-]
-```
+To set it up, in the panel editor's **Layers** list:
 
-- **From and to columns** are found by name: `source` and `target`, `from` and `to`, `src` and `dst`, `start` and `end`, `a_end` and `z_end`, or pairs like `a_site` and `z_site`, `site_a` and `site_z`, or `from_site` and `to_site`. Other names go in the edge layer's settings: `"fromField": "near_end", "toField": "far_end"`.
-- **Node ids** come from the node layer's id column: `id`, or the one in its `idField` setting. They're matched as text, so an integer site id joins a text trunk end. Keep them unique.
+1. Select the node query's layer, and set its **Role** to **Nodes**.
+2. Select the edge query's layer, and set its **Role** to **Edges**. If it was above the nodes, it moves just below them, so nodes stay on top.
+3. Check the edge layer's **From column** and **To column**: unset, they show the columns GeoFlow found. Pick others if those are wrong.
+
+- **From and to columns** are found by name: `source` and `target`, `from` and `to`, `src` and `dst`, `start` and `end`, `a_end` and `z_end`, or pairs like `a_site` and `z_site`, `site_a` and `site_z`, or `from_site` and `to_site`. Choosing one finds the other from the same pair.
+- **Node ids** come from the node layer's **ID column**: a column named `id`, unless another is chosen. They're matched as text, so an integer site id joins a text trunk end. Keep them unique.
 - **Style** edges like any layer, per query: **Map style** in a **Fields returned by query** override on the edge query sets their color, width and line style. Lines draw in the Layers list's order, so keep the node layer above the edge layer.
-- **One network per panel:** the first Nodes and the first Edges layer in the Layers list. Others warn; an extra Nodes layer still draws as points.
+- **One network per panel:** the first Nodes and the first Edges layer in the Layers list. Others say **Not used** in the list and warn on the map; an extra Nodes layer still draws as points.
 - **Warnings** count edges that can't be drawn: an id with no node, an edge from a node to itself, an empty end, a duplicate node id, or a node that isn't a single point.
 - **Not with Partition by values:** a node or edge query split into several frames warns instead of drawing.
 
@@ -273,23 +272,23 @@ npm run server     # start Grafana and PostGIS in Docker (terminal 2)
 
 Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 
-| Dashboard          | Shows                                                                                                                                                      |
-| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 00 Smoke           | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                                  |
-| 01 Adapter         | How each kind of query result converts to GeoJSON.                                                                                                         |
-| 02 Basemap         | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                     |
-| 03 Many panels     | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                            |
-| 04 Geometry        | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.            |
-| 05 Tooltips        | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes.      |
-| 06 Style           | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                  |
-| 07 Data-driven     | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.             |
-| 08 Layers          | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values. |
-| 09 Refresh         | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.   |
-| 10 Hardening       | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                      |
-| 11 Performance     | Points, lines, polygons and colored points at up to 100k rows, and up to 1,000 layers, picked with a variable. `npm run bench:map` measures these.         |
-| 12 Partition       | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.  |
-| 13 Basemap presets | A panel per preset provider, and MapTiler without a key. Its keys are made up: enter your own in the panel editor to see the real services.                |
-| 14 Node-edge       | Sites and trunks as a network, the same with problem rows and a second Edges layer, and edge columns set in the layer settings.                            |
+| Dashboard          | Shows                                                                                                                                                            |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 00 Smoke           | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                                        |
+| 01 Adapter         | How each kind of query result converts to GeoJSON.                                                                                                               |
+| 02 Basemap         | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                           |
+| 03 Many panels     | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                                  |
+| 04 Geometry        | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.                  |
+| 05 Tooltips        | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes.            |
+| 06 Style           | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                        |
+| 07 Data-driven     | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.                   |
+| 08 Layers          | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values.       |
+| 09 Refresh         | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.         |
+| 10 Hardening       | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                            |
+| 11 Performance     | Points, lines, polygons and colored points at up to 100k rows, and up to 1,000 layers, picked with a variable. `npm run bench:map` measures these.               |
+| 12 Partition       | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.        |
+| 13 Basemap presets | A panel per preset provider, and MapTiler without a key. Its keys are made up: enter your own in the panel editor to see the real services.                      |
+| 14 Node-edge       | Sites and trunks as a network, the same with problem rows and a second Edges layer, edge columns set in the layer settings, and a panel to set up in the editor. |
 
 ### Docker environment
 
@@ -358,7 +357,7 @@ node scripts/capture-frames.mjs
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
 - Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md), [8](docs/phase_8.md), [9](docs/phase_9.md), [10](docs/phase_10.md), [11](docs/phase_11.md), [12](docs/phase_12.md)
-- Node-edge maps: [architecture](docs/node-edge/architecture.md), [phase 1](docs/node-edge/phase_1.md)
+- Node-edge maps: [architecture](docs/node-edge/architecture.md), phase plans [1](docs/node-edge/phase_1.md), [2](docs/node-edge/phase_2.md)
 
 ## License
 
