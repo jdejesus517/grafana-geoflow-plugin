@@ -2,7 +2,7 @@ import { DataFrame } from '@grafana/data';
 
 /**
  * A layer's settings in the Layers list, as saved in the panel options (docs/phase_7.md, Design
- * §1). Keyed by layer id, so Phase 11's per-value layers can use them too. Unset fields keep the
+ * §1). Keyed by layer id, so any other layer binding can use them too. Unset fields keep the
  * defaults, so dashboards saved before Phase 7 draw as before.
  */
 export interface LayerConfig {
@@ -20,7 +20,11 @@ export interface LayerConfig {
   idField?: string;
 }
 
-/** How frames become layers (docs/architecture.md §3.4). Phase 11 adds `byColumn`. */
+/**
+ * How frames become layers (docs/architecture.md §3.4). Only one mode so far: Grafana's Partition
+ * by values transformation already splits a query into a frame per value, which perFrame draws as
+ * a layer each. A `byColumn` mode is deferred (docs/architecture.md §7).
+ */
 export type LayerBinding = { mode: 'perFrame' };
 
 export const DEFAULT_LAYER_BINDING: LayerBinding = { mode: 'perFrame' };
@@ -118,8 +122,7 @@ interface FrameLayer {
 
 /** Each frame's layer id and default names, in frame order. */
 function frameLayers(frames: DataFrame[]): FrameLayer[] {
-  // Frames from a data source always have a refId; the fallback keeps layer ids unique.
-  const refIds = frames.map((frame, i) => frame.refId ?? `#${i}`);
+  const refIds = frames.map(frameRefId);
   const byRefId = new Map<string, number[]>();
   refIds.forEach((refId, i) => byRefId.set(refId, [...(byRefId.get(refId) ?? []), i]));
 
@@ -147,6 +150,14 @@ function frameLayers(frames: DataFrame[]): FrameLayer[] {
       frameIndex: i,
     };
   });
+}
+
+/**
+ * The frame's refId. Frames from a data source always have one; frames built by hand (tests,
+ * some transformations) may not, and get `#n`, their position, so layer ids stay unique.
+ */
+export function frameRefId(frame: DataFrame, index: number): string {
+  return frame.refId ?? `#${index}`;
 }
 
 /** The labels of the frame's first labelled field, as `name=value, …`; '' without labels. */

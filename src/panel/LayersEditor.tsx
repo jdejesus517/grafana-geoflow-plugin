@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { DataFrame, FieldType, GrafanaTheme2, StandardEditorProps } from '@grafana/data';
 import { Combobox, ComboboxOption, Field, Icon, IconButton, Input, Stack, Switch, useStyles2 } from '@grafana/ui';
-import { BoundLayer, LayerConfig, bindLayers, bindPerFrame, detectGeometryField } from '../adapter';
+import { BoundLayer, LayerConfig, bindLayers, bindPerFrame, defaultIdField, detectGeometryField } from '../adapter';
 import { GeoFlowOptions } from './options';
 
 const getStyles = (theme: GrafanaTheme2) => ({
@@ -212,7 +212,7 @@ function LayerSettings({ layer, frame, defaultName, onChange }: SettingsProps) {
   }
   const geometryOptions = columnOptions(frame, (type) => type === FieldType.string || type === FieldType.other);
   const detected = detectGeometryField(frame);
-  const idDefault = frame.fields.find((field) => field.name.toLowerCase() === 'id')?.name;
+  const idDefault = defaultIdField(frame)?.name;
   const problem = geometryProblem(frame, layer);
 
   return (

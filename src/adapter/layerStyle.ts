@@ -1,10 +1,9 @@
 import { DataFrame, FieldColorModeId, GrafanaTheme2, getFieldColorModeForField } from '@grafana/data';
 import { DEFAULT_LAYER_STYLE, LayerStyle, LineStyle } from '../engine';
 import { parseDashPattern } from './dashPattern';
-import { ConversionResult } from './frameToFeatureCollection';
+import { ConversionResult, geometryFieldOf } from './frameToFeatureCollection';
 
 export type LineStyleOption = 'solid' | 'dash' | 'dot' | 'custom';
-export const LINE_STYLE_OPTIONS: readonly LineStyleOption[] = ['solid', 'dash', 'dot', 'custom'];
 
 /** GeoFlow's Map style field options, as saved in the dashboard (docs/phase_5.md, Design §1). */
 export interface MapStyleConfig {
@@ -29,7 +28,7 @@ export interface MapStyleConfig {
   sizeMax?: number;
 }
 
-type NumberOption = Exclude<keyof MapStyleConfig, 'lineStyle' | 'dashPattern' | 'colorBy' | 'sizeBy'>;
+export type NumberOption = Exclude<keyof MapStyleConfig, 'lineStyle' | 'dashPattern' | 'colorBy' | 'sizeBy'>;
 
 /** Ranges and defaults of the numeric options. The defaults draw as Phases 3 and 4 did. */
 export const MAP_STYLE_RANGES: Record<NumberOption, { min: number; max: number; default: number }> = {
@@ -40,6 +39,16 @@ export const MAP_STYLE_RANGES: Record<NumberOption, { min: number; max: number; 
   sizeMin: { min: 2, max: 40, default: 4 },
   sizeMax: { min: 2, max: 40, default: 20 },
 };
+
+/**
+ * A numeric Map style option, clamped to its range. Unset, mistyped or non-finite values (hand
+ * edited JSON, or a dashboard from an older version) get the default.
+ */
+export function mapStyleNumber(custom: MapStyleConfig, name: NumberOption): number {
+  const { min, max, default: fallback } = MAP_STYLE_RANGES[name];
+  const value = custom[name];
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
+}
 
 /**
  * The style of the layer drawn from `frame`, from its geometry field's config (docs/phase_5.md,
@@ -55,13 +64,9 @@ export function layerStyle(
   theme: GrafanaTheme2,
   colorName = frame.name || frame.refId || ''
 ): LayerStyle {
-  const field = frame.fields.find(({ name }) => name === result.geometryField);
+  const field = geometryFieldOf(frame, result);
   const custom: MapStyleConfig = field?.config.custom ?? {};
-  const option = (name: NumberOption) => {
-    const { min, max, default: fallback } = MAP_STYLE_RANGES[name];
-    const value = custom[name];
-    return typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : fallback;
-  };
+  const option = (name: NumberOption) => mapStyleNumber(custom, name);
 
   return {
     color: layerColor(colorName, field, layerIndex, theme),

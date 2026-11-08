@@ -1,5 +1,5 @@
 import { DataFrame } from '@grafana/data';
-import { BoundLayer, ConversionResult, GeometryMapping, frameToFeatureCollection } from '../adapter';
+import { BoundLayer, ConversionResult, GeometryMapping, frameRefId, frameToFeatureCollection } from '../adapter';
 
 interface Cached {
   result: ConversionResult;
@@ -52,14 +52,15 @@ export function convertFrames(
   const seen = new Set<string>();
   const results = frames.map((frame, i) => {
     const layer = layerByFrame.get(i);
-    // Frames from a data source always have a refId; the fallback keeps layer ids unique.
-    const refId = frame.refId ?? `#${i}`;
+    const refId = frameRefId(frame, i);
     const layerId = layer?.id ?? refId;
     seen.add(layerId);
     const mapping: GeometryMapping = { geometryField: layer?.geometryField, idField: layer?.idField };
     const key = frame.fields[0]?.values;
     const cached = key && cache.get(key);
     const previous = history?.get(layerId);
+    // Two ways to skip converting: the cache spots the same arrays (a field config change), the
+    // history the same values in new arrays (a refresh that brought the same data again).
     let result: ConversionResult;
     if (cached && sameLayer(cached, layerId, mapping) && sameFields(cached.fields, frame)) {
       result = cached.result;

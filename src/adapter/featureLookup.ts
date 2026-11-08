@@ -16,12 +16,6 @@ export function featureIndex(result: ConversionResult, featureId: number): numbe
   return index.get(featureId);
 }
 
-/** The data frame row a feature came from. */
-export function featureRow(result: ConversionResult, featureId: number): number | undefined {
-  const i = featureIndex(result, featureId);
-  return i === undefined ? undefined : result.featureRows[i];
-}
-
 /** A feature's key, when the result has keys (see ConversionResult.keyField). */
 export function featureKey(result: ConversionResult, featureId: number): FeatureKey | undefined {
   const i = featureIndex(result, featureId);

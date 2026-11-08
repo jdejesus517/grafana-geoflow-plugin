@@ -136,15 +136,21 @@ function growBounds(result: ConversionResult, [west, south, east, north]: Bounds
   box[3] = Math.max(box[3], north);
 }
 
-/** Convert every frame; results keep the frames' order and carry their refIds. */
-export function framesToFeatureCollections(frames: DataFrame[], mapping?: GeometryMapping): ConversionResult[] {
-  return frames.map((frame) => frameToFeatureCollection(frame, mapping));
+/**
+ * The geometry column the result was converted from, in `frame` or a newer frame object around
+ * the same data. Its field config holds the layer's Map style options (docs/phase_5.md, Design §1).
+ */
+export function geometryFieldOf(frame: DataFrame, result: ConversionResult): Field | undefined {
+  return frame.fields.find(({ name }) => name === result.geometryField);
+}
+
+/** The id column used when none is set: one named "id", in any case. */
+export function defaultIdField(frame: DataFrame): Field | undefined {
+  return frame.fields.find((f) => f.name.toLowerCase() === 'id');
 }
 
 function findIdField(frame: DataFrame, idField?: string): Field | undefined {
-  return idField
-    ? frame.fields.find((f) => f.name === idField)
-    : frame.fields.find((f) => f.name.toLowerCase() === 'id');
+  return idField ? frame.fields.find((f) => f.name === idField) : defaultIdField(frame);
 }
 
 /**
