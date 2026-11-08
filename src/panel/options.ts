@@ -1,7 +1,9 @@
 import { DEFAULT_LAYER_BINDING, LayerBinding, LayerConfig, MapStyleConfig } from '../adapter';
 import { BasemapSpec, ViewState } from '../engine';
+import { PROVIDERS, PresetChoice, ProviderId, isProviderId, presetBasemap } from './basemapPresets';
 
-export type BasemapKind = BasemapSpec['kind'];
+/** The Basemap option: the engine's kinds, and a preset provider each (docs/phase_12.md, decision 2). */
+export type BasemapKind = BasemapSpec['kind'] | ProviderId;
 
 export type ViewMode = 'fixed' | 'fit';
 
@@ -21,6 +23,15 @@ export interface GeoFlowOptions {
     styleUrl?: string;
     /** Optional style JSON URL for `style` in dark theme. */
     darkStyleUrl?: string;
+    /** A preset provider's light and dark style; shared by the providers, unknown ids fall back. */
+    preset?: PresetChoice;
+    /**
+     * API keys, one per provider, so switching provider never sends one provider's key to another.
+     * Saved in the dashboard and sent to every viewer's browser (docs/phase_12.md, decision 5).
+     */
+    stadiaKey?: string;
+    maptilerKey?: string;
+    thunderforestKey?: string;
   };
   view: {
     /**
@@ -140,9 +151,33 @@ export function basemapFromOptions(basemap: GeoFlowOptions['basemap'] | undefine
       const darkUrl = dark && usable(basemap?.darkStyleUrl, styleUrlProblem);
       return { kind: 'style', url: darkUrl || basemap!.styleUrl!.trim() };
     }
-    default:
-      return { kind: 'none' };
+    default: {
+      const kind = basemap?.kind;
+      return isProviderId(kind)
+        ? presetBasemap(PROVIDERS[kind], basemap?.preset, apiKey(basemap!, kind), dark)
+        : { kind: 'none' };
+    }
   }
+}
+
+/** The option a provider's API key is saved in, or undefined for a provider without keys. */
+export function apiKeyPath(provider: ProviderId): keyof GeoFlowOptions['basemap'] | undefined {
+  switch (provider) {
+    case 'stadia':
+      return 'stadiaKey';
+    case 'maptiler':
+      return 'maptilerKey';
+    case 'thunderforest':
+      return 'thunderforestKey';
+    default:
+      return undefined;
+  }
+}
+
+function apiKey(basemap: GeoFlowOptions['basemap'], provider: ProviderId): string | undefined {
+  const path = apiKeyPath(provider);
+  const key = path && basemap[path];
+  return typeof key === 'string' ? key : undefined;
 }
 
 /** The trimmed URL when it's set and valid. */

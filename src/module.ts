@@ -1,8 +1,10 @@
 import { FieldColorModeId, FieldConfigProperty, FieldType, PanelPlugin, StandardEditorProps } from '@grafana/data';
 import { DASH_PATTERN_EXAMPLE, LineStyleOption, MAP_STYLE_RANGES, dashPatternProblem } from './adapter';
 import { CheckedTextEditor, CheckedTextEditorSettings } from './panel/CheckedTextEditor';
+import { PROVIDERS, ProviderId, apiKeyProblem, isProviderId } from './panel/basemapPresets';
 import { LayersEditor } from './panel/LayersEditor';
 import { MapPanel } from './panel/MapPanel';
+import { PresetEditor } from './panel/PresetEditor';
 import { ViewEditor } from './panel/ViewEditor';
 import {
   BasemapKind,
@@ -12,6 +14,7 @@ import {
   GeoFlowOptions,
   TooltipMode,
   ViewMode,
+  apiKeyPath,
   migrateOptions,
   optional,
   styleUrlProblem,
@@ -24,12 +27,34 @@ const VIEW = ['View'];
 const TOOLTIP = ['Tooltip'];
 const MAP_STYLE = ['Map style'];
 
-const BASEMAP_OPTIONS: Array<{ value: BasemapKind; label: string }> = [
+const BASEMAP_OPTIONS: Array<{ value: BasemapKind; label: string; description?: string }> = [
   { value: 'osm', label: 'OpenStreetMap' },
+  { value: 'openfreemap', label: 'OpenFreeMap', description: 'Vector styles, no key' },
+  { value: 'stadia', label: 'Stadia Maps', description: 'Vector styles, key optional' },
+  { value: 'maptiler', label: 'MapTiler', description: 'Vector styles, your API key' },
+  { value: 'thunderforest', label: 'Thunderforest', description: 'Raster tiles, your API key' },
   { value: 'raster', label: 'Custom tiles' },
   { value: 'style', label: 'Style URL' },
   { value: 'none', label: 'None' },
 ];
+
+/** The API key option of a preset provider that takes one (docs/phase_12.md, Design §3). */
+function apiKeyOption(provider: ProviderId) {
+  const { label, key, site } = PROVIDERS[provider];
+  return {
+    id: `basemap.${apiKeyPath(provider)}`,
+    path: `basemap.${apiKeyPath(provider)}`,
+    name: key === 'optional' ? 'API key (optional)' : 'API key',
+    description:
+      `From your ${label} account (${site}). It's saved in the dashboard and sent to every viewer's browser: ` +
+      `restrict it to this Grafana's domain in your account.` +
+      (key === 'optional' ? ' Not needed on domains registered with Stadia Maps.' : ''),
+    category: BASEMAP,
+    editor: CheckedTextEditor,
+    settings: { validate: (text: string | undefined) => apiKeyProblem(PROVIDERS[provider], text) },
+    showIf: (options: GeoFlowOptions) => options.basemap?.kind === provider,
+  };
+}
 
 const LINE_STYLE_OPTIONS: Array<{ value: LineStyleOption; label: string }> = [
   { value: 'solid', label: 'Solid' },
@@ -172,6 +197,17 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         defaultValue: DEFAULT_OPTIONS.basemap.kind,
         settings: { options: BASEMAP_OPTIONS },
       })
+      .addCustomEditor({
+        id: 'basemap.preset',
+        path: 'basemap.preset',
+        name: '',
+        category: BASEMAP,
+        editor: PresetEditor,
+        showIf: (options) => isProviderId(options.basemap?.kind),
+      })
+      .addCustomEditor<CheckedTextEditorSettings, string | undefined>(apiKeyOption('stadia'))
+      .addCustomEditor<CheckedTextEditorSettings, string | undefined>(apiKeyOption('maptiler'))
+      .addCustomEditor<CheckedTextEditorSettings, string | undefined>(apiKeyOption('thunderforest'))
       .addCustomEditor<CheckedTextEditorSettings, string | undefined>({
         id: 'basemap.tileUrl',
         path: 'basemap.tileUrl',

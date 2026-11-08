@@ -1,6 +1,6 @@
 // Type-only import: erased at build time, so this module doesn't pull MapLibre into the eager chunk.
 import type { StyleSpecification } from 'maplibre-gl';
-import { BasemapSpec, EngineTheme } from './types';
+import { BasemapLogo, BasemapSpec, EngineTheme } from './types';
 
 /** Style layer and source IDs the engine owns. User layers (Phase 3) must not reuse them. */
 export const BASEMAP_SOURCE_ID = 'geoflow-basemap';
@@ -34,13 +34,49 @@ export function basemapStyle(spec: BasemapSpec, theme: EngineTheme): StyleSpecif
       return rasterStyle([OSM_TILE_URL], OSM_ATTRIBUTION, OSM_MAX_ZOOM, theme, true);
     case 'raster':
       // MapLibre renders attribution as HTML. A custom attribution is typed by a dashboard
-      // editor and shown to every viewer, so it is shown as plain text.
-      return rasterStyle(spec.tiles, escapeHtml(spec.attribution), spec.maxZoom, theme, spec.dimInDark !== false);
+      // editor and shown to every viewer, so it is shown as plain text; a preset's is the plugin's.
+      return rasterStyle(
+        spec.tiles,
+        spec.attributionHtml ? spec.attribution : escapeHtml(spec.attribution),
+        spec.maxZoom,
+        theme,
+        spec.dimInDark !== false
+      );
     case 'style':
       return spec.url;
     case 'none':
       return { version: 8, sources: {}, layers: [backgroundLayer(theme)] };
   }
+}
+
+/**
+ * A request URL with the basemap's request parameters added, when it goes to their host; any
+ * other URL unchanged. MapLibre calls it for every request (transformRequest). Parameters already
+ * in the URL are replaced, so a provider that puts its key in its own URLs gets the same key.
+ */
+export function basemapRequestUrl(spec: BasemapSpec, url: string): string {
+  const requestParams = spec.kind === 'raster' || spec.kind === 'style' ? spec.requestParams : undefined;
+  if (!requestParams) {
+    return url;
+  }
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return url;
+  }
+  if (parsed.host !== requestParams.host) {
+    return url;
+  }
+  for (const [name, value] of Object.entries(requestParams.params)) {
+    parsed.searchParams.set(name, value);
+  }
+  return parsed.toString();
+}
+
+/** The basemap's logo, if it has one. */
+export function basemapLogo(spec: BasemapSpec): BasemapLogo | undefined {
+  return spec.kind === 'raster' || spec.kind === 'style' ? spec.logo : undefined;
 }
 
 function rasterStyle(

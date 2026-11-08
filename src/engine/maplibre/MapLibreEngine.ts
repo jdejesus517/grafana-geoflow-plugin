@@ -4,6 +4,7 @@
 import {
   GeoJSONSource,
   GeoJSONSourceSpecification,
+  IControl,
   Map as MapLibreMap,
   MapMouseEvent,
   NavigationControl,
@@ -12,7 +13,14 @@ import {
   setWorkerUrl,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint } from '../basemapStyle';
+import {
+  BACKGROUND_LAYER_ID,
+  BASEMAP_RASTER_LAYER_ID,
+  basemapLogo,
+  basemapRequestUrl,
+  basemapStyle,
+  rasterPaint,
+} from '../basemapStyle';
 import type { Bounds } from '../../model';
 import { WebGLUnavailableError } from '../errors';
 import { StyledFeatures, featureStateChanges } from '../featureState';
@@ -29,6 +37,7 @@ import {
   styleLayers,
 } from '../layerStyle';
 import {
+  BasemapLogo,
   BasemapSpec,
   EngineEvents,
   EngineOptions,
@@ -89,6 +98,7 @@ export class MapLibreEngine implements MapEngine {
     hover: new Set(),
     click: new Set(),
   };
+  private logoControl?: LogoControl;
   private tooltip?: Popup;
   private tooltipContent?: HTMLElement;
   private readonly highlights: Record<typeof HOVERED_STATE | typeof SELECTED_STATE, FeatureRef | undefined> = {
@@ -123,6 +133,8 @@ export class MapLibreEngine implements MapEngine {
       style: basemapStyle(basemap, theme),
       // Also used by every later setStyle, so data layers survive basemap changes.
       transformStyle: (_previous, next) => this.withDataLayers(next),
+      // Reads the current basemap, so a keyed basemap picked later needs no new map.
+      transformRequest: (url) => ({ url: basemapRequestUrl(this.basemap, url) }),
       center: view.center,
       zoom: view.zoom,
       attributionControl: { compact: true },
@@ -136,6 +148,7 @@ export class MapLibreEngine implements MapEngine {
     map.touchZoomRotate.disableRotation();
     map.keyboard.disableRotation();
     map.addControl(new NavigationControl({ showCompass: false }));
+    this.syncLogo();
 
     map.on('moveend', () => {
       const { lng, lat } = map.getCenter();
@@ -182,6 +195,7 @@ export class MapLibreEngine implements MapEngine {
     // Inline styles are diffed by MapLibre; the camera is kept either way. The transformStyle
     // given at mount adds the data layers to the new style.
     this.map?.setStyle(basemapStyle(basemap, this.theme));
+    this.syncLogo();
   }
 
   setTheme(theme: EngineTheme): void {
@@ -338,6 +352,24 @@ export class MapLibreEngine implements MapEngine {
     this.featureStates.clear();
     for (const listeners of Object.values(this.listeners)) {
       listeners.clear();
+    }
+  }
+
+  /** Shows the basemap's logo, if it has one, beside the attribution (docs/phase_12.md, decision 7). */
+  private syncLogo(): void {
+    const map = this.map;
+    const logo = basemapLogo(this.basemap);
+    const current = this.logoControl?.logo;
+    if (!map || (current?.href === logo?.href && current?.src === logo?.src && current?.alt === logo?.alt)) {
+      return;
+    }
+    if (this.logoControl) {
+      map.removeControl(this.logoControl);
+      this.logoControl = undefined;
+    }
+    if (logo) {
+      this.logoControl = new LogoControl(logo);
+      map.addControl(this.logoControl, 'bottom-right');
     }
   }
 
@@ -588,6 +620,35 @@ export class MapLibreEngine implements MapEngine {
     for (const listener of this.listeners[event]) {
       listener(payload);
     }
+  }
+}
+
+/** A provider's logo as a map control: a link around an image, styled like MapLibre's own controls. */
+class LogoControl implements IControl {
+  private element?: HTMLElement;
+
+  constructor(readonly logo: BasemapLogo) {}
+
+  onAdd(): HTMLElement {
+    const link = document.createElement('a');
+    link.className = 'maplibregl-ctrl geoflow-basemap-logo';
+    link.href = this.logo.href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.dataset.testid = 'geoflow-basemap-logo';
+    const image = document.createElement('img');
+    image.src = this.logo.src;
+    image.alt = this.logo.alt;
+    image.style.display = 'block';
+    image.style.height = '20px';
+    link.appendChild(image);
+    this.element = link;
+    return link;
+  }
+
+  onRemove(): void {
+    this.element?.remove();
+    this.element = undefined;
   }
 }
 

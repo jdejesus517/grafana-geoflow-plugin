@@ -23,3 +23,23 @@ contributors, available under the Open Database License
 (https://www.openstreetmap.org/copyright). The map shows this attribution in
 its corner. Tiles come from the OpenStreetMap Foundation's tile servers, whose
 usage policy applies: https://operations.osmfoundation.org/policies/tiles/
+
+Basemap presets
+---------------
+
+GeoFlow can show basemaps from other providers, picked in the panel options.
+The plugin includes none of their data: each map loads from the provider, under
+the provider's terms and the plan of the user's own account, and shows the
+provider's attribution.
+
+- OpenFreeMap (https://openfreemap.org), terms: https://openfreemap.org/tos/
+- Stadia Maps (https://stadiamaps.com), terms:
+  https://stadiamaps.com/terms-of-service/
+- MapTiler (https://www.maptiler.com), terms:
+  https://www.maptiler.com/cloud/terms/. The MapTiler logo is loaded from
+  MapTiler and shown as its free plan requires.
+- Thunderforest (https://www.thunderforest.com), terms:
+  https://www.thunderforest.com/terms/
+
+Their map data is from OpenStreetMap (ODbL) and OpenMapTiles, as each map's
+attribution says.

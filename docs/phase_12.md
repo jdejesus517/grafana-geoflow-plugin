@@ -1,6 +1,6 @@
 # Phase 12: Basemap presets
 
-Status: **Approved** (2026-11-08). Decisions 1–9 accepted as proposed.
+Status: **Implemented** (2026-11-08). Decisions 1–9 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §5.3 (Phase 12 row, and the provider rules below it), §4.1 (basemap tiles), §2.4 (`BasemapSpec`), §7.
 
 ## Goal
@@ -183,3 +183,48 @@ Accepted as proposed (2026-11-08):
 | 7 | MapTiler logo | **Shown while a MapTiler preset is in use**, as an image loaded from MapTiler, linking to maptiler.com. Its free plan requires it, and paid plans allow it. | Bundle the logo: a third-party trademark file in the package. Leave it out: free-plan users would break MapTiler's terms. |
 | 8 | Testing the providers | **Stubbed hosts in CI** with local style fixtures; the real services by hand in step 12.1. | Real services in CI: needs keys as CI secrets, counts against quotas, and fails when a provider is down. |
 | 9 | Plugin version | **Unchanged (0.2.0).** The next release sets it. No `plugin.json` change, so no Grafana restart. | 0.3.0 for the presets. |
+
+---
+
+## Outcome
+
+Implemented on branch `phase-12` in four commits, steps 12.2 to 12.5. Step 12.1 was checks only, recorded below:
+- 553 unit and component tests pass, and 66 e2e tests (plus the login setup), in two full-suite runs in a row. The stored screenshots still match.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Presets | Met. **Basemap** lists OpenFreeMap, Stadia Maps, MapTiler and Thunderforest, each with its styles by name. |
+| 2 | Dark theme | Met. Each light style has a default dark style; **Dark theme style** picks another or **Same as light** (dimmed, for Thunderforest). The theme switch reuses the map, as in Phase 8. |
+| 3 | Keys | Met. MapTiler and Thunderforest draw no basemap until a key is entered, and the option says why; Stadia Maps takes one optionally. The key goes on every request to the provider's host. |
+| 4 | Attribution | Met. Vector styles bring their providers' linked attribution; Thunderforest's is written in the plugin, with links; MapTiler shows its logo. |
+| 5 | Saved dashboards unchanged | Met. OpenStreetMap is still the default, and the stored screenshots match. |
+| 6 | Tests | Met. Unit tests on every provider, the key placement and the logo; e2e tests on the 13 Basemap presets dashboard with every provider stubbed. |
+| 7 | Checked against the real services | Met, with real MapTiler and Thunderforest keys and Stadia Maps without one, on Grafana 13.2.4 (below). |
+| 8 | Docs | Met. README Basemap and CSP, the catalog README, `NOTICE`, `docs/licenses.md`, and the architecture. |
+
+### Checks against the real services (step 12.1)
+
+Every preset was drawn in both themes on a temporary dashboard, first through the existing **Style URL** and **Custom tiles** options, then through the presets once built.
+
+| Provider | Hosts requested | Attribution shown | Keys |
+|---|---|---|---|
+| OpenFreeMap | `tiles.openfreemap.org` only | OpenFreeMap, © OpenMapTiles, Data from OpenStreetMap, linked | None |
+| Stadia Maps | `tiles.stadiamaps.com` only | © Stadia Maps, © OpenMapTiles, © OpenStreetMap, linked; Stamen styles add © Stamen Design | Keyless on `localhost`. Its styles' nested URLs carry no key, so the presets add it |
+| MapTiler | `api.maptiler.com` only, the logo included | © MapTiler, © OpenStreetMap contributors, linked | Its styles put the key on tiles and fonts but not sprites, which are public. Through the preset, all 16 requests carry it |
+| Thunderforest | `tile.thunderforest.com` only | The preset's, with working links | Without a key, Thunderforest answers with a placeholder tile, not an error, so the options require one |
+
+**MapTiler's style ids:** `streets-v4`, `basic-v2`, `bright-v2`, `dataviz-v4`, `outdoor-v4`, `topo-v4` and `backdrop`, each with a dark variant at `-dark`. Basic and Bright have no v4. The logo comes from the tiles' metadata: `https://api.maptiler.com/resources/logo.svg`.
+
+**CSP:** with `content_security_policy = true` and the four hosts added to `connect-src`, every preset drew in both themes. The MapTiler logo needs nothing more: Grafana's default template has `img-src *`. The only violation was the development build's `livereload.js`, as in Phase 9.
+
+### Differences from the plan
+
+- **Saved options.** The choice is saved as `basemap.preset` (`{ style, dark }`), and keys as one option per provider (`stadiaKey`, `maptilerKey`, `thunderforestKey`) instead of one `apiKey`, so switching provider never sends one provider's key to another.
+- **MapTiler's styles** are those step 12.1 found, Backdrop included; the plan left them to that step.
+- **The e2e fixtures stub the providers for every test,** not only the new spec, so no test can reach them.
+- **Four commits, not five:** step 12.1 changed no files.
+- **Grafana's View panel mode** can cover a panel's right edge with its side pane, hiding the attribution and the MapTiler logo alike. That's Grafana's layout; on a dashboard, the logo shows above the attribution.
+

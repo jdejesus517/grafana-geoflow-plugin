@@ -5,6 +5,7 @@ import { MapEngine } from './types';
 export { WebGLUnavailableError } from './errors';
 export { DEFAULT_LAYER_STYLE } from './layerStyle';
 export type {
+  BasemapLogo,
   BasemapSpec,
   EngineError,
   EngineEvents,
@@ -18,6 +19,7 @@ export type {
   LineStyle,
   MapEngine,
   PointerHit,
+  RequestParams,
   ViewState,
 } from './types';
 

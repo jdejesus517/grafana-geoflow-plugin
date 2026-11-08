@@ -5,10 +5,12 @@ import {
   BASEMAP_SOURCE_ID,
   OSM_ATTRIBUTION,
   OSM_TILE_URL,
+  basemapLogo,
+  basemapRequestUrl,
   basemapStyle,
   rasterPaint,
 } from '../basemapStyle';
-import { EngineTheme } from '../types';
+import { BasemapSpec, EngineTheme } from '../types';
 
 const light: EngineTheme = { dark: false, background: '#ffffff' };
 const dark: EngineTheme = { dark: true, background: '#111217' };
@@ -104,6 +106,18 @@ describe('basemapStyle', () => {
         attribution: '&lt;img src=x onerror=&quot;alert(1)&quot;&gt; &amp; Co',
       });
     });
+
+    it("shows a preset's attribution as HTML, links and all", () => {
+      const attribution = '<a href="https://www.thunderforest.com/">© Thunderforest</a>';
+      const style = asStyle(
+        basemapStyle(
+          { kind: 'raster', tiles: ['https://t/{z}/{x}/{y}.png'], attribution, attributionHtml: true },
+          light
+        )
+      );
+
+      expect(style.sources[BASEMAP_SOURCE_ID]).toMatchObject({ attribution });
+    });
   });
 
   it('passes a style URL through untouched', () => {
@@ -118,6 +132,56 @@ describe('basemapStyle', () => {
       sources: {},
       layers: [{ id: BACKGROUND_LAYER_ID, type: 'background', paint: { 'background-color': '#111217' } }],
     });
+  });
+});
+
+describe('basemapRequestUrl', () => {
+  const spec: BasemapSpec = {
+    kind: 'style',
+    url: 'https://tiles.example.com/styles/a.json',
+    requestParams: { host: 'tiles.example.com', params: { api_key: 'k1' } },
+  };
+
+  it("adds the parameters to requests to the basemap's host", () => {
+    expect(basemapRequestUrl(spec, 'https://tiles.example.com/data/7/36/50.pbf')).toBe(
+      'https://tiles.example.com/data/7/36/50.pbf?api_key=k1'
+    );
+    expect(basemapRequestUrl(spec, 'https://tiles.example.com/fonts/Noto/0-255.pbf?v=2')).toBe(
+      'https://tiles.example.com/fonts/Noto/0-255.pbf?v=2&api_key=k1'
+    );
+  });
+
+  it('replaces a parameter the URL already has', () => {
+    expect(basemapRequestUrl(spec, 'https://tiles.example.com/a?api_key=old')).toBe(
+      'https://tiles.example.com/a?api_key=k1'
+    );
+  });
+
+  it('leaves other hosts alone, subdomains and the plugin itself included', () => {
+    for (const url of [
+      'https://other.example.com/a.pbf',
+      'https://cdn.tiles.example.com/a.pbf',
+      'http://localhost:3000/public/plugins/x/worker.js',
+    ]) {
+      expect(basemapRequestUrl(spec, url)).toBe(url);
+    }
+  });
+
+  it('leaves every URL alone without parameters, or when it cannot be parsed', () => {
+    expect(basemapRequestUrl({ kind: 'osm' }, 'https://tile.openstreetmap.org/1/0/0.png')).toBe(
+      'https://tile.openstreetmap.org/1/0/0.png'
+    );
+    expect(basemapRequestUrl(spec, 'not a url')).toBe('not a url');
+  });
+});
+
+describe('basemapLogo', () => {
+  it('is the logo of a raster or style basemap', () => {
+    const logo = { href: 'https://example.com', src: 'https://example.com/logo.svg', alt: 'Example' };
+
+    expect(basemapLogo({ kind: 'style', url: 'https://example.com/s.json', logo })).toBe(logo);
+    expect(basemapLogo({ kind: 'raster', tiles: [], attribution: '', logo })).toBe(logo);
+    expect(basemapLogo({ kind: 'osm' })).toBeUndefined();
   });
 });
 
