@@ -1,6 +1,6 @@
 import { FieldType, toDataFrame } from '@grafana/data';
 import { ConversionResult, LayerConfig, bindPerFrame, frameToFeatureCollection } from '../adapter';
-import { MANY_FEATURES, panelProblems } from './panelProblems';
+import { MANY_FEATURES, MANY_LAYERS, panelProblems } from './panelProblems';
 
 const point = '{"type":"Point","coordinates":[-78.78,35.78]}';
 
@@ -77,7 +77,38 @@ describe('panelProblems', () => {
     ]);
   });
 
-  it('does not warn at the limit', () => {
+  describe('many layers', () => {
+    const frames = (count: number) => Array.from({ length: count }, (_, i) => layer(`L${i}`, [point]));
+
+    it('warns over the limit, for the whole panel', () => {
+      expect(problems(frames(MANY_LAYERS + 1))).toEqual([
+        {
+          text: '51 layers may draw slowly',
+          detail: expect.stringContaining('Partition by values'),
+        },
+      ]);
+    });
+
+    it('does not warn at the limit', () => {
+      expect(problems(frames(MANY_LAYERS))).toEqual([]);
+    });
+
+    it('counts hidden layers, which keep their sources', () => {
+      const hidden = frames(MANY_LAYERS + 1);
+      const configs = hidden.map(({ refId }) => ({ id: refId!, visible: false }));
+
+      expect(problems(hidden, configs)).toEqual([expect.objectContaining({ text: '51 layers may draw slowly' })]);
+    });
+
+    it("doesn't count queries without geometry, or saved settings whose query is gone", () => {
+      const noGeometry = toDataFrame({ refId: 'X', fields: [{ name: 'n', type: FieldType.string, values: ['a'] }] });
+      const configs = [{ id: 'gone' }, { id: 'also gone' }];
+
+      expect(problems([...frames(MANY_LAYERS), noGeometry], configs)).toEqual([]);
+    });
+  });
+
+  it('does not warn at the feature limit', () => {
     const features = new Array(MANY_FEATURES).fill({ type: 'Feature' });
     const result = { layerId: 'A', warnings: { counts: {}, samples: [] }, featureCollection: { features } };
 

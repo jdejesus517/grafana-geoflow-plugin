@@ -5,7 +5,9 @@
 //
 //   npm run build && npm run bench:map
 //   npm run bench:map -- --rows 100000 --kinds points,lines --runs 1
+//   npm run bench:map -- --kinds layers --rows 50,200,1000
 //
+// For the `layers` kind, rows is the number of layers: one point each (docs/phase_11.md).
 // Each cell is the median of the runs. "Task" columns are the longest main-thread task in
 // milliseconds; tasks under 50 ms aren't reported by the browser, so they show as "<50".
 
@@ -22,7 +24,7 @@ const { values: args } = parseArgs({
 });
 
 const DASHBOARD = 'd/geoflow-11-performance';
-const PANELS = { points: 1, lines: 2, polygons: 3, colored: 4, changing: 5 };
+const PANELS = { points: 1, lines: 2, polygons: 3, colored: 4, changing: 5, layers: 6 };
 const INSPECT_EVENT = 'geoflow:inspect';
 const RENDERED_FEATURES_ATTRIBUTE = 'data-rendered-features';
 // Long enough for a redraw to finish after a change, at 100k features.
@@ -149,9 +151,10 @@ async function editorTasks(kind, rows) {
     await page.waitForTimeout(SETTLE_MS);
     return longestTask(page, since);
   };
+  // The top layer: Query A, or on the Many layers panel, the last value.
   const layers = page.getByTestId('geoflow-layers-editor');
-  const hide = await measure(() => layers.getByRole('button', { name: 'Hide Query A' }).click());
-  const show = await measure(() => layers.getByRole('button', { name: 'Show Query A' }).click());
+  const hide = await measure(() => layers.getByRole('button', { name: /^Hide / }).first().click());
+  const show = await measure(() => layers.getByRole('button', { name: /^Show / }).first().click());
   const basemap = await measure(async () => {
     await page.getByTestId('data-testid Options group Basemap').getByRole('combobox').first().click();
     await page.getByRole('option', { name: 'OpenStreetMap' }).click();

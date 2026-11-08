@@ -346,7 +346,7 @@ How data frames become map layers is a panel option, `layerBinding.mode`:
 |---|---|---|
 | `perFrame` (default) | Each data frame becomes one layer. Layer id = `refId`, or `${refId}:${frame name}` for each frame when a query returns several (Phase 7). Layer config, keyed by layer id, can override the geometry field and id field; tooltip fields come from field overrides. Style comes from field config, per query through overrides (Phase 5, decision 1). | MVP (Phases 3–7) |
 
-Splitting one query into a layer per value is left to Grafana's **Partition by values** transformation (below), with Phase 11 filling its gaps. A `byColumn` mode that splits in the adapter is a feature for later (§7). The design rules below keep that, or any other mode, cheap to add:
+Splitting one query into a layer per value is left to Grafana's **Partition by values** transformation (below), with Phase 11's warning and README walk-through filling its gaps. A `byColumn` mode that splits in the adapter is a feature for later (§7). The design rules below keep that, or any other mode, cheap to add:
 
 - The option type is a discriminated union from day one:
 
@@ -364,10 +364,11 @@ Splitting one query into a layer per value is left to Grafana's **Partition by v
   - **Stable ids across refresh.** Ids come from the values, not row positions, so layer settings such as visibility stay with a value.
   - **Per-value colors.** The classic palette colors each layer by position. **Classic palette (by series name)** hashes the layer name, so a value keeps its color when other values come and go.
   - **Per-value color and line style.** A **Fields returned by query** override on a value's frame, with **As frame name** naming, so no value-to-line-style mapping is needed (Phase 6, decision 5).
-- **Phase 11 fills the gaps** the transformation leaves:
-  - **Many layers.** Splitting on a high-cardinality column (an id, say) makes thousands of layers, each a MapLibre source, which slows the panel with no explanation. A panel warning (Phase 9) when a panel gets more than a set number of layers, about 50, whatever produced the frames. The plan decides whether layers beyond it are still drawn.
-  - **Null or empty split values.** How the transformation names and ids them is unchecked. Phase 11 checks it and handles it if needed.
-  - **Setting it up.** The split lives in the Transform tab, and per-value overrides need **As frame name**, which isn't the default. A README walk-through covers it.
+- **What Phase 11 added** for the gaps the transformation leaves:
+  - **Many layers.** Splitting on a column with many values (an id, say) makes a layer per value, each a MapLibre source with four style layers. Over 50 layers drawn from data, hidden ones included, the panel warns (Phase 9's warning), whatever produced the frames. Everything is still drawn: 1,000 layers take about 5 s to draw, with pauses of about half a second while panning or hovering, and nothing stalls (§4.2).
+  - **Null and empty split values** need no handling in the adapter. Each gets a frame of its own. With **As label** they're `placement=null` and `placement=`. With **As frame name**, Grafana 13.2 names both `''`, so they share the refId `A-` and get position ids (`A-:#1`). A text value `null` can't be told from a null with **As label**. The README shows naming them in SQL (`COALESCE(NULLIF(placement, ''), 'unknown')`).
+  - **Frame order** is the order in which values first appear in the rows, so a refresh can recolor (palette by position) and restack layers without saved settings. The README recommends `ORDER BY` on the split column and **Classic palette (by series name)**.
+  - **Setting it up:** the README's "Splitting a query by value" walks through it, and the 12 Partition dashboard covers it in e2e tests.
 
 ---
 
@@ -398,6 +399,7 @@ Splitting one query into a layer per value is left to Grafana's **Partition by v
 | **Redundant work on refresh.** | Conversion is cached per frame data (Phase 3, keyed on the frames' `values` arrays since Phase 5), so a frame whose data Grafana didn't replace keeps its FeatureCollection and the engine skips `setData`. That includes every style change. Since Phase 8, a refresh with unchanged data is compared value by value with a copy of the layer's previous data, and reuses its conversion: no main-thread task over 50 ms on 100k rows, when the query has an `ORDER BY`. The viewport is kept across refreshes unless **Fit on refresh** is on. |
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
 | **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` is about 21 KiB gzipped. The Bundle Stats workflow reports size changes on every PR. |
+| **Many layers.** Each layer is a GeoJSON source with four style layers, so cost grows with the number of layers as well as features. Partition by values on a column with many values makes a layer per value. | Measured by `npm run bench:map -- --kinds layers` in Phase 11, one point per layer, with the GPU: 50 layers draw in 0.4 s with no task over about 50 ms; 200 in 0.8 s with tasks up to about 110 ms; 1,000 in 4.6 s, with tasks of 400 to 500 ms while panning, hovering, hiding a layer or changing the basemap. The panel warns over 50 layers and still draws them all. |
 | **Beyond about 100k features.** | Out of scope for the MVP. The panel warns above 100k features and still draws them (Phase 9). The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |
 
 ---
@@ -447,7 +449,7 @@ Phases 0–10 make up the **MVP**. Post-MVP phases each add one capability:
 
 | Phase | Deliverable | Verified by |
 |---|---|---|
-| 11 | Splitting by value with Partition by values (§3.4): a panel warning when a panel gets too many layers, null and empty split values checked and handled if needed, a README walk-through | Unit tests on the layer count warning (and null handling, if any) + e2e dashboard split with Partition by values, including null values and a high-cardinality column |
+| 11 | Splitting by value with Partition by values (§3.4): a panel warning over 50 layers, null and empty split values checked (no handling needed, named in SQL), the cost of many layers measured, a README walk-through | Unit tests on the layer count warning + e2e dashboard split with Partition by values: a per-value override, null and empty values in both namings, 60 layers |
 | 12 | Basemap presets: OpenFreeMap vector styles (Liberty, Bright, Positron, and a dark style) picked by name, a light and dark pair that follows Grafana's theme (building on Phase 8's theme switching), keyed providers (MapTiler, Stadia Maps, Thunderforest, Esri) with the user's own API key, each preset's required attribution, and the CSP (Phase 9) and `NOTICE` (Phase 10) updates for the new tile hosts | Unit tests on preset styles and attribution + e2e dashboard per preset kind, with no external tiles in CI |
 
 Phase 12 is post-MVP because the MVP's basemap options can already use any of these services: a vector style URL (for example `https://tiles.openfreemap.org/styles/liberty`) or a raster tile URL with an attribution. The phase makes them a pick from a list, with the attribution filled in. The default stays OpenStreetMap raster, so saved dashboards don't change.

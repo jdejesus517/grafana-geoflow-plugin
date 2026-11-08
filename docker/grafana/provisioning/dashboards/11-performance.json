@@ -362,6 +362,78 @@
           "refId": "A"
         }
       ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "id": 6,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Many layers",
+      "description": "One point per row, split by id with Partition by values: a layer per row (docs/phase_11.md).",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fit",
+          "lat": 20,
+          "lon": 0,
+          "zoom": 1,
+          "fitOnRefresh": false,
+          "padding": 40,
+          "maxZoom": 17
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "pointSize": 6
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT g AS id,\n  ST_AsGeoJSON(ST_MakePoint((g % 40) * 0.01, (g / 40) * 0.01), 6) AS geometry\nFROM generate_series(1, $rows) AS g\nORDER BY g",
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "partitionByValues",
+          "options": {
+            "fields": [
+              "id"
+            ],
+            "keepFields": false,
+            "naming": {
+              "asLabels": false
+            }
+          }
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
@@ -382,6 +454,16 @@
         "name": "rows",
         "options": [
           {
+            "selected": false,
+            "text": "50",
+            "value": "50"
+          },
+          {
+            "selected": false,
+            "text": "200",
+            "value": "200"
+          },
+          {
             "selected": true,
             "text": "1000",
             "value": "1000"
@@ -397,7 +479,7 @@
             "value": "100000"
           }
         ],
-        "query": "1000,10000,100000",
+        "query": "50,200,1000,10000,100000",
         "skipUrlSync": false,
         "type": "custom"
       }
