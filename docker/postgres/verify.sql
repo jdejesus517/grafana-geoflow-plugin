@@ -42,3 +42,14 @@ FROM geoflow.patch_panels p JOIN geoflow.buildings b ON b.id = p.building_id;
 -- The read-only role can read but not write.
 SELECT has_table_privilege('grafana_reader', 'geoflow.buildings', 'SELECT') AS reader_select_ok,
        NOT has_table_privilege('grafana_reader', 'geoflow.buildings', 'INSERT') AS reader_no_insert_ok;
+
+-- Network fixtures (06_seed_network.sql): 14 trunks over 6 pairs, every end naming a site as text.
+SELECT (SELECT count(*) FROM geoflow.sites) = 8 AS sites_ok,
+       (SELECT count(*) FROM geoflow.trunks) = 14 AS trunks_ok,
+       (SELECT count(DISTINCT LEAST(a_site, z_site) || '-' || GREATEST(a_site, z_site)) FROM geoflow.trunks) = 6 AS pairs_ok,
+       NOT EXISTS (
+         SELECT 1 FROM geoflow.trunks t
+         WHERE NOT EXISTS (SELECT 1 FROM geoflow.sites s WHERE s.site_id::text = t.a_site)
+            OR NOT EXISTS (SELECT 1 FROM geoflow.sites s WHERE s.site_id::text = t.z_site)
+       ) AS trunk_ends_ok,
+       has_table_privilege('grafana_reader', 'geoflow.trunks', 'SELECT') AS reader_trunks_ok;
