@@ -154,7 +154,7 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
         editor: LayersEditor,
         defaultValue: DEFAULT_OPTIONS.layers,
       })
-      // Saved so Phase 11 can add byColumn without a migration; one mode isn't worth showing.
+      // Saved so another mode can be added without a migration (LayerBinding); one mode isn't worth showing.
       .addCustomEditor({
         id: 'layerBinding',
         path: 'layerBinding',

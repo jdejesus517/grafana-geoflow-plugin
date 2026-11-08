@@ -47,7 +47,7 @@ export interface GeoFlowOptions {
   showWarnings: boolean;
   /** Layer settings, top layer first (docs/phase_7.md, Design §1). Layers without any get defaults. */
   layers: LayerConfig[];
-  /** Saved for Phase 11, which adds a second mode; not shown in the editor yet. */
+  /** Saved so another mode can be added without a migration (LayerBinding); not shown in the editor. */
   layerBinding: LayerBinding;
 }
 

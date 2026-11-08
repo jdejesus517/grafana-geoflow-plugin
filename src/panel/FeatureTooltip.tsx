@@ -15,7 +15,7 @@ import { FeatureRef } from '../engine';
 
 /** A feature ready to show: where it's from and what to list. */
 export interface TooltipFeature extends FeatureRef {
-  /** The query it came from: the frame's name, or "Query A". */
+  /** Its layer's name, as the Layers list shows it: typed, or the frame's name, or "Query A". */
   title: string;
   /** Its color on the map, shown next to the title. */
   color: string;

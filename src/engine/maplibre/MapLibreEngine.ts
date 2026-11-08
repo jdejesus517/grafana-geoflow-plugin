@@ -358,7 +358,12 @@ export class MapLibreEngine implements MapEngine {
     }
   }
 
-  /** The style plus a source and four style layers per data layer, drawn above everything else. */
+  /**
+   * The style plus a source and four style layers per data layer, drawn above everything else.
+   * MapLibre calls it for every style it loads, so the new style already holds the current layers;
+   * `applied` is reset to match, and syncLayers on style.load then finds no layers to add, only
+   * feature-state to set again on the new sources.
+   */
   private withDataLayers(style: StyleSpecification): StyleSpecification {
     this.applied = new Map(this.layers.map((spec) => [spec.id, spec]));
     return {

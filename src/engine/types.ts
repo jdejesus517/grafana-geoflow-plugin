@@ -55,7 +55,7 @@ export interface FeatureStyles {
   radii?: Array<number | undefined>;
 }
 
-/** One set of features drawn together; Phase 3 makes one per data frame. */
+/** One set of features drawn together: the panel makes one per layer in its Layers list. */
 export interface LayerSpec {
   /** Stable across refreshes, so the engine updates the layer instead of replacing it. */
   id: string;
