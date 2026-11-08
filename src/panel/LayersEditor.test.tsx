@@ -217,3 +217,127 @@ describe('LayersEditor with a network', () => {
     expect(lastSaved(onChange)).toEqual([{ ...network[0], name: 'Sites' }, network[1]]);
   });
 });
+
+describe('LayersEditor roles', () => {
+  const sites = (refId = 'A', idName = 'id') =>
+    toDataFrame({
+      refId,
+      fields: [
+        { name: idName, type: FieldType.number, values: [1] },
+        { name: 'geometry', type: FieldType.string, values: [point] },
+      ],
+    });
+  const trunks = (refId = 'B') =>
+    toDataFrame({
+      refId,
+      fields: [
+        { name: 'trunk_id', type: FieldType.string, values: ['T1'] },
+        { name: 'a_site', type: FieldType.string, values: ['1'] },
+        { name: 'z_site', type: FieldType.string, values: ['1'] },
+      ],
+    });
+  const settings = () => within(screen.getByTestId('geoflow-layer-settings'));
+  const select = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
+  const placeholder = (label: RegExp) => settings().getByLabelText(label).getAttribute('placeholder');
+
+  it('saves the role chosen for the selected layer', () => {
+    const { onChange } = setup([{ id: 'A' }], [sites()]);
+
+    fireEvent.click(settings().getByLabelText('Nodes'));
+    expect(lastSaved(onChange)).toEqual([{ id: 'A', role: 'nodes' }]);
+  });
+
+  it('shows an edge layer its From and To columns, detected, and no geometry, ID or tooltip settings', () => {
+    setup([{ id: 'B', role: 'edges' }], [trunks()]);
+
+    expect(placeholder(/^From column/)).toBe('Auto: a_site');
+    expect(placeholder(/^To column/)).toBe('Auto: z_site');
+    expect(settings().queryByLabelText(/^Geometry column/)).not.toBeInTheDocument();
+    expect(settings().queryByLabelText(/^ID column/)).not.toBeInTheDocument();
+    expect(settings().queryByLabelText(/^Tooltips/)).not.toBeInTheDocument();
+  });
+
+  it('saves a chosen column, and detects the other from the same pair', () => {
+    const data = [
+      toDataFrame({
+        refId: 'B',
+        fields: ['source', 'target', 'a_site', 'z_site'].map((name) => ({ name, type: FieldType.string, values: [] })),
+      }),
+    ];
+    const { onChange, rerender } = setup([{ id: 'B', role: 'edges' }], data);
+    expect(placeholder(/^To column/)).toBe('Auto: target');
+
+    rerender([{ id: 'B', role: 'edges', fromField: 'a_site' }]);
+    expect(placeholder(/^To column/)).toBe('Auto: z_site');
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('shows a problem on the column it is about', () => {
+    setup([{ id: 'B', role: 'edges', toField: 'far_end' }], [trunks()]);
+
+    expect(settings().getByText('no column named far_end')).toBeInTheDocument();
+  });
+
+  it('says when no from and to columns are found', () => {
+    setup([{ id: 'A', role: 'edges' }], [sites()]);
+
+    expect(placeholder(/^From column/)).toBe('Auto: none found');
+    expect(settings().getByText(/^No from and to columns/)).toBeInTheDocument();
+  });
+
+  it("describes a node layer's ID column, and says when it has none", () => {
+    setup([{ id: 'A', role: 'nodes' }], [sites('A', 'site')]);
+
+    expect(settings().getByText('Edges find nodes by this column. Keep it unique.')).toBeInTheDocument();
+    expect(placeholder(/^ID column/)).toBe('None: choose one');
+    expect(settings().getByText('Edges find nodes by id: choose a column')).toBeInTheDocument();
+  });
+
+  it('moves a new edge layer below its nodes', () => {
+    const { onChange } = setup([{ id: 'B' }, { id: 'A', role: 'nodes' }], [sites(), trunks()]);
+    select('Query B');
+    fireEvent.click(settings().getByLabelText('Edges'));
+    expect(lastSaved(onChange)).toEqual([
+      { id: 'A', role: 'nodes' },
+      { id: 'B', role: 'edges' },
+    ]);
+  });
+
+  it('moves a new node layer above its edges', () => {
+    const { onChange } = setup([{ id: 'B', role: 'edges' }, { id: 'A' }], [sites(), trunks()]);
+    select('Query A');
+    fireEvent.click(settings().getByLabelText('Nodes'));
+    expect(lastSaved(onChange)).toEqual([
+      { id: 'A', role: 'nodes' },
+      { id: 'B', role: 'edges' },
+    ]);
+  });
+
+  it('keeps the order when the network already draws right side up', () => {
+    const { onChange } = setup([{ id: 'A', role: 'nodes' }, { id: 'B' }], [sites(), trunks()]);
+    select('Query B');
+    fireEvent.click(settings().getByLabelText('Edges'));
+    expect(lastSaved(onChange)).toEqual([
+      { id: 'A', role: 'nodes' },
+      { id: 'B', role: 'edges' },
+    ]);
+  });
+
+  it('labels network rows by role, without No geometry on edges, and marks extras Not used', () => {
+    setup(
+      [
+        { id: 'A', role: 'nodes' },
+        { id: 'B', role: 'edges' },
+        { id: 'C', role: 'edges' },
+      ],
+      [sites(), trunks(), trunks('C')]
+    );
+    const row = (id: string) => within(screen.getByTestId(`geoflow-layer-row-${id}`));
+
+    expect(row('A').getByText('Nodes')).toBeInTheDocument();
+    expect(row('B').getByText('Edges')).toBeInTheDocument();
+    expect(row('B').queryByText('No geometry')).not.toBeInTheDocument();
+    expect(row('B').queryByText('Not used')).not.toBeInTheDocument();
+    expect(row('C').getByText('Not used')).toHaveAttribute('title', 'The network uses Query B');
+  });
+});
