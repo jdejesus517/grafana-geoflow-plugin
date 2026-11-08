@@ -1,6 +1,6 @@
 # Node-Edge Maps: Architecture
 
-Status: **Design accepted (2026-11-08).** Nothing here is implemented yet. Implementation follows in phases (§9.3), each with its own `docs/node-edge/phase_N.md`.
+Status: **Design accepted (2026-11-08).** Phase 1 implemented: edges drawn, with roles set in the dashboard's JSON ([phase_1.md](phase_1.md)). Implementation follows in phases (§9.3), each with its own `docs/node-edge/phase_N.md`.
 
 This feature extends GeoFlow as built through Phase 12 ([../architecture.md](../architecture.md)). It keeps that document's rules unless a decision here says otherwise.
 
@@ -77,25 +77,24 @@ Today ([MapPanel.tsx](../../src/panel/MapPanel.tsx)):
 data.series ─ holdSeries ─▶ frames ─ bindLayers ─▶ layers ─ convertFrames ─▶ results ─ buildLayerSpecs ─▶ LayerSpecs
 ```
 
-With networks, one step is added after conversion, and the others learn about roles:
+With networks, conversion gains a second pass, and the other steps learn about roles (as built in Phase 1):
 
 ```
 frames ─ bindLayers ─▶ layers (with roles)
-       ─ convertFrames ─▶ results            geometry and node layers, as today; edge frames skip conversion
-       ─ joinEdges ─▶ edge result            the edge frame + the node layer's result → one LineString per pair
+       ─ convertFrames ─▶ results            1. geometry and node layers, as today; edge frames skip conversion
+                                             2. joinEdges: the edge frame + the node layer's result → one LineString per pair
        ─ buildLayerSpecs ─▶ LayerSpecs        pair values style the edge layer
 ```
 
-- **`bindLayers`** reads each layer's role from its settings. It doesn't enforce one Nodes and one Edges layer: `networkProblems` (below) picks the first of each, in the Layers list's order, and warns about the rest.
-- **`convertFrames`** converts geometry and node layers as today. An edge layer's frame has no geometry, so it's left out of conversion, and of the "no geometry column" notice and warnings.
-- **`joinEdges`** (new, adapter) builds the edge layer's result from its frame and the node layer's result: a `ConversionResult` whose features are one LineString per pair, plus the pairs' rows (§5.2). It's memoized on the edge frame's data and the node result object, so it runs again when either changes, and a refresh that reuses both conversions reuses it too.
+- **`bindLayers`** reads each layer's role from its settings. It doesn't enforce one Nodes and one Edges layer: `networkLayers` picks the first of each, in the Layers list's order, and `networkProblems` warns about the rest.
+- **`convertFrames`** converts geometry and node layers as today. An edge layer's frame has no geometry, so it's left out of that pass, and of the "no geometry column" notice and warnings. A second pass then joins the network's edge layer with **`joinEdges`** (adapter), from its frame and the node layer's result: a `ConversionResult` whose features are one LineString per pair, plus the pairs' rows (§5.2). Results stay one per frame, in frame order, as everything downstream expects. An edge result is reused as other results are (the same arrays, or a refresh with the same values), as long as the node result is the same object and the same columns join them; other Edges layers, and a network that can't be joined, get an empty result.
 - **`buildLayerSpecs`** gives the edge layer per-feature colors and widths from pair values (§6.3), and the others their styles as today.
 
 Everything after `buildLayerSpecs` (legend, fit, warnings, tooltips) reads the edge result like any other, with the exceptions in §5.2.
 
 ### 5.2 The edge result
 
-An edge result is a `ConversionResult` (so fit, warnings, the data summary and pinned tooltips work unchanged) with one addition:
+An edge result is a `ConversionResult` (so fit, warnings, the data summary and pinned tooltips work unchanged) with these additions:
 
 ```ts
 interface EdgePair {
@@ -106,21 +105,23 @@ interface EdgePair {
 
 interface ConversionResult {
   // ...as today...
+  styleField?: string;    // the column Map style is read from: the geometry column, or an edge layer's from column
   pairs?: EdgePair[];     // edge results only: one per feature, in feature order
+  edgeFields?: { from: string; to: string }; // edge results only: the columns joining them
 }
 ```
 
 - **Features:** one LineString per pair, between the two nodes' points, with feature id = its index, as for other layers.
 - **Keys:** `featureKeys` holds the pair keys (`keyField` stays unset: the keys don't come from one column), so a pinned pair is found again after a refresh by its key, as pinned features are today ([useFeatureTooltip.tsx](../../src/panel/useFeatureTooltip.tsx), `resolvePinned`).
 - **`featureRows`:** each pair's first row. Code that reads one row per feature (only feature tooltips and per-feature colors today) goes through `pairs` for edge results instead.
-- **Warnings:** the edge result's `warnings` counts rows not drawn, with new warning kinds: `unknownNode` (from or to matches no node), `selfLoop` (from = to) and `missingEnd` (from or to empty). Duplicate node ids are counted on the node layer, as `duplicateId`.
+- **Warnings:** the edge result's `warnings` counts rows not drawn, with new warning kinds: `unknownNode` (from or to matches no node, or one without a point), `selfLoop` (from = to) and `missingEnd` (from or to empty). Node problems are counted here too, not on the node result, which is shared and cached: `duplicateId` and `notAPoint`, whose samples hold the node layer's row and read "Nodes row 2".
 - **Bounds:** the box around the drawn lines, for Fit to data.
 
 ### 5.3 Joining
 
-- **Node positions:** read from the node layer's result: each feature's point, under its ID column's value. A node whose geometry isn't a Point (or is empty) can't anchor edges; it's counted as `notAPoint` on the node layer. A MultiPoint isn't accepted, because it has no single position.
+- **Node positions:** read from the node layer's result: each feature's point, under its ID column's value. A node whose geometry isn't a Point can't anchor edges; it's counted as `notAPoint` on the edge result. A node whose geometry the node layer skipped (empty or invalid) has no position, and edges to it say so. A MultiPoint isn't accepted, because it has no single position.
 - **Matching ids as text** (decision 13): node and edge ids are compared as text, so a site id that is `integer` in one table and `text` in the other still joins. `1` and `"1"` match; `1.0` and `"1"` don't.
-- **Duplicates:** the first node with an id wins; the rest are counted as `duplicateId`.
+- **Duplicates:** the first node with an id wins; the rest are counted as `duplicateId`. The join reads the id column itself, so node feature keys, which need unique ids, aren't required.
 - **Pairs:** grouped in one pass over the edge rows. Pairs are ordered by their first row, so the drawing order is stable across refreshes that bring the same data.
 
 ### 5.4 Panel components
@@ -137,7 +138,7 @@ interface ConversionResult {
 - **Click:** a pinned popup listing the pair's rows, one per edge, with a search field, sortable columns and scrolling. Each row shows its direction (A → B or B → A), its values and its ratio. It's a new component, since Grafana's tooltip shows one feature's fields, not a table.
 - **Styling:** edges are colored or sized by a column's pair value (decision 11), for example the pair's ratio through the ratio column's thresholds (decision 10), extending data-driven styling (Phase 6) from feature values to pair values.
 - **Direction:** see decision 2. Rows keep their direction; the line has none.
-- **Hit testing:** an edge layer is an ordinary line layer to the engine, so hover and click find it as they do any line: features within a few pixels of the pointer (`HIT_TOLERANCE_PX`), topmost first, with the hovered one highlighted through feature-state. Nodes draw above edges, so near a node the node comes first. A click near a node often catches the node and several edges, so the pinned tooltip's pager mixes node entries (the node's fields) and edge-pair entries (the pair's list); each entry renders its own kind of content.
+- **Hit testing:** edge layers aren't interactive until their own tooltip arrives (Phase 3): the feature tooltip would show a pair's first row as if it were the pair. From then, an edge layer is an ordinary line layer to the engine, so hover and click find it as they do any line: features within a few pixels of the pointer (`HIT_TOLERANCE_PX`), topmost first, with the hovered one highlighted through feature-state. Nodes draw above edges, so near a node the node comes first. A click near a node often catches the node and several edges, so the pinned tooltip's pager mixes node entries (the node's fields) and edge-pair entries (the pair's list); each entry renders its own kind of content.
 
 ### 6.1 Hover
 

@@ -1,6 +1,6 @@
 # Architecture: GeoFlow, a Grafana PostGIS Map Panel
 
-Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later.
+Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later. Node-edge maps, a network of nodes and the edges between them, have their own design and phases in [node-edge/architecture.md](node-edge/architecture.md); its Phase 1 (edges drawn) is implemented.
 
 ### Project baseline
 
@@ -107,7 +107,7 @@ docker/
     provisioning/
       datasources/datasources.yml # GeoFlow PostGIS data source → postgres service
       dashboards/              # dashboard provider + one JSON dashboard per feature
-                               # (00-smoke … 13-basemap-presets)
+                               # (00-smoke … 14-node-edge)
   postgres/                    # everything the database container needs
     Dockerfile                 # FROM postgis/postgis:16-3.6
     .env.example               # POSTGRES_USER / PASSWORD / DB, reader password
@@ -118,6 +118,7 @@ docker/
       03_seed_fixtures.sql     # every geometry type, non-4326, invalid/empty rows
       04_seed_large.sql        # generated rows for performance testing
       05_reader_role.sh        # read-only grafana_reader role
+      06_seed_network.sql      # sites and trunks, for node-edge maps
 src/
   module.ts                    # PanelPlugin registration, options and field config
   plugin.json
@@ -127,7 +128,7 @@ src/
     options.ts                 # GeoFlowOptions, defaults, migration, options → BasemapSpec / ViewState
     basemapPresets.ts          # providers, styles, keys and attribution (Phase 12)
     holdSeries.ts              # keeps a failed query's last good frames (Phase 9)
-    convertFrames.ts           # converts frames, reusing unchanged results (Phase 8)
+    convertFrames.ts           # converts frames, reusing unchanged results (Phase 8), and joins networks
     fitData.ts                 # when Fit to data fits, and the bounds it fits to
     panelProblems.ts           # warnings shown on the map (Phase 9)
     conversionSummary.ts       # skipped-row counts and labels
@@ -143,7 +144,9 @@ src/
     testHook.ts                # e2e-only inspect event (// Test hook:)
   adapter/                     # Grafana DataFrame ⇄ neutral model
     index.ts                   # the layer's public API
-    bindLayers.ts              # frames + Layers settings → BoundLayer[] (§3.4)
+    bindLayers.ts              # frames + Layers settings → BoundLayer[] (§3.4), roles, networkLayers
+    detectEdgeFields.ts        # an edge layer's from and to columns (node-edge)
+    joinEdges.ts               # edges + node points → one line per pair of nodes (node-edge)
     detectGeometryField.ts
     parseGeometry.ts           # GeoJSON text or object → geometry, with warnings
     frameToFeatureCollection.ts

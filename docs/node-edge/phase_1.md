@@ -1,6 +1,6 @@
 # Node-edge Phase 1: Edges drawn
 
-Status: **Plan accepted** (2026-11-08). Decisions 1–8 accepted as proposed.
+Status: **Implemented** (2026-11-08). Decisions 1–8 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §4 (data and query shape), §5 (fit with the existing architecture), §6.3 (styling), §9.3 (Phase 1 row); decisions 1, 2, 4, 6, 8, 12, 13, 14.
 
 ## Goal
@@ -227,3 +227,43 @@ Design §7–8. The database is reset (`docker compose down -v`, then `docker co
 | 6 | Extra Nodes and Edges layers | **The first of each in the Layers list makes the network.** An extra Nodes layer draws as geometry; an extra Edges layer isn't drawn. Both warn. | Drawing nothing for the network until there's only one of each. |
 | 7 | Problem rows in seed data | **Added in the problems panel's SQL**, so the tables stay realistic and reusable. | Problem rows in the tables, which every other query would then filter out. |
 | 8 | Plugin version | **Unchanged.** No `plugin.json` change, so no Grafana restart. | |
+
+---
+
+## Outcome
+
+Implemented on branch `node-edge-phase-1` in four commits, steps 1.2 to 1.5. Step 1.1 was checks only, recorded below.
+- 603 unit and component tests pass (35 new), and 70 e2e tests (3 new, plus the login setup) on a stack started fresh with `docker compose down -v` and `docker compose up`. Every init file ran, `verify.sql` passed, and the stored screenshots of the other dashboards still match.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Roles | Met. `role`, `fromField` and `toField` in the layer settings; a layer without a role is a geometry layer, and the existing screenshots match. |
+| 2 | Detection | Met. Name pairs, then prefix and suffix pairs, ignoring case (Design §2); the seed data's `a_site`/`z_site` are found. |
+| 3 | Edges drawn | Met. The Network panel draws 14 trunks as 6 lines between 8 sites; integer site ids join text trunk ends. |
+| 4 | Style | Met. Map style set on the from column (here, per query) styles the edges, which take a palette color by default. |
+| 5 | Order | Met. The Layers list's order: the dashboard's sites draw above their trunks. |
+| 6 | Warnings | Met. Each row kind on the map's warning and in the data summary, node samples labeled "Nodes row", plus the setting problems. The Problems panel shows two warnings. |
+| 7 | Refresh | Met. Unit tests: the edge result is reused for a field config change and for a refresh with the same data, and rebuilt when nodes move. |
+| 8 | Tests | Met. Unit tests on detection, the join, binding and warnings; e2e feature counts, a screenshot and the warnings. |
+| 9 | A fresh stack loads it | Met. `docker compose down -v`, then up: all six init files ran, and all 70 e2e tests passed against that stack. |
+
+### Checks on Grafana 13.2 (step 1.1)
+
+- **Id types from the PostgreSQL data source:** `integer`, `bigint` and `smallint` arrive as numbers, `text` as strings. `numeric` arrives as a number too, so `3.0::numeric` is `3`, and its text is `"3"`: the plan's `"1.0"` risk doesn't happen. Aliases are kept as column names.
+- **Partition by values:** Phase 11 already found the refIds, `B-undefined` with **As label** and `B-<value>` with **As frame name**, so a split query's network role is found by refIds starting with `B-`.
+
+### Differences from the plan
+
+- **Skipped nodes:** the plan counted node rows whose geometry the node conversion skipped as `notAPoint`. The node layer already reports those rows, so the join doesn't count them again; an edge to such a node says "node 2 has no point to draw" rather than "no node with id 2".
+- **Node samples** read "Nodes row 2" on the map and "nodes row 2" in the data summary, since they count the node layer's rows, not the edge frame's.
+- **`edgeFields`** on edge results, for the data summary's "B: 14 rows → 6 pairs (a_site → z_site)".
+- **The data summary** lists each layer's network problems under it, beside the map's warning.
+- **The dashboard** uses Fit to data rather than a fixed view, which also checks that edges' bounds feed the fit.
+
+### Findings for later phases
+
+- **`start`/`end` detection** can pick up a time range's columns on an edge query. Only edge layers detect, and the warnings would show unknown nodes, but Phase 2's editor should show the detected columns so the user sees the choice.
+- **The README's status line** still describes the plugin as pre-MVP at Phase 9; it predates this phase and should be brought up to date before the catalog submission.
