@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { DRAWN, expect, renderedFeatures, test } from './fixtures';
+import { DRAWN, editedPanel, expect, renderedFeatures, test } from './fixtures';
 
 // Panels of docker/grafana/provisioning/dashboards/14-node-edge.json (docs/node-edge/phase_1.md).
 // Sites and trunks come from docker/postgres/init/06_seed_network.sql: 8 sites, and 14 trunks
@@ -54,4 +54,41 @@ test("counts the rows it can't draw, and the Edges layer it doesn't use", async 
   );
   await expect(details).toContainText('Nodes row 2: node id 1 is already used by an earlier node');
   await expect(details).toContainText('Microwave trunks: Not part of the network, which uses Trunks');
+});
+
+test('makes a network of two layers in the Layers list, and keeps it when a layer is renamed', async ({
+  readProvisionedDashboard,
+  gotoPanelEditPage,
+  page,
+}) => {
+  const dashboard = await readProvisionedDashboard(FILE);
+  const panelEditPage = await gotoPanelEditPage({ dashboard, id: '4' });
+  const panel = await editedPanel(panelEditPage);
+  const editor = page.getByTestId('geoflow-layers-editor');
+  const settings = editor.getByTestId('geoflow-layer-settings');
+  const rows = () =>
+    editor.getByTestId(/^geoflow-layer-row-/).evaluateAll((els) => els.map((el) => el.dataset.testid!.slice(18)));
+  // Without settings, the later query is on top, and the trunks query has no geometry to draw.
+  await expect.poll(rows).toEqual(['B', 'A']);
+  await expect(editor.getByTestId('geoflow-layer-row-B')).toContainText('No geometry');
+
+  await editor.getByRole('button', { name: 'Query A', exact: true }).click();
+  await settings.getByRole('radio', { name: 'Nodes' }).click();
+  await editor.getByRole('button', { name: 'Query B', exact: true }).click();
+  await settings.getByRole('radio', { name: 'Edges' }).click();
+
+  // The trunks moved below the sites, and draw as 6 lines between them.
+  await expect.poll(rows).toEqual(['A', 'B']);
+  await expect(editor.getByTestId('geoflow-layer-row-B')).toContainText('Edges');
+  await expect(editor.getByTestId('geoflow-layer-row-B')).not.toContainText('No geometry');
+  await expect(settings.locator('#geoflow-layer-B-from')).toHaveAttribute('placeholder', 'Auto: a_site');
+  await expect.poll(() => renderedFeatures(panel), DRAWN).toEqual({ A: 8, B: 6 });
+
+  // Renaming saves every layer again: the roles must survive it.
+  const name = settings.locator('#geoflow-layer-B-name');
+  await name.fill('Trunks');
+  await name.press('Tab');
+  await expect(editor.getByTestId('geoflow-layer-row-B')).toContainText('Trunks');
+  await expect(editor.getByTestId('geoflow-layer-row-A')).toContainText('Nodes');
+  await expect.poll(() => renderedFeatures(panel), DRAWN).toEqual({ A: 8, B: 6 });
 });
