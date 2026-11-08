@@ -157,7 +157,7 @@ Accepted as proposed (2026-11-08):
 
 Implemented on branch `phase-11` in four commits, one per step:
 - 529 unit and component tests pass, and 62 e2e tests (plus the login setup), in two full-suite runs in a row. The stored screenshots still match.
-- CI: to be filled in from the pull request.
+- CI on PR #32 passes build, lint, 529 unit tests, the 8 build tool tests, `check:dist`, and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 62 e2e tests each (plus the login setup), on the first run. So the null and empty naming found on 13.2.4 holds on all three. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
