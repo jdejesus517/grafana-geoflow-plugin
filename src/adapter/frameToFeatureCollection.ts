@@ -68,6 +68,8 @@ export interface ConversionResult {
   styleField?: string;
   /** Edge layers only: one per feature, in feature order. */
   pairs?: EdgePair[];
+  /** Edge layers only: the columns holding each edge's node ids. */
+  edgeFields?: { from: string; to: string };
   noGeometry?: { reason: NoGeometryReason; detail: string };
   warnings: ConversionWarnings;
 }

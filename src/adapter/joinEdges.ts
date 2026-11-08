@@ -41,6 +41,7 @@ export function joinEdges(
 ): ConversionResult {
   const result = emptyEdgeResult(edges.layerId, edges.refId, edgeFrame.length);
   result.styleField = edges.fromField.name;
+  result.edgeFields = { from: edges.fromField.name, to: edges.toField.name };
   const count = (kind: WarningKind, row: number, detail: string) => {
     result.warnings.counts[kind]++;
     if (result.warnings.samples.length < MAX_WARNING_SAMPLES) {

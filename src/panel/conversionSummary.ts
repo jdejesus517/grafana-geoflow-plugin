@@ -1,4 +1,4 @@
-import { ConversionResult, WarningKind } from '../adapter';
+import { ConversionResult, NODE_WARNING_KINDS, WarningKind, WarningSample } from '../adapter';
 
 export const WARNING_LABELS: Record<WarningKind, string> = {
   empty: 'empty',
@@ -19,7 +19,10 @@ export function conversionSummary(result: ConversionResult): string {
   if (result.noGeometry) {
     return `${rows} → no geometry: ${result.noGeometry.detail}`;
   }
-  const features = `${rows} → ${plural(result.featureCollection.features.length, 'feature')} (${result.geometryField})`;
+  const count = result.featureCollection.features.length;
+  const features = result.pairs
+    ? `${rows} → ${plural(count, 'pair')}${result.edgeFields ? ` (${result.edgeFields.from} → ${result.edgeFields.to})` : ''}`
+    : `${rows} → ${plural(count, 'feature')} (${result.geometryField})`;
   const warnings = (Object.keys(WARNING_LABELS) as WarningKind[])
     .filter((kind) => result.warnings.counts[kind] > 0)
     .map((kind) => `${WARNING_LABELS[kind]} ${result.warnings.counts[kind]}`);
@@ -29,7 +32,16 @@ export function conversionSummary(result: ConversionResult): string {
 /** The first skipped row, e.g. "row 1: EPSG:2264; transform to EPSG:4326 with ST_Transform(geom, 4326)". */
 export function firstWarning(result: ConversionResult): string | undefined {
   const [sample] = result.warnings.samples;
-  return sample && `row ${sample.row + 1}: ${sample.detail}`;
+  return sample && `${sampleRow(sample, 'row')}: ${sample.detail}`;
+}
+
+/**
+ * "row 3", or for an edge layer's node problems, which count the node layer's rows, "nodes row 3".
+ * `word` is "row" or "Row".
+ */
+export function sampleRow(sample: WarningSample, word: 'row' | 'Row'): string {
+  const row = `${word} ${sample.row + 1}`;
+  return NODE_WARNING_KINDS.includes(sample.kind) ? `${word === 'Row' ? 'Nodes' : 'nodes'} ${row.toLowerCase()}` : row;
 }
 
 function plural(count: number, noun: string): string {
