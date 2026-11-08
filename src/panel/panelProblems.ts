@@ -5,6 +5,13 @@ import { WARNING_LABELS } from './conversionSummary';
 /** More features than this draw slowly: the limit of the design (docs/architecture.md §4.2). */
 export const MANY_FEATURES = 100_000;
 
+/**
+ * More layers than this draw and pan slowly: each is a MapLibre source with four style layers
+ * (docs/phase_11.md, decision 1). Partition by values on a column with many values gets there
+ * easily, since it makes a frame per value.
+ */
+export const MANY_LAYERS = 50;
+
 export interface PanelProblem {
   /** The layer's name; undefined for a problem with the whole panel. */
   layerName?: string;
@@ -45,6 +52,17 @@ export function panelProblems(results: ConversionResult[], layers: BoundLayer[],
       ...layerSettingProblems(layer, frames[i], result).map((text) => ({ layerName, text })),
     ];
   });
+  // Every frame with a geometry column is drawn as a layer, hidden ones included: they keep their
+  // source (docs/phase_7.md, Design §5).
+  const layerCount = results.filter((result) => !result.noGeometry).length;
+  if (layerCount > MANY_LAYERS) {
+    problems.push({
+      text: `${layerCount.toLocaleString('en-US')} layers may draw slowly`,
+      detail:
+        'Each layer is a frame. Partition by values on a column with many values makes one per value: ' +
+        'split on a column with fewer values, or filter the query.',
+    });
+  }
   const features = results.reduce((total, result) => total + result.featureCollection.features.length, 0);
   if (features > MANY_FEATURES) {
     problems.push({
