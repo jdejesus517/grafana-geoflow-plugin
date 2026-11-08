@@ -140,7 +140,7 @@ Design §5. No new seed data, so no database reset.
 
 Implemented on branch `node-edge-phase-2` in four commits, steps 2.1 to 2.4.
 - 617 unit and component tests pass (14 new), and 71 e2e tests (1 new, plus the login setup). No seed data changed, so the stack wasn't reset.
-- CI: to be filled in from the pull request.
+- CI on PR #38 passes build, lint, 617 unit tests, the 8 build tool tests, `check:dist`, and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 71 e2e tests each (plus the login setup). On 13.2.5 one test failed its first attempt and passed on retry (below). The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 
@@ -161,4 +161,5 @@ Implemented on branch `node-edge-phase-2` in four commits, steps 2.1 to 2.4.
 
 ### Findings for later phases
 
+- **A flaky e2e check, not from this phase:** `tests/adapter.spec.ts`, "jsonb and Feature input" on 13.2.5, found no data summary text on its first attempt and passed on retry. The same spec flaked once before, in the `release-prep` run ("State Plane without ST_Transform"). It's fixed in Phase 3.
 - **Grafana's radio inputs sit over their labels,** so e2e tests click the radio (`getByRole('radio', { name })`), not its text.
