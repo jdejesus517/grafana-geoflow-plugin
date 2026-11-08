@@ -14,7 +14,7 @@ GeoFlow is a panel plugin for assets that live in PostgreSQL with PostGIS: netwo
 - **Styling with Grafana's field options:** colors, opacity, line width and dash patterns, set per query through overrides.
 - **Coloring and sizing by value** with thresholds, gradients and value mappings, as in Grafana's other panels, with a legend.
 - **Tooltips** with every column, formatted with the field's unit, value mappings and data links. Click to pin one, and page through overlapping features.
-- **Basemaps:** OpenStreetMap, any XYZ raster tile server, a MapLibre style URL for vector tiles, or none for air-gapped installs. Raster basemaps are dimmed in the dark theme, or you can give a separate dark basemap.
+- **Basemaps:** OpenStreetMap; presets from OpenFreeMap, Stadia Maps, MapTiler and Thunderforest, picked by name, with a dark style that follows Grafana's theme; any XYZ raster tile server or MapLibre style URL; or none for air-gapped installs.
 - **Refreshes keep your place:** the map keeps its view, and a pinned tooltip follows its feature. A refresh that returns the same data costs almost nothing.
 - **Warnings on the map** when rows can't be drawn or a column is missing, so lost data doesn't go unnoticed.
 
@@ -63,7 +63,9 @@ To color or size features by a column, set **Color by** or **Size by** under **M
 
 ## Basemaps
 
-OpenStreetMap is the default. Its tile servers are for light use under the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/). For dashboards with many viewers, use your own tile server or a commercial provider through **Custom tiles** or **Style URL**.
+OpenStreetMap is the default. Its tile servers are for light use under the [OpenStreetMap tile usage policy](https://operations.osmfoundation.org/policies/tiles/). For dashboards with many viewers, pick a preset, or use your own tile server through **Custom tiles** or **Style URL**.
+
+**Presets:** OpenFreeMap needs no key. Stadia Maps, MapTiler and Thunderforest use your own API key, which is saved in the dashboard and reaches every viewer's browser, so restrict it to your Grafana's domain. Each preset follows Grafana's theme with a matching dark style. The free plans of Stadia Maps and MapTiler are for non-commercial use.
 
 If Grafana's Content Security Policy is enabled, add each tile host to `connect-src`. The [full documentation](https://github.com/jdejesus517/grafana-geoflow-plugin#content-security-policy) has the exact settings.
 

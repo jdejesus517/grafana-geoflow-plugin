@@ -137,13 +137,23 @@ Pick the basemap in the panel options under **Basemap**:
 | Option                  | What it shows                                                                                                                                   |
 | ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | OpenStreetMap (default) | OpenStreetMap's standard raster tiles, with the "© OpenStreetMap contributors" attribution.                                                     |
+| OpenFreeMap             | Vector styles with no key: Liberty, Bright, Positron, and Dark or Fiord for dark theme.                                                         |
+| Stadia Maps             | Vector styles, such as Alidade Smooth and Stamen Toner. A key is optional (below).                                                              |
+| MapTiler                | Vector styles, such as Streets, Dataviz and Topo, each with a dark variant. Needs your API key; shows MapTiler's logo.                          |
+| Thunderforest           | Raster tiles, such as Atlas, Transport and OpenCycleMap. Needs your API key.                                                                    |
 | Custom tiles            | Any XYZ raster tile server. Enter a URL template with `{z}`, `{x}` and `{y}`, and the attribution your provider requires (shown as plain text). |
 | Style URL               | A [MapLibre style](https://maplibre.org/maplibre-style-spec/) JSON, for vector-tile basemaps. The style controls the whole look.                |
 | None                    | A plain background. Use it for air-gapped installs.                                                                                             |
 
+**Presets** (OpenFreeMap, Stadia Maps, MapTiler, Thunderforest) offer their styles by name under **Style**, and fill in the provider's attribution. **Dark theme style** is used while Grafana's theme is dark: by default, the style's dark counterpart, such as Positron's Dark. Pick another, or **Same as light**.
+
+**API keys:** create a free account with the provider and paste its key under **API key**. GeoFlow adds it to every request to the provider: style, tiles, fonts and sprites. A key for map tiles always reaches the viewer's browser, and it's saved in the dashboard, so anyone who can view the dashboard can see it. Restrict it to your Grafana's domain in your provider account. Stadia Maps needs no key on `localhost` or on domains you register with it.
+
+**Plans and terms are between you and the provider.** The free plans of Stadia Maps and MapTiler are for non-commercial use, and MapTiler's free plan requires its logo, which GeoFlow shows. OpenFreeMap needs no account and has no limits, but offers no guarantees. Check each provider's terms: [OpenFreeMap](https://openfreemap.org/tos/), [Stadia Maps](https://stadiamaps.com/terms-of-service/), [MapTiler](https://www.maptiler.com/cloud/terms/), [Thunderforest](https://www.thunderforest.com/terms/).
+
 **Dark theme:** raster basemaps are dimmed to match a dark dashboard. For tiles or a style made for dark theme, enter a **Dark theme tile URL** or **Dark theme style URL**: GeoFlow uses it, undimmed, while Grafana's theme is dark, and switches back in light theme. A pinned tooltip closes when the basemap switches.
 
-**OpenStreetMap's tile servers are for light use.** Their [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy use. For production dashboards with many viewers, use your own tile server or a commercial provider through **Custom tiles** or **Style URL**.
+**OpenStreetMap's tile servers are for light use.** Their [tile usage policy](https://operations.osmfoundation.org/policies/tiles/) forbids heavy use. For production dashboards with many viewers, use a preset, your own tile server, or a commercial provider through **Custom tiles** or **Style URL**.
 
 **Requirements:**
 
@@ -160,6 +170,17 @@ For the OpenStreetMap basemap, the `connect-src` part of `content_security_polic
 ```
 connect-src 'self' grafana.com *.cartocdn.com https://tile.openstreetmap.org ws://$ROOT_PATH wss://$ROOT_PATH;
 ```
+
+For a preset, add its host. Each serves its styles, tiles, fonts and sprites from one host:
+
+| Preset        | Host                             |
+| ------------- | -------------------------------- |
+| OpenFreeMap   | `https://tiles.openfreemap.org`  |
+| Stadia Maps   | `https://tiles.stadiamaps.com`   |
+| MapTiler      | `https://api.maptiler.com`       |
+| Thunderforest | `https://tile.thunderforest.com` |
+
+MapTiler's logo is an image, which Grafana's default template already allows (`img-src *`).
 
 For a **Style URL**, also add the hosts of the style JSON and of the tiles, glyphs and sprites it references, including those of a dark theme style. Nothing else needs to change: the map's web worker is a same-origin file in the plugin, so `worker-src` and `blob:` aren't needed. When a tile server is blocked, the panel shows a "Basemap: … Failed to fetch" notice.
 
@@ -224,21 +245,22 @@ npm run server     # start Grafana and PostGIS in Docker (terminal 2)
 
 Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 
-| Dashboard      | Shows                                                                                                                                                      |
-| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 00 Smoke       | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                                  |
-| 01 Adapter     | How each kind of query result converts to GeoJSON.                                                                                                         |
-| 02 Basemap     | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                     |
-| 03 Many panels | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                            |
-| 04 Geometry    | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.            |
-| 05 Tooltips    | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes.      |
-| 06 Style       | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                  |
-| 07 Data-driven | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.             |
-| 08 Layers      | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values. |
-| 09 Refresh     | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.   |
-| 10 Hardening   | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                      |
-| 11 Performance | Points, lines, polygons and colored points at up to 100k rows, and up to 1,000 layers, picked with a variable. `npm run bench:map` measures these.         |
-| 12 Partition   | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.  |
+| Dashboard          | Shows                                                                                                                                                      |
+| ------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 00 Smoke           | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                                  |
+| 01 Adapter         | How each kind of query result converts to GeoJSON.                                                                                                         |
+| 02 Basemap         | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                     |
+| 03 Many panels     | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                            |
+| 04 Geometry        | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.            |
+| 05 Tooltips        | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes.      |
+| 06 Style           | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                  |
+| 07 Data-driven     | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.             |
+| 08 Layers          | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values. |
+| 09 Refresh         | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.   |
+| 10 Hardening       | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                      |
+| 11 Performance     | Points, lines, polygons and colored points at up to 100k rows, and up to 1,000 layers, picked with a variable. `npm run bench:map` measures these.         |
+| 12 Partition       | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.  |
+| 13 Basemap presets | A panel per preset provider, and MapTiler without a key. Its keys are made up: enter your own in the panel editor to see the real services.                |
 
 ### Docker environment
 
@@ -285,7 +307,7 @@ npm run bench:map        # the panel in a real browser with the GPU; needs a bui
 
 Before the first e2e run, install the browser with `npx playwright install chromium`.
 
-E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers every map tile request with a local PNG. Tests never contact `tile.openstreetmap.org`.
+E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers every map tile request with a local PNG, and every request to the presets' providers with a small local style. Tests never contact `tile.openstreetmap.org` or the providers, and need no keys.
 
 Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
 

@@ -89,7 +89,7 @@ Installing GeoFlow's dependencies also installs about 450 packages that come wit
 
 ## Data and images
 
-- **Map data.** The default basemap shows OpenStreetMap tiles. The data is under the Open Database License, which asks for visible attribution: "© OpenStreetMap contributors" shows in the map's corner whenever the default basemap is used, and is in `NOTICE` and the README. The tiles come from the OpenStreetMap Foundation's servers, whose usage policy `NOTICE` links to. The plugin ships no map data.
+- **Map data.** The default basemap shows OpenStreetMap tiles. The data is under the Open Database License, which asks for visible attribution: "© OpenStreetMap contributors" shows in the map's corner whenever the default basemap is used, and is in `NOTICE` and the README. The tiles come from the OpenStreetMap Foundation's servers, whose usage policy `NOTICE` links to. The plugin ships no map data. Phase 12's basemap presets load maps from other providers, under their terms and the user's own account; `NOTICE` and the README link each provider's terms, and each map shows its provider's attribution.
 - **Fixture data** (`docker/postgres/init/`) is GeoFlow's own: a fictional fiber network, drawn by hand rather than traced from real buildings, and 100k generated points.
 - **Test images.** The e2e tests replace map tiles with `tests/fixtures/tile.png`, a plain gray tile made for the tests, so the stored screenshots contain no OpenStreetMap tiles.
 
