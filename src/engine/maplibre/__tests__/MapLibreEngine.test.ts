@@ -3,7 +3,7 @@
 import { BACKGROUND_LAYER_ID, BASEMAP_RASTER_LAYER_ID, basemapStyle, rasterPaint } from '../../basemapStyle';
 import { WebGLUnavailableError } from '../../errors';
 import { paintFor, styleLayerIds, styleLayers } from '../../layerStyle';
-import { EngineOptions, EngineTheme, LayerSpec, LayerStyle } from '../../types';
+import { BasemapSpec, EngineOptions, EngineTheme, LayerSpec, LayerStyle } from '../../types';
 import { ERROR_THROTTLE_MS, HIT_TOLERANCE_PX, MapLibreEngine, TOOLTIP_MARGIN_PX } from '../MapLibreEngine';
 
 type Handler = (event?: unknown) => void;
@@ -80,10 +80,16 @@ class FakeMap {
   fire(type: string, event?: unknown) {
     this.handlers[type]?.forEach((h) => h(event));
   }
-  addControl(control: unknown) {
+  addControl(control: unknown, position?: string) {
     this.controls.push(control);
+    this.positions.set(control, position);
     return this;
   }
+  removeControl(control: unknown) {
+    this.controls = this.controls.filter((c) => c !== control);
+    return this;
+  }
+  positions = new Map<unknown, string | undefined>();
   getLayer(id: string) {
     return this.layers.has(id) ? { id } : undefined;
   }
@@ -244,6 +250,7 @@ describe('MapLibreEngine', () => {
         zoom: 15,
         attributionControl: { compact: true },
         transformStyle: expect.any(Function),
+        transformRequest: expect.any(Function),
         dragRotate: false,
         pitchWithRotate: false,
         touchPitch: false,
@@ -340,6 +347,58 @@ describe('MapLibreEngine', () => {
 
     it('is a no-op before mount', () => {
       expect(() => new MapLibreEngine().setBasemap({ kind: 'none' })).not.toThrow();
+    });
+  });
+
+  describe('keyed basemaps', () => {
+    const keyed: BasemapSpec = {
+      kind: 'style',
+      url: 'https://tiles.example.com/s.json',
+      requestParams: { host: 'tiles.example.com', params: { key: 'k1' } },
+    };
+    const transform = (map: FakeMap, url: string) =>
+      (map.options.transformRequest as (url: string) => { url: string })(url);
+
+    it("adds the current basemap's parameters to its requests, after a basemap change too", async () => {
+      const { engine, map } = await mounted();
+
+      expect(transform(map, 'https://tiles.example.com/1/0/0.pbf')).toEqual({
+        url: 'https://tiles.example.com/1/0/0.pbf',
+      });
+      engine.setBasemap(keyed);
+      expect(transform(map, 'https://tiles.example.com/1/0/0.pbf')).toEqual({
+        url: 'https://tiles.example.com/1/0/0.pbf?key=k1',
+      });
+    });
+  });
+
+  describe('basemap logo', () => {
+    const logo = { href: 'https://example.com/', src: 'https://example.com/logo.svg', alt: 'Example' };
+    const withLogo: BasemapSpec = { kind: 'style', url: 'https://example.com/s.json', logo };
+    const logos = (map: FakeMap) =>
+      map.controls.filter((c): c is { logo: unknown; onAdd(): HTMLElement } => !!(c as { logo?: unknown }).logo);
+
+    it('shows the logo beside the attribution while the basemap has one', async () => {
+      const { engine, map } = await mounted();
+      expect(logos(map)).toHaveLength(0);
+
+      engine.setBasemap(withLogo);
+      const [control] = logos(map);
+      expect(map.positions.get(control)).toBe('bottom-right');
+      const element = control.onAdd();
+      expect(element.getAttribute('href')).toBe('https://example.com/');
+      expect(element.querySelector('img')).toMatchObject({ src: 'https://example.com/logo.svg', alt: 'Example' });
+
+      engine.setBasemap({ kind: 'none' });
+      expect(logos(map)).toHaveLength(0);
+    });
+
+    it('keeps the same logo across a basemap change that has it too', async () => {
+      const { engine, map } = await mounted({ ...options, basemap: withLogo });
+      const [control] = logos(map);
+
+      engine.setBasemap({ ...withLogo, url: 'https://example.com/dark.json' });
+      expect(logos(map)).toEqual([control]);
     });
   });
 

@@ -2,11 +2,42 @@
 // docs/phase_3.md, Design §1), with fitBounds from Phase 8.
 import type { Bounds, FeatureCollection, SupportedGeometry } from '../model';
 
+/**
+ * Query parameters added to every request the basemap makes to one host: its style, tiles, fonts
+ * and sprites. Keyed providers need their key on all of them (docs/phase_12.md, Design §1).
+ */
+export interface RequestParams {
+  /** The exact host, such as `tiles.stadiamaps.com`. Requests to other hosts are left alone. */
+  host: string;
+  params: Record<string, string>;
+}
+
+/** A provider's logo, shown beside the attribution while its basemap is in use. */
+export interface BasemapLogo {
+  href: string;
+  src: string;
+  alt: string;
+}
+
 export type BasemapSpec =
   | { kind: 'osm' }
-  /** `dimInDark` (default true) dims the tiles in dark theme; false for tiles that are dark already. */
-  | { kind: 'raster'; tiles: string[]; attribution: string; maxZoom?: number; dimInDark?: boolean }
-  | { kind: 'style'; url: string }
+  | {
+      kind: 'raster';
+      tiles: string[];
+      /** Plain text, unless `attributionHtml`. */
+      attribution: string;
+      maxZoom?: number;
+      /** Default true: dims the tiles in dark theme. False for tiles that are dark already. */
+      dimInDark?: boolean;
+      /**
+       * The attribution is HTML, shown as it is. Only for attributions written in the plugin (presets),
+       * never for one typed by a dashboard editor.
+       */
+      attributionHtml?: boolean;
+      requestParams?: RequestParams;
+      logo?: BasemapLogo;
+    }
+  | { kind: 'style'; url: string; requestParams?: RequestParams; logo?: BasemapLogo }
   | { kind: 'none' };
 
 export interface ViewState {
