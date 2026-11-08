@@ -1,7 +1,20 @@
 import { Bounds, SupportedGeometry, isSupportedGeometryType } from '../model';
 
-/** Why a row produced no feature (docs/phase_1.md, Design §3). */
-export type WarningKind = 'empty' | 'invalid' | 'unsupported' | 'projected' | 'outOfRange';
+/**
+ * Why a row produced no feature (docs/phase_1.md, Design §3). The last five are an edge layer's:
+ * rows the network join couldn't draw (docs/node-edge/phase_1.md, Design §3).
+ */
+export type WarningKind =
+  | 'empty'
+  | 'invalid'
+  | 'unsupported'
+  | 'projected'
+  | 'outOfRange'
+  | 'unknownNode'
+  | 'selfLoop'
+  | 'missingEnd'
+  | 'duplicateId'
+  | 'notAPoint';
 
 export type ParsedGeometry =
   | { ok: true; geometry: SupportedGeometry; bounds: Bounds; properties?: Record<string, unknown> }

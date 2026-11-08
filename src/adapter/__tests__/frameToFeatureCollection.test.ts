@@ -3,7 +3,18 @@ import { loadFixture } from '../__fixtures__';
 import { MAX_WARNING_SAMPLES, frameToFeatureCollection } from '../frameToFeatureCollection';
 
 const point = '{"type":"Point","coordinates":[-78.786,35.788]}';
-const noWarnings = { empty: 0, invalid: 0, unsupported: 0, projected: 0, outOfRange: 0 };
+const noWarnings = {
+  empty: 0,
+  invalid: 0,
+  unsupported: 0,
+  projected: 0,
+  outOfRange: 0,
+  unknownNode: 0,
+  selfLoop: 0,
+  missingEnd: 0,
+  duplicateId: 0,
+  notAPoint: 0,
+};
 
 describe('frameToFeatureCollection', () => {
   describe('captured frames', () => {

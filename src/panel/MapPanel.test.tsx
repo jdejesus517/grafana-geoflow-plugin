@@ -1247,6 +1247,69 @@ describe('MapPanel', () => {
     });
   });
 
+  describe('networks', () => {
+    const point = (lon: number) => `{"type":"Point","coordinates":[${lon},2]}`;
+    const sites = toDataFrame({
+      refId: 'A',
+      fields: [
+        { name: 'id', type: FieldType.number, values: [1, 2] },
+        { name: 'geometry', type: FieldType.string, values: [point(1), point(3)] },
+      ],
+    });
+    const trunks = toDataFrame({
+      refId: 'B',
+      fields: [
+        { name: 'a_site', type: FieldType.string, values: ['1', '2', '1'] },
+        { name: 'z_site', type: FieldType.string, values: ['2', '1', '9'] },
+      ],
+    });
+    const network = {
+      layers: [
+        { id: 'B', role: 'edges' as const },
+        { id: 'A', role: 'nodes' as const },
+      ],
+    };
+
+    it('draws the edges between the nodes, below them, without tooltips', async () => {
+      await renderPanel({ data: { series: [sites, trunks] }, options: network });
+
+      const [nodes, edges] = engine.setLayers.mock.calls.at(-1)![0] as LayerSpec[];
+      expect([nodes.id, edges.id]).toEqual(['A', 'B']);
+      expect(edges.data.features.map(({ geometry }) => geometry)).toEqual([
+        {
+          type: 'LineString',
+          coordinates: [
+            [1, 2],
+            [3, 2],
+          ],
+        },
+      ]);
+      expect(edges.interactive).toBe(false);
+    });
+
+    it('warns about edges it cannot draw, and summarizes them as pairs', async () => {
+      await renderPanel({ data: { series: [sites, trunks] }, options: { ...network, showSummary: true } });
+
+      fireEvent.mouseEnter(screen.getByTestId('geoflow-warnings'));
+      expect(await screen.findByTestId('geoflow-warnings-details')).toHaveTextContent(
+        'Query B: 1 row skipped: unknown node 1'
+      );
+      expect(screen.getByTestId('geoflow-summary-B')).toHaveTextContent('B: 3 rows → 1 pair (a_site → z_site)');
+    });
+
+    it('says why there is no network, on the map and in the data summary', async () => {
+      await renderPanel({
+        data: { series: [sites, trunks] },
+        options: { layers: [{ id: 'B', role: 'edges' }], showSummary: true },
+      });
+
+      expect(screen.getByTestId('geoflow-frame-B')).toHaveTextContent(
+        'No Nodes layer: edges join the points of a Nodes layer'
+      );
+      expect(screen.getByTestId('geoflow-warnings')).toHaveAccessibleName('1 warning');
+    });
+  });
+
   describe('a failed query', () => {
     const geometry = (lon: number) => `{"type":"Point","coordinates":[${lon},2]}`;
     const frame = (refId: string, lon = 1) =>

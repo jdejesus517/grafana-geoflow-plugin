@@ -1,6 +1,15 @@
 import { DataFrame } from '@grafana/data';
-import { BoundLayer, ConversionResult, WarningKind, dataStyleFields } from '../adapter';
-import { WARNING_LABELS } from './conversionSummary';
+import {
+  BoundLayer,
+  ConversionResult,
+  DETECTED_NAMES,
+  WarningKind,
+  dataStyleFields,
+  defaultIdField,
+  detectEdgeFields,
+  networkLayers,
+} from '../adapter';
+import { WARNING_LABELS, sampleRow } from './conversionSummary';
 
 /** More features than this draw slowly: the limit of the design (docs/architecture.md §4.2). */
 export const MANY_FEATURES = 100_000;
@@ -15,6 +24,8 @@ export const MANY_LAYERS = 50;
 export interface PanelProblem {
   /** The layer's name; undefined for a problem with the whole panel. */
   layerName?: string;
+  /** The layer's id, for problems the data summary shows under the layer. */
+  layerId?: string;
   /** For example "12 rows skipped: invalid 10, out of range 2". */
   text: string;
   /** More about it, such as why the first row was skipped. */
@@ -22,7 +33,17 @@ export interface PanelProblem {
 }
 
 /** Empty geometry isn't a problem: it's usually intended, such as an asset without a location. */
-const SKIPPED_KINDS: WarningKind[] = ['invalid', 'unsupported', 'projected', 'outOfRange'];
+const SKIPPED_KINDS: WarningKind[] = [
+  'invalid',
+  'unsupported',
+  'projected',
+  'outOfRange',
+  'unknownNode',
+  'selfLoop',
+  'missingEnd',
+  'duplicateId',
+  'notAPoint',
+];
 
 /**
  * What's wrong with the layer's settings for its frame: columns it names that aren't there. The
@@ -34,10 +55,73 @@ export function layerSettingProblems(
   result: ConversionResult
 ): string[] {
   const missingId = layer?.idField && !frame.fields.some(({ name }) => name === layer.idField);
+  if (layer?.role === 'edges') {
+    const { colorBy, sizeBy } = (frame.fields.find(({ name }) => name === result.styleField)?.config.custom ?? {}) as {
+      colorBy?: string;
+      sizeBy?: string;
+    };
+    return colorBy || sizeBy ? ['Color by and Size by on edges come in a later version'] : [];
+  }
   return [
     ...(missingId ? [`ID column: no column named ${layer.idField}`] : []),
     ...(result.noGeometry ? [] : dataStyleFields(frame, result).problems),
   ];
+}
+
+/**
+ * What stops the panel's network from drawing as set up (docs/node-edge/phase_1.md, Design §6),
+ * layer by layer: no node layer, edge columns or node ids not found, extra network layers, and
+ * network queries split into frames.
+ */
+export function networkProblems(
+  layers: BoundLayer[],
+  frames: DataFrame[],
+  results: ConversionResult[]
+): PanelProblem[] {
+  const network = networkLayers(layers);
+  const problem = (layer: BoundLayer, text: string, detail?: string): PanelProblem => ({
+    layerName: layer.name,
+    layerId: layer.id,
+    text,
+    ...(detail && { detail }),
+  });
+  const problems: PanelProblem[] = [];
+  const { nodes, edges } = network;
+  if (edges) {
+    const detection = detectEdgeFields(frames[edges.frameIndex!], edges.fromField, edges.toField);
+    if (!detection.found) {
+      problems.push(problem(edges, detection.detail, `Edges are found by ${DETECTED_NAMES} columns.`));
+    }
+    if (!nodes) {
+      problems.push(problem(edges, 'No Nodes layer: edges join the points of a Nodes layer'));
+    } else if (results[nodes.frameIndex!]?.noGeometry) {
+      problems.push(problem(nodes, 'No geometry column: nodes need points for edges to join'));
+    } else if (!nodes.idField && !defaultIdField(frames[nodes.frameIndex!])) {
+      problems.push(problem(nodes, 'No id column: edges find nodes by an id column, named id unless chosen'));
+    }
+  }
+  for (const extra of network.extras) {
+    const used = extra.role === 'nodes' ? nodes : edges;
+    problems.push(
+      problem(
+        extra,
+        `Not part of the network, which uses ${used!.name}`,
+        extra.role === 'nodes'
+          ? 'A panel draws one network, from one Nodes and one Edges layer. This layer draws as plain points.'
+          : "A panel draws one network, from one Nodes and one Edges layer. This layer isn't drawn."
+      )
+    );
+  }
+  for (const split of network.split) {
+    problems.push(
+      problem(
+        split,
+        `Query ${split.id} returns several frames; ${split.role === 'nodes' ? 'a Nodes' : 'an Edges'} layer needs one`,
+        'Partition by values splits a query into a frame per value. Remove it from this query, and color by the column instead.'
+      )
+    );
+  }
+  return problems;
 }
 
 /** Everything the warning on the map lists (docs/phase_9.md, Design §1), layer by layer. */
@@ -52,6 +136,7 @@ export function panelProblems(results: ConversionResult[], layers: BoundLayer[],
       ...layerSettingProblems(layer, frames[i], result).map((text) => ({ layerName, text })),
     ];
   });
+  problems.push(...networkProblems(layers, frames, results));
   // Every frame with a geometry column is drawn as a layer, hidden ones included: they keep their
   // source (docs/phase_7.md, Design §5).
   const layerCount = results.filter((result) => !result.noGeometry).length;
@@ -87,7 +172,7 @@ function skippedRows(result: ConversionResult, layerName: string): PanelProblem[
       text: `${total} ${total === 1 ? 'row' : 'rows'} skipped: ${kinds
         .map((kind) => `${WARNING_LABELS[kind]} ${counts[kind]}`)
         .join(', ')}`,
-      ...(sample && { detail: `Row ${sample.row + 1}: ${sample.detail}` }),
+      ...(sample && { detail: `${sampleRow(sample, 'Row')}: ${sample.detail}` }),
     },
   ];
 }

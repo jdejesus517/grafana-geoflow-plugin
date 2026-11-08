@@ -1,11 +1,36 @@
-import { DataFrame } from '@grafana/data';
-import { BoundLayer, ConversionResult, GeometryMapping, frameRefId, frameToFeatureCollection } from '../adapter';
+import { DataFrame, Field } from '@grafana/data';
+import {
+  BoundLayer,
+  ConversionResult,
+  GeometryMapping,
+  NetworkLayers,
+  defaultIdField,
+  detectEdgeFields,
+  emptyEdgeResult,
+  frameRefId,
+  frameToFeatureCollection,
+  joinEdges,
+  networkLayers,
+} from '../adapter';
+
+/**
+ * What an edge layer's result depends on besides its own frame (docs/node-edge/phase_1.md, Design
+ * §4): the node layer's result and the columns joining them. Without a node result, or without
+ * columns, the edge layer draws nothing.
+ */
+interface EdgeInputs {
+  nodeResult?: ConversionResult;
+  from: string;
+  to: string;
+  nodeId: string;
+}
 
 interface Cached {
   result: ConversionResult;
   /** What the result was converted from: each field's name and values array. */
   fields: Array<{ name: string; values: unknown }>;
   mapping: GeometryMapping;
+  edge?: EdgeInputs;
 }
 
 /** A layer's last conversion, with a copy of the data it came from. */
@@ -13,6 +38,7 @@ interface Previous {
   result: ConversionResult;
   mapping: GeometryMapping;
   fields: Array<{ name: string; type: string; values: unknown[] }>;
+  edge?: EdgeInputs;
 }
 
 /**
@@ -36,6 +62,10 @@ const cache = new WeakMap<object, Cached>();
  * Converts every frame for its layer in `layers` (from bindLayers), reusing the result for frames
  * whose data and columns were already converted. Results are in frame order.
  *
+ * Edge layers' frames have no geometry, so they're joined to the node layer's result instead, in
+ * a second pass (docs/node-edge/phase_1.md, decision 1). Only the network's edge layer draws; other
+ * Edges layers get an empty result.
+ *
  * With a `history`, a refresh whose data equals the layer's last data, value for value, reuses
  * that conversion too. Grafana empties the previous query's arrays once new data arrives
  * (docs/phase_8.md, step 8.1), so the history keeps its own copy of them. It holds only the
@@ -55,6 +85,10 @@ export function convertFrames(
     const refId = frameRefId(frame, i);
     const layerId = layer?.id ?? refId;
     seen.add(layerId);
+    if (layer?.role === 'edges') {
+      // Filled in below, once the node layer is converted.
+      return undefined;
+    }
     const mapping: GeometryMapping = { geometryField: layer?.geometryField, idField: layer?.idField };
     const key = frame.fields[0]?.values;
     const cached = key && cache.get(key);
@@ -80,21 +114,117 @@ export function convertFrames(
     }
     return result;
   });
+
+  const network = networkLayers(layers);
+  results.forEach((result, i) => {
+    if (!result) {
+      results[i] = edgeResult(frames, results, i, layerByFrame.get(i)!, network, history);
+    }
+  });
   for (const layerId of history?.keys() ?? []) {
     if (!seen.has(layerId)) {
       history!.delete(layerId);
     }
   }
-  return results;
+  return results as ConversionResult[];
+}
+
+/**
+ * An Edges layer's result: the network's edge layer joined to its node layer, or nothing drawn
+ * for other Edges layers and for a network that can't be joined. Reused as other results are: for
+ * the same arrays, or a refresh with the same values, as long as the node result is the same
+ * object and the same columns join them.
+ */
+function edgeResult(
+  frames: DataFrame[],
+  results: Array<ConversionResult | undefined>,
+  i: number,
+  layer: BoundLayer,
+  network: NetworkLayers,
+  history?: ConversionHistory
+): ConversionResult {
+  const frame = frames[i];
+  const refId = frameRefId(frame, i);
+  const join = network.edges === layer ? joinable(frame, layer, frames, results, network) : undefined;
+  const inputs: EdgeInputs = join
+    ? { nodeResult: join.nodeResult, from: join.from.name, to: join.to.name, nodeId: join.nodeId.name }
+    : { from: '', to: '', nodeId: '' };
+  const mapping: GeometryMapping = {};
+  const key = frame.fields[0]?.values;
+  const cached = key && cache.get(key);
+  const previous = history?.get(layer.id);
+
+  let result: ConversionResult;
+  if (cached && sameEdge(cached, layer.id, inputs) && sameFields(cached.fields, frame)) {
+    result = cached.result;
+  } else if (previous && sameEdge(previous, layer.id, inputs) && sameData(previous.fields, frame)) {
+    result = previous.result;
+  } else if (join) {
+    result = joinEdges(
+      frame,
+      { layerId: layer.id, refId, fromField: join.from, toField: join.to },
+      frames[network.nodes!.frameIndex!],
+      join.nodeResult,
+      join.nodeId
+    );
+  } else {
+    result = emptyEdgeResult(layer.id, refId, frame.length);
+  }
+  if (key && cached?.result !== result) {
+    cache.set(key, {
+      result,
+      fields: frame.fields.map(({ name, values }) => ({ name, values })),
+      mapping,
+      edge: inputs,
+    });
+  }
+  if (history && previous?.result !== result) {
+    history.set(layer.id, { result, mapping, fields: frame.fields.map(copyField), edge: inputs });
+  }
+  return result;
+}
+
+/** What joins the network's edge layer to its nodes, or undefined when something's missing. */
+function joinable(
+  frame: DataFrame,
+  layer: BoundLayer,
+  frames: DataFrame[],
+  results: Array<ConversionResult | undefined>,
+  network: NetworkLayers
+): { nodeResult: ConversionResult; from: Field; to: Field; nodeId: Field } | undefined {
+  const nodes = network.nodes;
+  const nodeResult = nodes && results[nodes.frameIndex!];
+  if (!nodes || !nodeResult || nodeResult.noGeometry) {
+    return undefined;
+  }
+  const nodeFrame = frames[nodes.frameIndex!];
+  const nodeId = nodes.idField
+    ? nodeFrame.fields.find(({ name }) => name === nodes.idField)
+    : defaultIdField(nodeFrame);
+  const columns = detectEdgeFields(frame, layer.fromField, layer.toField);
+  return nodeId && columns.found ? { nodeResult, from: columns.from, to: columns.to, nodeId } : undefined;
+}
+
+function sameEdge(cached: { result: ConversionResult; edge?: EdgeInputs }, layerId: string, inputs: EdgeInputs) {
+  const edge = cached.edge;
+  return (
+    cached.result.layerId === layerId &&
+    !!edge &&
+    edge.nodeResult === inputs.nodeResult &&
+    edge.from === inputs.from &&
+    edge.to === inputs.to &&
+    edge.nodeId === inputs.nodeId
+  );
 }
 
 function sameLayer(
-  cached: { result: ConversionResult; mapping: GeometryMapping },
+  cached: { result: ConversionResult; mapping: GeometryMapping; edge?: EdgeInputs },
   layerId: string,
   mapping: GeometryMapping
 ): boolean {
   return (
     cached.result.layerId === layerId &&
+    !cached.edge &&
     cached.mapping.geometryField === mapping.geometryField &&
     cached.mapping.idField === mapping.idField
   );

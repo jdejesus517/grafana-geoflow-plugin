@@ -13,7 +13,7 @@ import {
   getScaleCalculator,
 } from '@grafana/data';
 import { FeatureStyles } from '../engine';
-import { ConversionResult, geometryFieldOf } from './frameToFeatureCollection';
+import { ConversionResult, styleFieldOf } from './frameToFeatureCollection';
 import { MapStyleConfig, mapStyleNumber } from './layerStyle';
 
 /** Distinct colors a gradient is drawn with, across the column's range. */
@@ -28,12 +28,12 @@ export interface DataStyleFields {
 }
 
 /**
- * The Color by and Size by columns of the layer drawn from `frame`, read from its geometry
- * field's config like the rest of Map style (docs/phase_6.md, Design §2). A column is found by
+ * The Color by and Size by columns of the layer drawn from `frame`, read from its style column's
+ * config like the rest of Map style (docs/phase_6.md, Design §2). A column is found by
  * name or display name, which is what the options' field picker saves.
  */
 export function dataStyleFields(frame: DataFrame, result: ConversionResult): DataStyleFields {
-  const custom: MapStyleConfig = geometryFieldOf(frame, result)?.config.custom ?? {};
+  const custom: MapStyleConfig = styleFieldOf(frame, result)?.config.custom ?? {};
   const fields: DataStyleFields = { problems: [] };
   if (custom.colorBy) {
     fields.colorField = findField(frame, custom.colorBy);
@@ -68,7 +68,7 @@ export function featureStyles(
   if (!colorField && !sizeField) {
     return undefined;
   }
-  const custom: MapStyleConfig = geometryFieldOf(frame, result)?.config.custom ?? {};
+  const custom: MapStyleConfig = styleFieldOf(frame, result)?.config.custom ?? {};
   return {
     ...(colorField && { colors: featureColors(colorField, result, theme) }),
     ...(sizeField && { radii: featureRadii(sizeField, result, sizeRange(custom)) }),

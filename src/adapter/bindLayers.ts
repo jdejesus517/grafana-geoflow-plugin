@@ -1,6 +1,13 @@
 import { DataFrame } from '@grafana/data';
 
 /**
+ * What a layer is for (docs/node-edge/architecture.md, decision 1): drawn from its own geometry,
+ * the points of a network, or the links between them. A panel's network is one Nodes and one
+ * Edges layer (decision 8; networkLayers).
+ */
+export type LayerRole = 'geometry' | 'nodes' | 'edges';
+
+/**
  * A layer's settings in the Layers list, as saved in the panel options (docs/phase_7.md, Design
  * §1). Keyed by layer id, so any other layer binding can use them too. Unset fields keep the
  * defaults, so dashboards saved before Phase 7 draw as before.
@@ -18,6 +25,11 @@ export interface LayerConfig {
   geometryField?: string;
   /** Default: a column named "id". */
   idField?: string;
+  /** Default 'geometry'. */
+  role?: LayerRole;
+  /** Edges only: the columns holding the ids of the nodes an edge joins; default detected. */
+  fromField?: string;
+  toField?: string;
 }
 
 /**
@@ -39,6 +51,9 @@ export interface BoundLayer {
   tooltips: boolean;
   geometryField?: string;
   idField?: string;
+  role: LayerRole;
+  fromField?: string;
+  toField?: string;
   /** The saved settings; undefined for a layer that has none yet. */
   config?: LayerConfig;
   /** Index into the frames; undefined for saved settings whose frame is gone. */
@@ -107,6 +122,9 @@ function bound(
     tooltips: config?.tooltips !== false,
     ...(nonEmpty(config?.geometryField) && { geometryField: config!.geometryField }),
     ...(nonEmpty(config?.idField) && { idField: config!.idField }),
+    role: config?.role === 'nodes' || config?.role === 'edges' ? config.role : 'geometry',
+    ...(nonEmpty(config?.fromField) && { fromField: config!.fromField }),
+    ...(nonEmpty(config?.toField) && { toField: config!.toField }),
     ...(config && { config }),
     ...(from.frameIndex !== undefined && { frameIndex: from.frameIndex, refId: from.refId }),
   };
@@ -150,6 +168,44 @@ function frameLayers(frames: DataFrame[]): FrameLayer[] {
       frameIndex: i,
     };
   });
+}
+
+/** A panel's network: the layers that make it, and the others with a network role. */
+export interface NetworkLayers {
+  nodes?: BoundLayer;
+  edges?: BoundLayer;
+  /** Further Nodes and Edges layers. An extra Nodes layer draws as geometry; an extra Edges layer doesn't draw. */
+  extras: BoundLayer[];
+  /** Network layers whose query returns several frames (Partition by values), so none is used. */
+  split: BoundLayer[];
+}
+
+/**
+ * The network in `layers` (from bindLayers, top first): the first Nodes and the first Edges layer
+ * with a frame (docs/node-edge/phase_1.md, decision 6).
+ *
+ * Partition by values gives each frame a refId of its own, `B-undefined` or `B-fiber`, so a role
+ * saved for layer `B` finds no frame. Such settings are reported in `split`, to say why the network
+ * isn't drawn.
+ */
+export function networkLayers(layers: BoundLayer[]): NetworkLayers {
+  const network: NetworkLayers = { extras: [], split: [] };
+  for (const layer of layers) {
+    if (layer.role === 'geometry') {
+      continue;
+    }
+    if (layer.frameIndex === undefined) {
+      const splitFrom = `${layer.id}-`;
+      if (layers.some((other) => other.refId?.startsWith(splitFrom))) {
+        network.split.push(layer);
+      }
+    } else if (!network[layer.role]) {
+      network[layer.role] = layer;
+    } else {
+      network.extras.push(layer);
+    }
+  }
+  return network;
 }
 
 /**

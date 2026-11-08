@@ -4,7 +4,7 @@ import { DataFrame, GrafanaTheme2 } from '@grafana/data';
 import { useStyles2 } from '@grafana/ui';
 import { BoundLayer, ConversionResult } from '../adapter';
 import { conversionSummary, firstWarning } from './conversionSummary';
-import { layerSettingProblems } from './panelProblems';
+import { layerSettingProblems, networkProblems } from './panelProblems';
 
 interface Props {
   /** Conversion results, in the same order as `frames`. */
@@ -54,12 +54,16 @@ export const DataSummary = ({ results, layers, frames, softwareRendering }: Prop
   if (results.length === 0) {
     return null;
   }
+  const network = networkProblems(layers, frames, results);
   return (
     <div className={styles.overlay} data-testid="geoflow-summary">
       {results.map((result, i) => {
         const warning = firstWarning(result);
         const layer = layers.find(({ frameIndex }) => frameIndex === i);
-        const settingProblems = layerSettingProblems(layer, frames[i], result);
+        const settingProblems = [
+          ...layerSettingProblems(layer, frames[i], result),
+          ...network.filter(({ layerId }) => layerId === result.layerId).map(({ text }) => text),
+        ];
         // The layer line only says something when the name or visibility isn't the default.
         const named = layer && (layer.name !== `Query ${result.layerId}` || !layer.visible);
         return (

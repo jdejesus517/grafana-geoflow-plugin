@@ -69,6 +69,34 @@ To draw each value of a column as its own layer, such as cables by placement, sp
 
 Layer settings, such as a value's visibility, are kept by layer id, so they stay with the value across refreshes.
 
+## Networks (preview)
+
+GeoFlow can draw a network from two queries: **nodes**, points with an id, and **edges**, rows naming the two nodes they join. Every edge between the same two nodes, in either direction, is drawn as one straight line between their points. For example, sites and the trunks between them:
+
+```sql
+-- Nodes (query A): point geometry and an id column.
+SELECT site_id AS id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM sites ORDER BY site_id;
+
+-- Edges (query B): no geometry, only the ids of the nodes each row joins.
+SELECT trunk_id, a_site, z_site, capacity_gbps FROM trunks ORDER BY trunk_id;
+```
+
+This is a first step: lines between nodes, with warnings. Hover totals, a click list of each line's edges and styling by value are planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)). Until the Layers list can set it up, give each layer its role in the panel JSON (the panel menu → **Inspect** → **Panel JSON**), under `options.layers`:
+
+```json
+"layers": [
+  { "id": "A", "name": "Sites", "role": "nodes" },
+  { "id": "B", "name": "Trunks", "role": "edges" }
+]
+```
+
+- **From and to columns** are found by name: `source` and `target`, `from` and `to`, `src` and `dst`, `start` and `end`, `a_end` and `z_end`, or pairs like `a_site` and `z_site`, `site_a` and `site_z`, or `from_site` and `to_site`. Other names go in the edge layer's settings: `"fromField": "near_end", "toField": "far_end"`.
+- **Node ids** come from the node layer's id column: `id`, or the one in its `idField` setting. They're matched as text, so an integer site id joins a text trunk end. Keep them unique.
+- **Style** edges like any layer, per query: **Map style** in a **Fields returned by query** override on the edge query sets their color, width and line style. Lines draw in the Layers list's order, so keep the node layer above the edge layer.
+- **One network per panel:** the first Nodes and the first Edges layer in the Layers list. Others warn; an extra Nodes layer still draws as points.
+- **Warnings** count edges that can't be drawn: an id with no node, an edge from a node to itself, an empty end, a duplicate node id, or a node that isn't a single point.
+- **Not with Partition by values:** a node or edge query split into several frames warns instead of drawing.
+
 ## Tooltips
 
 Hover a feature to highlight it and see its attributes. Click to pin the tooltip:
@@ -261,6 +289,7 @@ Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 | 11 Performance     | Points, lines, polygons and colored points at up to 100k rows, and up to 1,000 layers, picked with a variable. `npm run bench:map` measures these.         |
 | 12 Partition       | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.  |
 | 13 Basemap presets | A panel per preset provider, and MapTiler without a key. Its keys are made up: enter your own in the panel editor to see the real services.                |
+| 14 Node-edge       | Sites and trunks as a network, the same with problem rows and a second Edges layer, and edge columns set in the layer settings.                            |
 
 ### Docker environment
 
@@ -275,11 +304,11 @@ Defaults come from each directory's `.env.example`. To override them, copy it to
 
 PostgreSQL is published on `127.0.0.1:5432` (override with `GEOFLOW_PG_PORT`).
 
-**Fixture data** is a small, fictional fiber optic network in downtown Cary, NC (buildings, fiber cables, splice cases and patch panels), plus edge-case rows and 100k synthetic service locations for performance testing. Building footprints and cable routes are hand-drawn approximations and don't depict real infrastructure. Grafana connects as the read-only `grafana_reader` role.
+**Fixture data** is a small, fictional fiber optic network in downtown Cary, NC (buildings, fiber cables, splice cases and patch panels), a fictional backbone of sites and trunks around Raleigh for networks, plus edge-case rows and 100k synthetic service locations for performance testing. Building footprints and cable routes are hand-drawn approximations and don't depict real infrastructure. Grafana connects as the read-only `grafana_reader` role.
 
 New or renamed dashboard files under `docker/grafana/provisioning/dashboards/` are loaded when Grafana starts, so run `docker compose restart grafana` after adding one.
 
-The init scripts run only when the data volume is empty. To reset the database to the seed state:
+The init scripts run only when the data volume is empty, so after pulling new seed data (such as the network fixtures), reset the database to the seed state:
 
 ```bash
 docker compose down -v && npm run server
@@ -312,7 +341,7 @@ E2E tests import `test` from [tests/fixtures/](tests/fixtures/), which answers e
 Features are drawn on a WebGL canvas, so e2e tests check them in two ways:
 
 - **Drawn-feature counts.** `renderedFeatures(panel)` in `tests/fixtures/` asks the panel's map which features it drew. This goes through a small test hook in the plugin ([src/panel/testHook.ts](src/panel/testHook.ts)), which does nothing unless a test triggers it. All test-only code in `src/` is marked with a `// Test hook:` comment: `grep -rn "Test hook:" src/` lists it.
-- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style, 07 Data-driven, 08 Layers, 09 Refresh and 12 Partition dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
+- **Screenshot comparisons** of the 04 Geometry dashboard's mixed panel and of the 06 Style, 07 Data-driven, 08 Layers, 09 Refresh, 12 Partition and 14 Node-edge dashboards, stored next to their specs (`tests/*.spec.ts-snapshots/`). After an intended change to how features look, regenerate them with `npx playwright test --update-snapshots` and review the image diff.
 
 To hover or click a known feature, `mapPoint(panel, [lon, lat], view)` in `tests/fixtures/` works out where a coordinate is on screen from the panel's view in the dashboard JSON. It's plain Web Mercator math, so it needs no test hook.
 
@@ -328,7 +357,8 @@ node scripts/capture-frames.mjs
 
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
-- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md), [8](docs/phase_8.md), [9](docs/phase_9.md)
+- Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md), [8](docs/phase_8.md), [9](docs/phase_9.md), [10](docs/phase_10.md), [11](docs/phase_11.md), [12](docs/phase_12.md)
+- Node-edge maps: [architecture](docs/node-edge/architecture.md), [phase 1](docs/node-edge/phase_1.md)
 
 ## License
 
