@@ -1,5 +1,5 @@
 import { PairTable } from '../adapter';
-import { LIST_LIMIT, countText, listRows, nextSort } from './edgeList';
+import { LIST_LIMIT, countText, listRows, nextSort, searchPlaceholder } from './edgeList';
 
 const table = (rows: Array<[string, string, unknown]>): PairTable => ({
   columns: [
@@ -90,6 +90,11 @@ describe('countText', () => {
     expect(countText({ rows: [], matched: 4 }, 4, false)).toBe('4 items');
     expect(countText({ rows: [], matched: 1 }, 1, false)).toBe('1 item');
     expect(countText({ rows: [], matched: 1 }, 4, true)).toBe('1 of 4 items');
-    expect(countText({ rows: [], matched: 2340 }, 2340, false)).toBe('Showing 500 of 2,340 items. Search to narrow.');
+    expect(countText({ rows: [], matched: 2340 }, 2340, false)).toBe('Showing 500 of 2,340 items');
+  });
+
+  it('suggests searching to narrow a list that is not all drawn', () => {
+    expect(searchPlaceholder({ rows: [], matched: 4 })).toBe('Search items');
+    expect(searchPlaceholder({ rows: [], matched: 2340 })).toBe('Search to narrow');
   });
 });

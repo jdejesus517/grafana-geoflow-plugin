@@ -14,7 +14,7 @@ Click an edge line to see every edge between its two nodes: one row each, with i
 3. **Show direction.** A switch in the edge layer's settings in the Layers list, on by default, hides the direction column.
 4. **Search.** A search box filters the rows, ignoring case, over the shown values; while it filters, a count reads "1 of 4 items".
 5. **Sort.** A column header sorts by it, ascending, then descending, then back to query order. Numbers and times sort by value, text alphabetically; empty values go last.
-6. **Size.** The list draws at most 500 rows of the result ("Showing 500 of 2,340 items. Search to narrow."), keeps its headers visible while it scrolls, and fits within the map, up to 800 px wide (architecture decision 7).
+6. **Size.** The list draws at most 500 rows of the result ("Showing 500 of 2,340 items", with the search box suggesting "Search to narrow"), keeps its headers visible while it scrolls, and fits within the map, up to 800 px wide (architecture decision 7).
 7. **Data links.** Each row's data links, gathered as a feature's are and filled in with that row's values: a link icon when the query has one link, a menu when it has several (architecture decision 15).
 8. **The map stays put.** Typing in the search box, using the menu, and scrolling the list don't pan or zoom the map.
 9. **Tests.** Unit tests on the rows, search, sort and cap; component tests on the list, its links and the Show direction switch; e2e tests on the list's rows, search, sort, direction and a row's link.
@@ -77,7 +77,7 @@ interface PairTable {
 ### 3. The list (`EdgeList.tsx`, new)
 
 - **Search box:** `FilterInput`, placeholder "Search items". Escape in a non-empty box clears it; in an empty one, it closes the tooltip as before (decision 5).
-- **Count line:** "4 items", or while searching "1 of 4 items"; past the cap, "Showing 500 of 2,340 items. Search to narrow." (decision 8).
+- **Count:** beside the search box, "4 items", or while searching "1 of 4 items"; past the cap, "Showing 500 of 2,340 items", and the search box's placeholder becomes "Search to narrow" (decision 8).
 - **Table:** a header row of buttons, each with `aria-sort` and an arrow for the sorted column; body rows in a scrolling area under a sticky header. Cells don't wrap; long values end with an ellipsis and show in full on hover (`title`).
 - **Links column** (decision 4), last, when any column of the edge query has data links:
   - one link setting in the whole query: a link icon per row, an `<a>` with the link's href, target and `rel="noopener noreferrer"` for new tabs, built for the drawn rows (at most 500 interpolations);
@@ -191,6 +191,7 @@ Implemented on branch `node-edge-phase-4` in five commits, steps 4.2 to 4.5, plu
 ### Differences from the plan
 
 - **No event stopping** in the list (above).
+- **The count sits beside the search box,** not on a line of its own, found in review: it saves that line for rows. The cap's "Search to narrow" moved into the search box's placeholder to keep the count short, and the room the totals leave the list went from 170 to 150 px.
 - **Layout, adjusted by eye** in a short and a tall panel: the totals first overlapped the search box when the tooltip was short, then took all its height. Then, found in review, a minimum height on the list (160 px) pushed its last rows out of a short tooltip, below its bottom edge, where no scrolling reached them: in the Hover panel's e2e layout, and with a 164 px tooltip, 32 px of list. Now the list has no minimum and shrinks with the tooltip, and the totals make room for it: they take what's left after 170 px for the list, keeping at least a line and scrolling on their own (`totalsMaxHeight`). Measured at tooltip heights of 164 to 403 px, the last row scrolls into view; the e2e test scrolls the list to its end and checks the last row is inside the tooltip, which fails on the previous layout.
 - **A fix to step 4.3:** wrapping the totals for the list wrapped every tooltip's fields, which stopped ordinary pinned tooltips scrolling in a short panel. `tooltips.spec.ts` caught it in the full e2e run; the fix wraps the totals only with a list. Its commit is separate, after step 4.4's: the check before step 4.4's commit read the exit status of a pipeline's last command, not of the test run, so the commit went in with the failure. Such checks now read the test run's own status.
 

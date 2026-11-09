@@ -59,11 +59,19 @@ function isEmpty(value: unknown): boolean {
   return value === null || value === undefined || value === '' || (typeof value === 'number' && Number.isNaN(value));
 }
 
-/** "4 items", "1 of 4 items", or past the limit, "Showing 500 of 2,340 items. Search to narrow." */
+/**
+ * "4 items", "1 of 4 items", or past the limit, "Showing 500 of 2,340 items". Short enough to sit
+ * beside the search box, whose placeholder then says to search to narrow (searchPlaceholder).
+ */
 export function countText({ matched }: ListRows, total: number, searching: boolean): string {
   const items = (count: number) => `${count.toLocaleString('en-US')} ${count === 1 ? 'item' : 'items'}`;
   if (matched > LIST_LIMIT) {
-    return `Showing ${LIST_LIMIT} of ${items(matched)}. Search to narrow.`;
+    return `Showing ${LIST_LIMIT} of ${items(matched)}`;
   }
   return searching ? `${matched.toLocaleString('en-US')} of ${items(total)}` : items(total);
+}
+
+/** The search box's placeholder: a hint to narrow the list when it isn't all drawn. */
+export function searchPlaceholder({ matched }: ListRows): string {
+  return matched > LIST_LIMIT ? 'Search to narrow' : 'Search items';
 }

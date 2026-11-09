@@ -119,7 +119,7 @@ describe('EdgeList', () => {
 
 describe('totalsMaxHeight', () => {
   it('leaves a list its room, keeping a line of totals in a short tooltip', () => {
-    expect(totalsMaxHeight(600)).toBe(430);
+    expect(totalsMaxHeight(600)).toBe(450);
     expect(totalsMaxHeight(164)).toBe(22);
   });
 });

@@ -3,7 +3,7 @@ import { css } from '@emotion/css';
 import { DataFrame, Field, GrafanaTheme2, LinkModel } from '@grafana/data';
 import { Dropdown, FilterInput, Icon, IconButton, Menu, useStyles2 } from '@grafana/ui';
 import { PairTable } from '../adapter';
-import { ListSort, countText, listRows, nextSort } from './edgeList';
+import { ListSort, countText, listRows, nextSort, searchPlaceholder } from './edgeList';
 
 const getStyles = (theme: GrafanaTheme2) => ({
   // Shrinks with the tooltip, never past it: a minimum height here would push the last rows out of
@@ -16,9 +16,18 @@ const getStyles = (theme: GrafanaTheme2) => ({
     minHeight: 0,
     paddingTop: theme.spacing(1),
   }),
+  // The search box and the count on one line, saving the count's own line for rows.
+  searchRow: css({
+    display: 'flex',
+    alignItems: 'center',
+    gap: theme.spacing(1),
+    '& > :first-child': { flex: 1, minWidth: 0 },
+  }),
   count: css({
+    flexShrink: 0,
     color: theme.colors.text.secondary,
     fontSize: theme.typography.bodySmall.fontSize,
+    whiteSpace: 'nowrap',
   }),
   // Its rows' own height, shrinking to scroll when the tooltip is shorter.
   scroll: css({
@@ -86,21 +95,23 @@ export const EdgeList = ({ table, frame }: Props) => {
 
   return (
     <div className={styles.list} data-testid="geoflow-edge-list">
-      <FilterInput
-        value={query}
-        onChange={setQuery}
-        placeholder="Search items"
-        onKeyDown={(event) => {
-          // Escape clears a search first; with none, it closes the tooltip (decision 5).
-          if (event.key === 'Escape' && query) {
-            event.stopPropagation();
-            event.nativeEvent.stopImmediatePropagation();
-            setQuery('');
-          }
-        }}
-      />
-      <div className={styles.count} data-testid="geoflow-edge-list-count">
-        {countText(shown, table.rows.length, query.trim() !== '')}
+      <div className={styles.searchRow}>
+        <FilterInput
+          value={query}
+          onChange={setQuery}
+          placeholder={searchPlaceholder(shown)}
+          onKeyDown={(event) => {
+            // Escape clears a search first; with none, it closes the tooltip (decision 5).
+            if (event.key === 'Escape' && query) {
+              event.stopPropagation();
+              event.nativeEvent.stopImmediatePropagation();
+              setQuery('');
+            }
+          }}
+        />
+        <div className={styles.count} data-testid="geoflow-edge-list-count">
+          {countText(shown, table.rows.length, query.trim() !== '')}
+        </div>
       </div>
       <div className={styles.scroll}>
         <table className={styles.table}>

@@ -43,8 +43,8 @@ interface Props {
 const MIN_WIDTH = 180;
 /** A list's table needs a few columns' room. */
 const MIN_LIST_WIDTH = 360;
-/** What a list needs to be usable: its search box, count, table header and a couple of rows. */
-const LIST_ROOM = 170;
+/** What a list needs to be usable: its search box and count, table header and a couple of rows. */
+const LIST_ROOM = 150;
 /** The totals always keep a line. */
 const TOTALS_MIN = 22;
 
