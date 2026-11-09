@@ -424,9 +424,7 @@
         {
           "id": "partitionByValues",
           "options": {
-            "fields": [
-              "id"
-            ],
+            "fields": ["id"],
             "keepFields": false,
             "naming": {
               "asLabels": false
@@ -434,12 +432,251 @@
           }
         }
       ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "id": 7,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Network",
+      "description": "A grid of sites, each joined to its right and lower neighbors by four trunks, plus one line below the grid of a tenth as many trunks, at most 2,000. Rows is about the number of trunks; there are an eighth as many sites.",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.76,
+          "lon": -78.82,
+          "zoom": 11
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": false
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "layers": [
+          {
+            "id": "A",
+            "name": "Sites",
+            "role": "nodes"
+          },
+          {
+            "id": "B",
+            "name": "Trunks",
+            "role": "edges"
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "pointSize": 3,
+            "lineWidth": 1
+          }
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "WITH grid AS (SELECT $rows / 8 AS n, ceil(sqrt($rows / 8))::int AS w)\nSELECT g AS id, 'S-' || g AS name,\n  ST_AsGeoJSON(ST_MakePoint(-78.90 + ((g - 1) % w) * 0.16 / w, 35.84 - ((g - 1) / w) * 0.14 / w), 6) AS geometry\nFROM grid, generate_series(1, n) AS g\nUNION ALL\nSELECT n + 1, 'HEAVY-WEST', ST_AsGeoJSON(ST_MakePoint(-78.88, 35.68), 6) FROM grid\nUNION ALL\nSELECT n + 2, 'HEAVY-EAST', ST_AsGeoJSON(ST_MakePoint(-78.76, 35.68), 6) FROM grid\nORDER BY id"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSql": "WITH grid AS (SELECT $rows / 8 AS n, ceil(sqrt($rows / 8))::int AS w)\n, pairs AS (\n  SELECT g AS a, g + 1 AS z FROM grid, generate_series(1, n) AS g WHERE g % w <> 0 AND g + 1 <= n\n  UNION ALL\n  SELECT g, g + w FROM grid, generate_series(1, n) AS g WHERE g + w <= n\n), edges AS (\n  SELECT a, z, k FROM pairs, generate_series(0, 3) AS k\n  UNION ALL\n  SELECT n + 1, n + 2, k FROM grid, generate_series(1, least(2000, $rows / 10)) AS k\n), numbered AS (\n  SELECT row_number() OVER (ORDER BY a, z, k) AS i, a, z, k FROM edges\n), trunks AS (\n  SELECT i, a, z, k, (ARRAY[1, 10, 40, 100])[1 + i % 4] AS capacity_gbps FROM numbered\n)\nSELECT 'TRK-' || i AS trunk_id,\n  (CASE WHEN k % 2 = 0 THEN a ELSE z END)::text AS a_site,\n  (CASE WHEN k % 2 = 0 THEN z ELSE a END)::text AS z_site,\n  CASE WHEN i % 5 = 0 THEN 'microwave' ELSE 'fiber' END AS medium,\n  capacity_gbps,\n  capacity_gbps * ((i * 37) % 100) / 100.0 AS utilization_gbps,\n  ((i * 37) % 100) / 100.0 AS utilization\nFROM trunks\nORDER BY i"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "id": 8,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Styled network",
+      "description": "The Network panel's sites and trunks, colored by utilization (a ratio of sums) and sized by total capacity.",
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.76,
+          "lon": -78.82,
+          "zoom": 11
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "layers": [
+          {
+            "id": "A",
+            "name": "Sites",
+            "role": "nodes"
+          },
+          {
+            "id": "B",
+            "name": "Trunks",
+            "role": "edges"
+          }
+        ]
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "pointSize": 3,
+            "lineWidth": 1
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "custom.colorBy",
+                "value": "utilization"
+              },
+              {
+                "id": "custom.sizeBy",
+                "value": "capacity_gbps"
+              },
+              {
+                "id": "custom.sizeMin",
+                "value": 1
+              },
+              {
+                "id": "custom.sizeMax",
+                "value": 4
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "capacity_gbps"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Gbits"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "custom.ratioNumerator",
+                "value": "utilization_gbps"
+              },
+              {
+                "id": "custom.ratioDenominator",
+                "value": "capacity_gbps"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.65
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "WITH grid AS (SELECT $rows / 8 AS n, ceil(sqrt($rows / 8))::int AS w)\nSELECT g AS id, 'S-' || g AS name,\n  ST_AsGeoJSON(ST_MakePoint(-78.90 + ((g - 1) % w) * 0.16 / w, 35.84 - ((g - 1) / w) * 0.14 / w), 6) AS geometry\nFROM grid, generate_series(1, n) AS g\nUNION ALL\nSELECT n + 1, 'HEAVY-WEST', ST_AsGeoJSON(ST_MakePoint(-78.88, 35.68), 6) FROM grid\nUNION ALL\nSELECT n + 2, 'HEAVY-EAST', ST_AsGeoJSON(ST_MakePoint(-78.76, 35.68), 6) FROM grid\nORDER BY id"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSql": "WITH grid AS (SELECT $rows / 8 AS n, ceil(sqrt($rows / 8))::int AS w)\n, pairs AS (\n  SELECT g AS a, g + 1 AS z FROM grid, generate_series(1, n) AS g WHERE g % w <> 0 AND g + 1 <= n\n  UNION ALL\n  SELECT g, g + w FROM grid, generate_series(1, n) AS g WHERE g + w <= n\n), edges AS (\n  SELECT a, z, k FROM pairs, generate_series(0, 3) AS k\n  UNION ALL\n  SELECT n + 1, n + 2, k FROM grid, generate_series(1, least(2000, $rows / 10)) AS k\n), numbered AS (\n  SELECT row_number() OVER (ORDER BY a, z, k) AS i, a, z, k FROM edges\n), trunks AS (\n  SELECT i, a, z, k, (ARRAY[1, 10, 40, 100])[1 + i % 4] AS capacity_gbps FROM numbered\n)\nSELECT 'TRK-' || i AS trunk_id,\n  (CASE WHEN k % 2 = 0 THEN a ELSE z END)::text AS a_site,\n  (CASE WHEN k % 2 = 0 THEN z ELSE a END)::text AS z_site,\n  CASE WHEN i % 5 = 0 THEN 'microwave' ELSE 'fiber' END AS medium,\n  capacity_gbps,\n  capacity_gbps * ((i * 37) % 100) / 100.0 AS utilization_gbps,\n  ((i * 37) % 100) / 100.0 AS utilization\nFROM trunks\nORDER BY i"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
-  "tags": [
-    "geoflow"
-  ],
+  "tags": ["geoflow"],
   "templating": {
     "list": [
       {
