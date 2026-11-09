@@ -514,6 +514,322 @@
           "rawSql": "SELECT trunk_id, a_site, z_site, medium, capacity_gbps, utilization_gbps,\n  utilization_gbps / capacity_gbps AS utilization\nFROM geoflow.trunks\nORDER BY trunk_id"
         }
       ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 30
+      },
+      "id": 6,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Styled",
+      "description": "Edge lines colored by utilization, a ratio of sums, through its thresholds (yellow from 50%, red from 65%), and sized by their total capacity: CARY-CORE to RALEIGH-CORE is red and widest, APEX to HOLLY-SPRINGS green and thinnest.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "pointSize": 10,
+            "lineWidth": 3
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "custom.colorBy",
+                "value": "utilization"
+              },
+              {
+                "id": "custom.sizeBy",
+                "value": "capacity_gbps"
+              },
+              {
+                "id": "custom.sizeMin",
+                "value": 2
+              },
+              {
+                "id": "custom.sizeMax",
+                "value": 10
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "capacity_gbps"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Gbits"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.ratioNumerator",
+                "value": "utilization_gbps"
+              },
+              {
+                "id": "custom.ratioDenominator",
+                "value": "capacity_gbps"
+              },
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "yellow",
+                      "value": 0.5
+                    },
+                    {
+                      "color": "red",
+                      "value": 0.65
+                    }
+                  ]
+                }
+              },
+              {
+                "id": "color",
+                "value": {
+                  "mode": "thresholds"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.785,
+          "lon": -78.72,
+          "zoom": 11
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "layers": [
+          {
+            "id": "A",
+            "name": "Sites",
+            "role": "nodes"
+          },
+          {
+            "id": "B",
+            "name": "Trunks",
+            "role": "edges"
+          }
+        ]
+      },
+      "transformations": [],
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT site_id AS id, name, kind, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.sites\nORDER BY site_id"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSql": "SELECT trunk_id, a_site, z_site, medium, capacity_gbps, utilization_gbps,\n  utilization_gbps / capacity_gbps AS utilization\nFROM geoflow.trunks\nORDER BY trunk_id"
+        }
+      ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 30
+      },
+      "id": 7,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "By count",
+      "description": "Edge lines colored by medium where all their trunks share one (fiber blue, microwave orange), keeping the layer's color where they're mixed, and sized by their number of trunks: capacity_gbps's Edge value is Count.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "pointSize": 10,
+            "lineWidth": 3
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byFrameRefID",
+              "options": "B"
+            },
+            "properties": [
+              {
+                "id": "custom.colorBy",
+                "value": "medium"
+              },
+              {
+                "id": "custom.sizeBy",
+                "value": "capacity_gbps"
+              },
+              {
+                "id": "custom.sizeMin",
+                "value": 2
+              },
+              {
+                "id": "custom.sizeMax",
+                "value": 8
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "capacity_gbps"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Gbits"
+              },
+              {
+                "id": "custom.edgeValue",
+                "value": "count"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "medium"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "fiber": {
+                        "color": "blue",
+                        "index": 0,
+                        "text": "Fiber"
+                      },
+                      "microwave": {
+                        "color": "orange",
+                        "index": 1,
+                        "text": "Microwave"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.785,
+          "lon": -78.72,
+          "zoom": 11
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "layers": [
+          {
+            "id": "A",
+            "name": "Sites",
+            "role": "nodes"
+          },
+          {
+            "id": "B",
+            "name": "Trunks",
+            "role": "edges"
+          }
+        ]
+      },
+      "transformations": [],
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT site_id AS id, name, kind, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.sites\nORDER BY site_id"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSql": "SELECT trunk_id, a_site, z_site, medium, capacity_gbps, utilization_gbps,\n  utilization_gbps / capacity_gbps AS utilization\nFROM geoflow.trunks\nORDER BY trunk_id"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
