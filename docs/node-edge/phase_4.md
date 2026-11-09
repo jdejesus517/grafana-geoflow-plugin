@@ -1,6 +1,6 @@
 # Node-edge Phase 4: Click list
 
-Status: **Plan accepted** (2026-11-08). Decisions 1–8 accepted as proposed.
+Status: **Implemented** (2026-11-08). Decisions 1–8 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §6.2 (click list), §7 (options), §9.3 (Phase 4 row); decisions 2, 7, 9, 15.
 
 ## Goal
@@ -157,3 +157,43 @@ Design §6. No new seed data, so no database reset.
 | 6 | Show direction | **Saved only when off,** dropped off non-edge layers. | |
 | 7 | Plugin version | **Unchanged.** No `plugin.json` change, so no Grafana restart. | |
 | 8 | What counts are counted in | **Items,** in everything a viewer reads: "Items 4" in the hover (renaming Phase 3's "Links"), "4 items" in the list, "Search items". Deliberately vague: viewers see locations and lines, not nodes and edges, and GeoFlow doesn't know the domain's word ("trunks", "flights"); a setting to name them is for later (architecture §12). "Nodes" and "Edges" stay in the settings, for whoever sets the map up. | "Links", telecom-flavored and confusable with data links; "edges", graph terms viewers needn't know; "connections", which fits some networks better than others; "rows", the query's word, odd in a hover. |
+
+---
+
+## Outcome
+
+Implemented on branch `node-edge-phase-4` in five commits, steps 4.2 to 4.5, plus a fix to step 4.3 (below). Step 4.1 was checks only, recorded below.
+- 653 unit and component tests pass (18 new), and 76 e2e tests (2 new, plus the login setup). No seed data changed, so the stack wasn't reset.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | The list | Met. A pinned edge line shows its header and totals, then its rows in query order. |
+| 2 | Columns | Met. Each row's own direction, then the edge query's columns less hidden ones, formatted as tooltips are. |
+| 3 | Show direction | Met. A switch for edge layers in the Layers list (component and e2e tests). |
+| 4 | Search | Met. "1 of 4 items" for "microwave" (e2e); every shown cell, the direction included. |
+| 5 | Sort | Met. Ascending, descending, then query order; numbers by value, text with its numbers in order, empty values last. |
+| 6 | Size | Met. At most 500 rows drawn, with the count of the rest; sticky headers; up to 800 px wide. |
+| 7 | Data links | Met. One link setting: an icon per row with the row's values (e2e: TRK-002's link). Several: a menu per row, built when opened (component test, and checked by hand). |
+| 8 | The map stays put | Met, without code: keys and the wheel in a tooltip never reach MapLibre (step 4.1). An e2e test types "+" and "-" in the search box and compares the map before and after. |
+| 9 | Tests | Met. |
+| 10 | Wording | Met. "Items 4" in the hover, "4 items" in the list, "Search items". |
+| 11 | Docs | Met. The README's list section. |
+
+### Checks on Grafana 13.2 and MapLibre (step 4.1)
+
+- **Keys and the wheel:** MapLibre listens for them on its canvas container (`map.getCanvasContainer()`), and its popup is a sibling of that, not inside it. Checked in Grafana with an input placed in a pinned tooltip: typing `+`, `-`, `e`, `v`, `d` and the arrow keys moves the map not at all and fires none of Grafana's shortcuts, and the wheel over the tooltip doesn't zoom. So the list stops no events (Design §3 planned to): nothing reaches the map to stop.
+- **The menu:** `Dropdown` renders it outside the popup (a portal); the tooltip stays pinned while it's open, and Escape closes only the menu.
+- **Escape in an input** reached the panel's own handler and closed the tooltip, as decision 5 expected; the list now clears a search first.
+
+### Differences from the plan
+
+- **No event stopping** in the list (above).
+- **Layout, adjusted by eye** in a short and a tall panel: the totals first overlapped the search box when the tooltip was short, then took all its height. Now the totals keep their size when there's room and scroll in their own area when there isn't, and the list keeps at least 160 px for its rows. In a tall panel, everything shows in full.
+- **A fix to step 4.3:** wrapping the totals for the list wrapped every tooltip's fields, which stopped ordinary pinned tooltips scrolling in a short panel. `tooltips.spec.ts` caught it in the full e2e run; the fix wraps the totals only with a list. Its commit is separate, after step 4.4's: the check before step 4.4's commit read the exit status of a pipeline's last command, not of the test run, so the commit went in with the failure. Such checks now read the test run's own status.
+
+### Findings for later phases
+
+- **In a short panel, a pinned list has little room:** the tooltip gets the larger side of the clicked point, and a panel a few hundred pixels tall leaves the list three rows. Larger panels, or View panel, show more.
