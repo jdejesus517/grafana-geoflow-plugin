@@ -149,7 +149,7 @@ Design §6. No new seed data, so no database reset.
 
 | # | Decision | Proposal | Alternatives |
 |---|---|---|---|
-| 1 | What a pinned pair shows | **The header and totals, then the list,** so the totals stay in view above the rows. | The list alone, losing the totals; the totals as a list footer. |
+| 1 | What a pinned pair shows | **The header and totals, then the list,** so the totals stay in view above the rows. *Replaced in review by a Summary \| Items switch (Outcome).* | The list alone, losing the totals; the totals as a list footer. |
 | 2 | Sort cycle | **Ascending, descending, then query order,** so the query's order can be had back without reopening the tooltip. | Ascending and descending only (architecture decision 7), with query order lost after the first click. |
 | 3 | What search matches | **The shown text of every shown column,** direction included ("6 → 1" finds that direction), so what you see is what you can find. | Raw values, which miss formatted text ("100 Gb/s"); every column, hidden ones included, which matches rows for reasons not on screen. |
 | 4 | Links per row | **By the query's link settings:** one setting gives a link icon per row, built for the drawn rows; several give a menu per row, built when opened. | Always a menu, an extra click for the common single link; always icons, which can't hold several links. |
@@ -162,15 +162,15 @@ Design §6. No new seed data, so no database reset.
 
 ## Outcome
 
-Implemented on branch `node-edge-phase-4` in five commits, steps 4.2 to 4.5, plus a fix to step 4.3 (below). Step 4.1 was checks only, recorded below.
-- 653 unit and component tests pass (18 new), and 76 e2e tests (2 new, plus the login setup). No seed data changed, so the stack wasn't reset.
+Implemented on branch `node-edge-phase-4` in five commits, steps 4.2 to 4.5, plus a fix to step 4.3 and the changes made in review (below). Step 4.1 was checks only, recorded below.
+- 660 unit and component tests pass (25 new), and 77 e2e tests (3 new, plus the login setup). No seed data changed, so the stack wasn't reset.
 - CI: to be filled in from the pull request.
 
 ### Exit criteria
 
 | # | Criterion | Result |
 |---|---|---|
-| 1 | The list | Met. A pinned edge line shows its header and totals, then its rows in query order. |
+| 1 | The list | Met, changed in review: a pinned edge line shows its header and a Summary \| Items switch, opening on its rows in query order. |
 | 2 | Columns | Met. Each row's own direction, then the edge query's columns less hidden ones, formatted as tooltips are. |
 | 3 | Show direction | Met. A switch for edge layers in the Layers list (component and e2e tests). |
 | 4 | Search | Met. "1 of 4 items" for "microwave" (e2e); every shown cell, the direction included. |

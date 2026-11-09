@@ -148,10 +148,11 @@ The tooltip names the pair by its node ids ("Between SITE-04 and SITE-11") and c
 
 ### 6.2 Click list
 
-A pinned tooltip on a pair shows the pair's header and aggregates, then the list:
+A pinned tooltip on a pair shows its header and a **Summary | Items** switch (node-edge Phase 4): Summary is the hover's content, Items the list, each with the tooltip's whole height. It opens on Items. The list:
 - **Columns:** direction (unless Show direction is off), then the edge query's columns in query order, less those hidden from tooltips (decision 9). Values are formatted with each column's display processor, as in feature tooltips.
 - **Search, sort, size:** decision 7, refined in Phase 4: a third header click returns to query order, and counts read "items", not links, since viewers needn't know graph terms (node-edge Phase 4, decisions 2 and 8). Formatted values are computed once per pair when the list opens, for searching and display; sorting uses the raw values.
 - **Width:** a table needs more room than a tooltip's 400 px, so the list may use the map's full width (`tooltipSpace`), up to 800 px.
+- **Rows:** numbered as listed, in a first column that stays in view scrolling either way. Every row is 24 px; the list shows the header and whole rows, at least one, above any horizontal scrollbar, and moves one row per wheel notch.
 - **Data links:** per row (decision 15). A final column, shown when any column of the edge query has data links: a link icon on each row when the query has one link setting, or an icon button opening a menu (Grafana's `Dropdown` and `Menu`) when it has several (node-edge Phase 4, decision 4). A row's links are those of every column for that row, deduplicated, hidden columns included, as `featureDetails` gathers a feature's ([featureDetails.ts](../../src/adapter/featureDetails.ts)); variables such as `${__data.fields.trunk_id}` take that row's values. They're built when the row's button is used, not for every drawn row. The hover has no links: it covers the whole pair, not one row.
 
 ### 6.3 Styling
