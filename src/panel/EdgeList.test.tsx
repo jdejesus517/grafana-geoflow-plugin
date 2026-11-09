@@ -39,8 +39,9 @@ function frame(linksPerField: number[] = []): DataFrame {
   return data;
 }
 
+// Cells: the row number, then Direction, trunk_id and capacity.
 const rows = () =>
-  screen.getAllByTestId('geoflow-edge-list-row').map((row) => within(row).getAllByRole('cell')[1].textContent);
+  screen.getAllByTestId('geoflow-edge-list-row').map((row) => within(row).getAllByRole('cell')[2].textContent);
 const count = () => screen.getByTestId('geoflow-edge-list-count').textContent;
 
 describe('EdgeList', () => {
@@ -50,6 +51,18 @@ describe('EdgeList', () => {
     expect(rows()).toEqual(['TRK-001', 'TRK-002', 'TRK-003']);
     expect(count()).toBe('3 items');
     expect(screen.getByRole('columnheader', { name: 'Direction' })).toBeInTheDocument();
+  });
+
+  it('numbers the rows as listed, renumbering after a sort', () => {
+    render(<EdgeList table={TABLE} frame={frame()} />);
+    const numbers = () =>
+      screen.getAllByTestId('geoflow-edge-list-row').map((row) => within(row).getAllByRole('cell')[0].textContent);
+    expect(screen.getByRole('columnheader', { name: '#' })).toBeInTheDocument();
+    expect(numbers()).toEqual(['1', '2', '3']);
+
+    fireEvent.click(screen.getByRole('button', { name: 'capacity' }));
+    expect(rows()).toEqual(['TRK-002', 'TRK-003', 'TRK-001']);
+    expect(numbers()).toEqual(['1', '2', '3']);
   });
 
   it('filters by search, counting what it found', () => {

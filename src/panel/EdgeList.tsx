@@ -83,6 +83,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
     cursor: 'pointer',
     '&:hover': { color: theme.colors.text.primary },
   }),
+  // The row's place in the list as shown, to keep track of where you are while scrolling.
+  number: css({
+    color: theme.colors.text.secondary,
+    textAlign: 'right !important' as 'right',
+    fontVariantNumeric: 'tabular-nums',
+  }),
   link: css({
     display: 'inline-flex',
     color: theme.colors.text.link,
@@ -169,6 +175,9 @@ export const EdgeList = ({ table, frame }: Props) => {
         <table className={styles.table}>
           <thead className={styles.head}>
             <tr>
+              <th className={styles.number} title="Row number, as listed">
+                #
+              </th>
               {table.columns.map((column) => {
                 const sorted = sort?.key === column.key ? sort : undefined;
                 return (
@@ -192,8 +201,9 @@ export const EdgeList = ({ table, frame }: Props) => {
             </tr>
           </thead>
           <tbody>
-            {shown.rows.map((row) => (
+            {shown.rows.map((row, position) => (
               <tr key={row.row} data-testid="geoflow-edge-list-row">
+                <td className={styles.number}>{position + 1}</td>
                 {row.cells.map((cell, i) => (
                   <td key={table.columns[i].key} title={cell}>
                     {cell}
