@@ -123,8 +123,16 @@ export const EdgeList = ({ table, frame }: Props) => {
       return;
     }
     const observer = new ResizeObserver(() => {
+      // A horizontal scrollbar, when the table is wider than the tooltip, takes height from the
+      // rows: the gap between the outer and the inner height. The area grows by it, so the header
+      // and whole rows show above it.
+      const scrollbar = element.offsetHeight - element.clientHeight;
+      const minHeight = `${ROW_HEIGHT * 2 + scrollbar}px`;
+      if (element.style.minHeight !== minHeight) {
+        element.style.minHeight = minHeight;
+      }
       if (element.scrollHeight > element.clientHeight && element.clientHeight > 0) {
-        const height = `${wholeRowsHeight(element.clientHeight)}px`;
+        const height = `${wholeRowsHeight(element.clientHeight) + scrollbar}px`;
         if (element.style.maxHeight !== height) {
           element.style.maxHeight = height;
         }
