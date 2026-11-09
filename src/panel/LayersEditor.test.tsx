@@ -247,14 +247,14 @@ describe('LayersEditor roles', () => {
     expect(lastSaved(onChange)).toEqual([{ id: 'A', role: 'nodes' }]);
   });
 
-  it('shows an edge layer its From and To columns, detected, and no geometry, ID or tooltip settings', () => {
+  it('shows an edge layer its From and To columns, detected, and no geometry or ID settings', () => {
     setup([{ id: 'B', role: 'edges' }], [trunks()]);
 
     expect(placeholder(/^From column/)).toBe('Auto: a_site');
     expect(placeholder(/^To column/)).toBe('Auto: z_site');
     expect(settings().queryByLabelText(/^Geometry column/)).not.toBeInTheDocument();
     expect(settings().queryByLabelText(/^ID column/)).not.toBeInTheDocument();
-    expect(settings().queryByLabelText(/^Tooltips/)).not.toBeInTheDocument();
+    expect(settings().getByLabelText(/^Tooltips/)).toBeInTheDocument();
   });
 
   it('saves a chosen column, and detects the other from the same pair', () => {

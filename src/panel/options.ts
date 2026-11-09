@@ -1,4 +1,4 @@
-import { DEFAULT_LAYER_BINDING, LayerBinding, LayerConfig, MapStyleConfig } from '../adapter';
+import { DEFAULT_LAYER_BINDING, EdgeFieldConfig, LayerBinding, LayerConfig, MapStyleConfig } from '../adapter';
 import { BasemapSpec, ViewState } from '../engine';
 import { PROVIDERS, PresetChoice, ProviderId, isProviderId, presetBasemap } from './basemapPresets';
 
@@ -67,7 +67,7 @@ export interface GeoFlowOptions {
  * The Map style options are read from each query's geometry field (docs/phase_5.md and
  * docs/phase_6.md).
  */
-export interface GeoFlowFieldConfig extends MapStyleConfig {
+export interface GeoFlowFieldConfig extends MapStyleConfig, EdgeFieldConfig {
   /** Leave the field out of tooltips. Its data links still show. */
   hideInTooltip?: boolean;
 }

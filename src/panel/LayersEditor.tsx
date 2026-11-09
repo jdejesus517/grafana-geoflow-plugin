@@ -332,16 +332,13 @@ function LayerSettings({ layer, frame, defaultName, onChange, onRoleChange }: Se
             />
           </Field>
         )}
-        {/* Edges get their own tooltip in a later phase (docs/node-edge/phase_2.md, decision 2). */}
-        {!edges && (
-          <Field label="Tooltips" description="Off: the layer is drawn, but its features can't be hovered or clicked.">
-            <Switch
-              id={`${id}-tooltips`}
-              value={layer.tooltips}
-              onChange={() => onChange({ tooltips: !layer.tooltips })}
-            />
-          </Field>
-        )}
+        <Field label="Tooltips" description="Off: the layer is drawn, but its features can't be hovered or clicked.">
+          <Switch
+            id={`${id}-tooltips`}
+            value={layer.tooltips}
+            onChange={() => onChange({ tooltips: !layer.tooltips })}
+          />
+        </Field>
       </Stack>
     </div>
   );

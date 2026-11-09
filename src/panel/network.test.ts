@@ -161,14 +161,14 @@ describe('convertFrames with a network', () => {
 });
 
 describe('buildLayerSpecs with a network', () => {
-  it('draws edges in the Layers list order, from Map style on the from column, not interactive', () => {
+  it('draws edges in the Layers list order, from Map style on the from column, interactive like any layer', () => {
     const frames = [sites(), trunks()];
     frames[1].fields[1].config = { custom: { lineWidth: 6 } };
     const { layers, results } = convert(frames);
     const specs = buildLayerSpecs(layers, results, frames, createTheme());
 
     expect(specs.map(({ id }) => id)).toEqual(['A', 'B']);
-    expect(specs[1]).toMatchObject({ interactive: false, style: { lineWidth: 6 } });
+    expect(specs[1]).toMatchObject({ interactive: true, style: { lineWidth: 6 } });
     expect(specs[1].featureStyles).toBeUndefined();
     expect(specs[0].interactive).toBe(true);
   });

@@ -16,9 +16,8 @@ import { layerStyle } from './layerStyle';
  * recolor others (docs/phase_7.md, decision 7). Layers with Color by or Size by also get
  * per-feature styles (docs/phase_6.md, Design §2).
  *
- * Edge layers have neither yet: per-feature styles from a pair's rows, and their own tooltip, come
- * in later node-edge phases. Until then the feature tooltip would show a pair's first row as if it
- * were the pair (docs/node-edge/phase_1.md, decision 4).
+ * Edge layers have no per-feature styles yet: styles from a pair's values come in a later
+ * node-edge phase.
  *
  * `results` are the conversions of `frames`, in the same order.
  */
@@ -47,7 +46,7 @@ export function buildLayerSpecs(
         data: result.featureCollection,
         style: layerStyle(frame, result, paletteIndex.get(i)!, theme, layer.colorName),
         ...(styles && { featureStyles: styles }),
-        interactive: interactive && layer.tooltips && !edges,
+        interactive: interactive && layer.tooltips,
       };
     });
 }
