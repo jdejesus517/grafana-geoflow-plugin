@@ -147,17 +147,24 @@ export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, o
           {pinned && <IconButton name="times" size="sm" aria-label="Close" onClick={onClose} />}
         </div>
         <div className={styles.body}>
-          <div className={feature.list ? styles.totals : undefined}>
-            <VizTooltipContent items={feature.details.items} isPinned={pinned} scrollable={!feature.list}>
+          {feature.list ? (
+            <>
+              {/* The totals stay above the rows (decision 1), scrolling on their own when short. */}
+              <div className={styles.totals}>
+                <VizTooltipContent items={feature.details.items} isPinned={pinned} />
+              </div>
+              <EdgeList key={`${feature.layerId}:${feature.featureId}`} {...feature.list} />
+            </>
+          ) : (
+            // A direct child of the body, so the list shrinks and scrolls in a short tooltip.
+            <VizTooltipContent items={feature.details.items} isPinned={pinned} scrollable>
               {!pinned && others > 0 && (
                 <div className={styles.more} data-testid="geoflow-tooltip-more">
                   +{others} more
                 </div>
               )}
             </VizTooltipContent>
-          </div>
-          {/* The totals stay in view above the rows, which scroll (decision 1). */}
-          {feature.list && <EdgeList key={`${feature.layerId}:${feature.featureId}`} {...feature.list} />}
+          )}
         </div>
         {pinned && feature.details.links.length > 0 && <VizTooltipFooter dataLinks={feature.details.links} />}
       </VizTooltipWrapper>
