@@ -8,12 +8,12 @@ import {
   formattedValueToString,
   getFieldColorModeForField,
   getFieldDisplayName,
-  getMinMaxAndDelta,
   getValueFormat,
   sortThresholds,
 } from '@grafana/data';
 import { LayerSpec } from '../engine';
-import { dataStyleFields } from './featureStyles';
+import { EDGE_AGGREGATES } from './edgeValues';
+import { dataStyleFields, styleSource } from './featureStyles';
 import { ConversionResult } from './frameToFeatureCollection';
 
 export interface LegendItem {
@@ -26,7 +26,7 @@ export interface LegendEntry {
   layerId: string;
   /** The layer's name, as tooltips show it. */
   title: string;
-  /** The Color by column's display name. */
+  /** The Color by column's display name; for an edge layer, with its Edge value: "capacity (sum)". */
   column: string;
   /** Value mappings with a color, then threshold steps. */
   items: LegendItem[];
@@ -50,17 +50,18 @@ export function legendEntries(
   return [...layers].reverse().flatMap((layer) => {
     const i = results.findIndex((result) => result.layerId === layer.id);
     const [frame, result] = [frames[i], results[i]];
-    const field =
+    const column =
       layer.visible && result && !result.noGeometry && frame ? dataStyleFields(frame, result).colorField : undefined;
-    if (!field) {
+    if (!column) {
       return [];
     }
+    // Edge layers are colored by their pairs' values, across those values' range.
+    const { field, range, edgeKind } = styleSource(frame, result, column);
     const colorMode = getFieldColorModeForField(field);
     const items = mappingItems(field.config.mappings ?? [], theme);
     let gradient: LegendEntry['gradient'];
     if (colorMode.isContinuous && colorMode.getColors) {
-      const { min, max } = getMinMaxAndDelta(field);
-      gradient = { colors: colorMode.getColors(theme), min: format(field, min), max: format(field, max) };
+      gradient = { colors: colorMode.getColors(theme), min: format(field, range?.min), max: format(field, range?.max) };
     } else if (colorMode.isByValue) {
       items.push(...thresholdItems(field, theme));
     }
@@ -71,12 +72,21 @@ export function legendEntries(
       {
         layerId: layer.id,
         title: layer.name,
-        column: getFieldDisplayName(field, frame),
+        column: columnName(getFieldDisplayName(column, frame), edgeKind),
         items,
         ...(gradient && { gradient }),
       },
     ];
   });
+}
+
+/**
+ * An edge layer's column is named with the aggregate its lines are colored by. A ratio's unit
+ * says what it is, and a shared text value is the column's own (docs/node-edge/phase_5.md, Design §4).
+ */
+function columnName(name: string, kind: ReturnType<typeof styleSource>['edgeKind']): string {
+  const aggregate = EDGE_AGGREGATES.find(({ value }) => value === kind);
+  return aggregate ? `${name} (${aggregate.short})` : name;
 }
 
 /** One item per value mapping that sets a color, in the mappings' order, as Grafana lists them. */

@@ -14,10 +14,8 @@ import { layerStyle } from './layerStyle';
  * Each layer is styled from its frame's field config (layerStyle). Palette colors go by the
  * frame's position among frames with a geometry column, so moving or hiding a layer doesn't
  * recolor others (docs/phase_7.md, decision 7). Layers with Color by or Size by also get
- * per-feature styles (docs/phase_6.md, Design §2).
- *
- * Edge layers have no per-feature styles yet: styles from a pair's values come in a later
- * node-edge phase.
+ * per-feature styles (docs/phase_6.md, Design §2); an edge layer's come from its pairs' edge
+ * values (docs/node-edge/phase_5.md, Design §2).
  *
  * `results` are the conversions of `frames`, in the same order.
  */
@@ -37,8 +35,7 @@ export function buildLayerSpecs(
     .map((layer) => {
       const i = layer.frameIndex!;
       const [frame, result] = [frames[i], results[i]];
-      const edges = layer.role === 'edges';
-      const styles = edges ? undefined : featureStyles(frame, result, theme);
+      const styles = featureStyles(frame, result, theme);
       return {
         id: layer.id,
         name: layer.name,

@@ -1,7 +1,8 @@
 import { DataFrame, FieldConfig, FieldType, createTheme, getDisplayProcessor, toDataFrame } from '@grafana/data';
 import { frameToFeatureCollection } from '../frameToFeatureCollection';
 import { joinEdges } from '../joinEdges';
-import { EdgeFieldConfig, pairDetails } from '../pairDetails';
+import { EdgeFieldConfig } from '../edgeValues';
+import { pairDetails } from '../pairDetails';
 
 const theme = createTheme();
 const point = (lon: number) => `{"type":"Point","coordinates":[${lon},35.78]}`;

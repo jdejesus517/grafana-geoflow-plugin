@@ -1,3 +1,4 @@
+import { DataFrame, Field, getFieldDisplayName } from '@grafana/data';
 import { ConversionResult, FeatureKey } from './frameToFeatureCollection';
 
 // Lookups between a feature's MapLibre id, its position in the FeatureCollection, its data frame
@@ -39,4 +40,12 @@ export function featureByKey(
   return i === undefined
     ? undefined
     : { featureId: result.featureCollection.features[i].id as number, row: result.featureRows[i] };
+}
+
+/** A column named by a field option: by name, or by display name, as the options' field picker saves. */
+export function findField(frame: DataFrame, name: string): Field | undefined {
+  return (
+    frame.fields.find((field) => field.name === name) ??
+    frame.fields.find((field) => getFieldDisplayName(field, frame) === name)
+  );
 }
