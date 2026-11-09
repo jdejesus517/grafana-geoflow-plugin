@@ -360,6 +360,143 @@
           "rawSql": "SELECT trunk_id, a_site, z_site, medium, capacity_gbps, utilization_gbps\nFROM geoflow.trunks\nORDER BY trunk_id"
         }
       ]
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "geoflow-postgis"
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "id": 5,
+      "type": "jdejesusio-geoflow-panel",
+      "title": "Hover",
+      "description": "Hover totals: capacity summed and averaged, utilization summed, and utilization as a ratio of sums, in a fixed view so tests can point at the CARY-CORE to RALEIGH-CORE line.",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "pointSize": 10,
+            "lineWidth": 3
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "capacity_gbps"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Gbits"
+              },
+              {
+                "id": "custom.edgeAggregates",
+                "value": ["sum", "mean"]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization_gbps"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Gbits"
+              },
+              {
+                "id": "custom.edgeAggregates",
+                "value": ["sum"]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "utilization"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "percentunit"
+              },
+              {
+                "id": "decimals",
+                "value": 0
+              },
+              {
+                "id": "custom.ratioNumerator",
+                "value": "utilization_gbps"
+              },
+              {
+                "id": "custom.ratioDenominator",
+                "value": "capacity_gbps"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "basemap": {
+          "kind": "none"
+        },
+        "view": {
+          "mode": "fixed",
+          "lat": 35.785,
+          "lon": -78.72,
+          "zoom": 11
+        },
+        "tooltip": "hover",
+        "legend": {
+          "show": true
+        },
+        "layerBinding": {
+          "mode": "perFrame"
+        },
+        "layers": [
+          {
+            "id": "A",
+            "name": "Sites",
+            "role": "nodes"
+          },
+          {
+            "id": "B",
+            "name": "Trunks",
+            "role": "edges"
+          }
+        ]
+      },
+      "transformations": [],
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "A",
+          "rawSql": "SELECT site_id AS id, name, kind, ST_AsGeoJSON(geom, 6) AS geometry\nFROM geoflow.sites\nORDER BY site_id"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "geoflow-postgis"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "refId": "B",
+          "rawSql": "SELECT trunk_id, a_site, z_site, medium, capacity_gbps, utilization_gbps,\n  utilization_gbps / capacity_gbps AS utilization\nFROM geoflow.trunks\nORDER BY trunk_id"
+        }
+      ]
     }
   ],
   "schemaVersion": 39,
