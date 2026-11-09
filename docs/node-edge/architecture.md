@@ -144,6 +144,8 @@ interface ConversionResult {
 
 The tooltip names the pair by its node ids ("Between SITE-04 and SITE-11") and counts its rows ("Items 3": viewers needn't know graph terms; node-edge Phase 4, decision 8). Then one line per chosen aggregate, per column, in query order: "capacity_gbps: sum 120 Gb/s, avg 40 Gb/s". Ratio columns show their pair value: "utilization: 31%". Aggregates are computed for the hovered pair only, and kept per pair until the data changes, so moving along a line costs nothing.
 
+**From Phase 5 (agreed in Phase 4's review):** with Phase 4's Summary | Items switch, the pinned tooltip's Summary shows all of this, so the hover becomes a glance: Between, Items, and the pair values behind the edge layer's Color by and Size by, which say why the line looks as it does. A hover can't scroll, so a long summary there gets cut off. With no Color by or Size by, the hover keeps the full summary, so panels without styling lose nothing.
+
 ### 6.2 Click list
 
 A pinned tooltip on a pair shows the pair's header and aggregates, then the list:
@@ -226,7 +228,7 @@ Each phase ends with something usable and its own tests, as in the main plan. Ph
 | 2 | **Layers editor:** the Role select; From and To column pickers showing the detected columns; geometry and ID column pickers hidden for edge layers; a layer whose role becomes Edges moves below the node layer (decision 14) | Component tests on the editor; e2e: making a network from two geometry layers in the editor |
 | 3 | **Hover:** the Edges field options for aggregates and ratios; the pair tooltip with row count, aggregates and ratios; pinned pairs following refreshes (showing the hover content until Phase 4) | Unit tests on aggregates and ratios; e2e hover |
 | 4 | **Click list:** `EdgeList` with search, sort, scrolling and the cap; the direction column and its Show direction switch; row data links; the pager mixing node and pair entries | Component tests; e2e click, search, sort and a row's link |
-| 5 | **Styling by pair values:** Pair value; Color by and Size by on edges; per-feature widths in the engine; legend | Unit tests on pair values and ranges; e2e styling |
+| 5 | **Styling by pair values:** Pair value; Color by and Size by on edges; per-feature widths in the engine; legend; the hover shows the styled pair values (§6.1) | Unit tests on pair values and ranges; e2e styling |
 | 6 | **Hardening and docs:** the large network benchmark and any optimization; README walkthrough; architecture updates | Benchmark against budgets; docs reviewed |
 
 ## 10. Decisions
