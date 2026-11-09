@@ -188,6 +188,19 @@ test('lists the edges of a clicked line, to search, sort and follow', async ({
 
   // The four trunks between CARY-CORE (1) and RALEIGH-CORE (6), each with its own direction.
   await expect(rows).toHaveCount(4);
+  // Scrolled to the end, the last row is inside the tooltip: a short tooltip once clipped it.
+  const lastRowShown = await list.evaluate((el) => {
+    const scroller = el.querySelector('table')!.parentElement!;
+    scroller.scrollTop = scroller.scrollHeight;
+    const tooltip = el.closest('[data-testid="geoflow-tooltip"]')!.getBoundingClientRect();
+    const last = [...el.querySelectorAll('[data-testid="geoflow-edge-list-row"]')].at(-1)!.getBoundingClientRect();
+    return (
+      last.height > 0 &&
+      last.bottom <= tooltip.bottom + 0.5 &&
+      last.bottom <= scroller.getBoundingClientRect().bottom + 0.5
+    );
+  });
+  expect(lastRowShown).toBe(true);
   await expect(list.getByTestId('geoflow-edge-list-count')).toHaveText('4 items');
   expect(await column('Direction')).toEqual(['1 → 6', '6 → 1', '1 → 6', '6 → 1']);
 

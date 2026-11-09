@@ -43,6 +43,15 @@ interface Props {
 const MIN_WIDTH = 180;
 /** A list's table needs a few columns' room. */
 const MIN_LIST_WIDTH = 360;
+/** What a list needs to be usable: its search box, count, table header and a couple of rows. */
+const LIST_ROOM = 170;
+/** The totals always keep a line. */
+const TOTALS_MIN = 22;
+
+/** The totals' height in a tooltip of `maxHeight` with a list: what's left after the list's room. */
+export function totalsMaxHeight(maxHeight: number): number {
+  return Math.max(TOTALS_MIN, maxHeight - LIST_ROOM);
+}
 
 // The look of Grafana's own tooltip container (getTooltipContainerStyles in @grafana/ui), which
 // isn't exported to plugins. The header and footer keep their height, and the field list between
@@ -83,9 +92,10 @@ const getStyles = (theme: GrafanaTheme2) => ({
     whiteSpace: 'nowrap',
   }),
   // With a list, the totals come first, and scroll in their own area when the tooltip is short,
-  // so the list keeps room for its rows (docs/node-edge/phase_4.md, decision 1).
+  // so the list keeps room for its rows (docs/node-edge/phase_4.md, decision 1). Their height is
+  // capped by totalsMaxHeight.
   totals: css({
-    flex: '0 1 auto',
+    flex: '0 0 auto',
     overflowY: 'auto',
   }),
   more: css({
@@ -150,7 +160,7 @@ export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, o
           {feature.list ? (
             <>
               {/* The totals stay above the rows (decision 1), scrolling on their own when short. */}
-              <div className={styles.totals}>
+              <div className={styles.totals} style={{ maxHeight: totalsMaxHeight(maxHeight) }}>
                 <VizTooltipContent items={feature.details.items} isPinned={pinned} />
               </div>
               <EdgeList key={`${feature.layerId}:${feature.featureId}`} {...feature.list} />

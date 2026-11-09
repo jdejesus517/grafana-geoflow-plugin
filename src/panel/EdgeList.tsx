@@ -6,14 +6,14 @@ import { PairTable } from '../adapter';
 import { ListSort, countText, listRows, nextSort } from './edgeList';
 
 const getStyles = (theme: GrafanaTheme2) => ({
-  // At least a few rows' height, which the totals above give up first in a short tooltip.
+  // Shrinks with the tooltip, never past it: a minimum height here would push the last rows out of
+  // a short tooltip, where no scrolling reaches them. The totals above make room for it instead.
   list: css({
     display: 'flex',
     flexDirection: 'column',
     flex: '0 1 auto',
     gap: theme.spacing(0.5),
-    minHeight: 160,
-    maxHeight: '100%',
+    minHeight: 0,
     paddingTop: theme.spacing(1),
   }),
   count: css({

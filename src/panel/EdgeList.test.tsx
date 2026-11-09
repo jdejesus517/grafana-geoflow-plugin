@@ -3,6 +3,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react';
 import { DataFrame, Field, FieldType, LinkModel, toDataFrame } from '@grafana/data';
 import { PairTable } from '../adapter';
 import { EdgeList } from './EdgeList';
+import { totalsMaxHeight } from './FeatureTooltip';
 
 const TABLE: PairTable = {
   columns: [
@@ -113,5 +114,12 @@ describe('EdgeList', () => {
     render(<EdgeList table={TABLE} frame={frame()} />);
 
     expect(screen.queryByRole('columnheader', { name: 'Links' })).not.toBeInTheDocument();
+  });
+});
+
+describe('totalsMaxHeight', () => {
+  it('leaves a list its room, keeping a line of totals in a short tooltip', () => {
+    expect(totalsMaxHeight(600)).toBe(430);
+    expect(totalsMaxHeight(164)).toBe(22);
   });
 });
