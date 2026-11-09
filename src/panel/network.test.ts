@@ -197,6 +197,19 @@ describe('buildLayerSpecs with a network', () => {
   });
 });
 
+describe('edge styling warnings', () => {
+  it('says why Color by or Size by on edges has no effect, as for other layers', () => {
+    const frames = [sites(), trunks()];
+    frames[1].fields[1].config = { custom: { colorBy: 'utilization', sizeBy: 'trunk_id' } };
+    const { layers, results } = convert(frames);
+
+    expect(panelProblems(results, layers, frames).map(({ text }) => text)).toEqual([
+      'Color by: no column named utilization',
+      "Size by: trunk_id isn't a number column",
+    ]);
+  });
+});
+
 describe('network warnings', () => {
   it("counts edge rows that can't be drawn, and labels node rows as such", () => {
     const nodes = toDataFrame({

@@ -115,7 +115,7 @@ export function styleSource(frame: DataFrame, result: ConversionResult, field: F
   return { field: counted, valueAt: (i) => values[i], range, edgeKind: kind };
 }
 
-/** Min and Max point size, px, with their defaults and ranges. */
+/** Min size and Max size, px, with their defaults and ranges: point diameters or edge line widths. */
 function sizeRange(custom: MapStyleConfig): [number, number] {
   return [mapStyleNumber(custom, 'sizeMin'), mapStyleNumber(custom, 'sizeMax')];
 }

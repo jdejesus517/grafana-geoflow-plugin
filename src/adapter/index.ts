@@ -14,6 +14,7 @@ export { dataStyleFields, featureStyles } from './featureStyles';
 export type { DataStyleFields } from './featureStyles';
 export { EMPTY_VALUE, featureDetails } from './featureDetails';
 export { pairDetails } from './pairDetails';
+export type { PairView } from './pairDetails';
 export { EDGE_AGGREGATES, edgeValueProblem, edgeValues } from './edgeValues';
 export type { EdgeValueKind, EdgeValues } from './edgeValues';
 export { DIRECTION_KEY, pairRows } from './pairRows';

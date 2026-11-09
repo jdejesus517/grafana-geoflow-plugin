@@ -1303,6 +1303,37 @@ describe('MapPanel', () => {
       expect(tooltipText()).toContain('Items2');
     });
 
+    it('hovers with the styled edge values only, and keeps the totals for the Summary', async () => {
+      const capacity = { custom: { edgeAggregates: ['mean'] } };
+      const styled = toDataFrame({
+        refId: 'B',
+        fields: [
+          ...trunks.fields.map((field, i) =>
+            i === 0 ? { ...field, config: { custom: { colorBy: 'capacity' } } } : field
+          ),
+          { name: 'capacity', type: FieldType.number, values: [100, 10, 1], config: capacity },
+          {
+            name: 'latency',
+            type: FieldType.number,
+            values: [2, 4, 6],
+            config: { custom: { edgeAggregates: ['max'] } },
+          },
+        ],
+      });
+      await renderPanel({ data: { series: [sites, styled] }, options: network });
+      fire('hover', 0);
+
+      expect(tooltipText()).toContain('capacitysum 110');
+      expect(tooltipText()).not.toContain('avg');
+      expect(tooltipText()).not.toContain('latency');
+
+      fire('click', 0);
+      const element = engine.openTooltip.mock.lastCall![1] as HTMLElement;
+      fireEvent.click(within(element).getByRole('radio', { name: 'Summary' }));
+      expect(tooltipText()).toContain('capacitysum 110 · avg 55');
+      expect(tooltipText()).toContain('latencymax 4');
+    });
+
     it('switches a pinned pair between its items, first, and its summary', async () => {
       await renderPanel({ data: { series: [sites, trunks] }, options: network });
       fire('click', 0);

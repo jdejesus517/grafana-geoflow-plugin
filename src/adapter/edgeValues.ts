@@ -135,7 +135,7 @@ export function ratioOfSums(numerator: Field, denominator: Field, rows: number[]
 }
 
 /** The value all of `rows` share, skipping empty ones; undefined when they differ or are all empty. */
-function sharedValue(field: Field, rows: number[]): unknown {
+export function sharedValue(field: Field, rows: number[]): unknown {
   let shared: unknown;
   for (const row of rows) {
     const value = field.values[row];
@@ -171,11 +171,6 @@ export function edgeValueKind(frame: DataFrame, field: Field): EdgeValueKind {
   const option = edgeValueOption(field);
   const numeric = field.type === FieldType.number || field.type === FieldType.time;
   return option === 'count' || numeric ? option : 'shared';
-}
-
-/** One pair's value from a column, worked out for one pair: what a tooltip shows. */
-export function pairValue(frame: DataFrame, field: Field, rows: number[]): unknown {
-  return edgeValue(frame, field, edgeValueKind(frame, field), rows);
 }
 
 interface CachedValues extends EdgeValues {

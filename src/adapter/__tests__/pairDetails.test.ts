@@ -2,7 +2,8 @@ import { DataFrame, FieldConfig, FieldType, createTheme, getDisplayProcessor, to
 import { frameToFeatureCollection } from '../frameToFeatureCollection';
 import { joinEdges } from '../joinEdges';
 import { EdgeFieldConfig } from '../edgeValues';
-import { pairDetails } from '../pairDetails';
+import { MapStyleConfig } from '../layerStyle';
+import { PairView, pairDetails } from '../pairDetails';
 
 const theme = createTheme();
 const point = (lon: number) => `{"type":"Point","coordinates":[${lon},35.78]}`;
@@ -20,11 +21,14 @@ interface Column {
   config?: FieldConfig<EdgeFieldConfig & { hideInTooltip?: boolean }>;
 }
 
-/** Trunks with a_site and z_site, plus `columns`, each with Grafana's display processor applied. */
-function trunks(ends: Array<[string, string]>, columns: Column[]): DataFrame {
+/**
+ * Trunks with a_site and z_site, plus `columns`, each with Grafana's display processor applied.
+ * Map style (Color by, Size by) is on the from column, where an edge layer reads it.
+ */
+function trunks(ends: Array<[string, string]>, columns: Column[], style: MapStyleConfig = {}): DataFrame {
   const frame = toDataFrame({
     fields: [
-      { name: 'a_site', type: FieldType.string, values: ends.map(([a]) => a) },
+      { name: 'a_site', type: FieldType.string, values: ends.map(([a]) => a), config: { custom: style } },
       { name: 'z_site', type: FieldType.string, values: ends.map(([, z]) => z) },
       ...columns,
     ],
@@ -34,7 +38,7 @@ function trunks(ends: Array<[string, string]>, columns: Column[]): DataFrame {
 }
 
 /** The tooltip lines of the pair drawn as feature `featureId`. */
-function lines(frame: DataFrame, featureId = 0) {
+function lines(frame: DataFrame, featureId = 0, view: PairView = 'summary') {
   const [from, to] = frame.fields;
   const result = joinEdges(
     frame,
@@ -43,7 +47,7 @@ function lines(frame: DataFrame, featureId = 0) {
     frameToFeatureCollection(SITES),
     SITES.fields[0]
   );
-  return pairDetails(frame, result, featureId)?.items.map(({ label, value }) => `${label}: ${value}`);
+  return pairDetails(frame, result, featureId, { view })?.items.map(({ label, value }) => `${label}: ${value}`);
 }
 
 const FOUR_TRUNKS: Array<[string, string]> = [
@@ -180,5 +184,49 @@ describe('pairDetails', () => {
     expect(pairDetails(frame, result, 0)?.links).toEqual([]);
     expect(pairDetails(frame, result, 5)).toBeUndefined();
     expect(pairDetails(frame, frameToFeatureCollection(SITES), 0)).toBeUndefined();
+  });
+
+  describe('views', () => {
+    const capacity: Column = {
+      name: 'capacity_gbps',
+      type: FieldType.number,
+      values: [100, 100, 10, 1],
+      config: { unit: 'Gbits', custom: { edgeAggregates: ['mean'] } },
+    };
+    const medium = (values: unknown[]): Column => ({ name: 'medium', type: FieldType.string, values });
+    const FIBER = ['fiber', 'fiber', null, 'fiber'];
+
+    it('hovers with just the nodes and items when the layer is not styled', () => {
+      expect(lines(trunks(FOUR_TRUNKS, [capacity]), 0, 'hover')).toEqual(['Between: 1 and 6', 'Items: 4']);
+    });
+
+    it('hovers with the edge values behind Color by and Size by, and nothing else', () => {
+      const frame = trunks(FOUR_TRUNKS, [capacity, medium(FIBER)], { colorBy: 'medium', sizeBy: 'capacity_gbps' });
+
+      expect(lines(frame, 0, 'hover')).toEqual([
+        'Between: 1 and 6',
+        'Items: 4',
+        'capacity_gbps: sum 211 Gb/s',
+        'medium: fiber',
+      ]);
+    });
+
+    it('says a text column is mixed when its rows differ', () => {
+      const frame = trunks(FOUR_TRUNKS, [medium(['fiber', 'microwave', null, 'fiber'])], { colorBy: 'medium' });
+
+      expect(lines(frame, 0, 'hover')?.[2]).toBe('medium: mixed');
+    });
+
+    it('shows one line when Color by and Size by name the same column', () => {
+      const frame = trunks(FOUR_TRUNKS, [capacity], { colorBy: 'capacity_gbps', sizeBy: 'capacity_gbps' });
+
+      expect(lines(frame, 0, 'hover')?.slice(2)).toEqual(['capacity_gbps: sum 211 Gb/s']);
+    });
+
+    it("adds the styled edge value to the Summary's aggregates, in their order", () => {
+      const frame = trunks(FOUR_TRUNKS, [capacity, medium(FIBER)], { colorBy: 'medium', sizeBy: 'capacity_gbps' });
+
+      expect(lines(frame)?.slice(2)).toEqual(['capacity_gbps: sum 211 Gb/s · avg 52.8 Gb/s', 'medium: fiber']);
+    });
   });
 });
