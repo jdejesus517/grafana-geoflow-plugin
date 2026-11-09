@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { css, cx } from '@emotion/css';
 import { DataFrame, GrafanaTheme2 } from '@grafana/data';
 import {
   IconButton,
+  RadioButtonGroup,
   VizTooltipColorIndicator,
   VizTooltipContent,
   VizTooltipFooter,
@@ -43,20 +44,12 @@ interface Props {
 const MIN_WIDTH = 180;
 /** A list's table needs a few columns' room. */
 const MIN_LIST_WIDTH = 360;
-/** What a list needs to be usable: its search box and count, table header and a couple of rows. */
-const LIST_ROOM = 150;
-/** A line of totals; less than that isn't worth showing. */
-const TOTALS_LINE = 22;
 
-/**
- * The totals' height in a tooltip of `maxHeight` with a list: what's left after the list's room,
- * in which the list shows at least one whole row. Below a line's height, none: in a very short
- * tooltip the row matters more.
- */
-export function totalsMaxHeight(maxHeight: number): number {
-  const room = maxHeight - LIST_ROOM;
-  return room >= TOTALS_LINE ? room : 0;
-}
+type PairView = 'totals' | 'items';
+const PAIR_VIEWS: Array<{ label: string; value: PairView }> = [
+  { label: 'Totals', value: 'totals' },
+  { label: 'Items', value: 'items' },
+];
 
 // The look of Grafana's own tooltip container (getTooltipContainerStyles in @grafana/ui), which
 // isn't exported to plugins. The header and footer keep their height, and the field list between
@@ -101,12 +94,8 @@ const getStyles = (theme: GrafanaTheme2) => ({
   bodyWithList: css({
     overflowY: 'auto',
   }),
-  // With a list, the totals come first, and scroll in their own area when the tooltip is short,
-  // so the list keeps room for its rows (docs/node-edge/phase_4.md, decision 1). Their height is
-  // capped by totalsMaxHeight.
-  totals: css({
-    flex: '0 0 auto',
-    overflowY: 'auto',
+  views: css({
+    flexShrink: 0,
   }),
   more: css({
     color: theme.colors.text.secondary,
@@ -121,6 +110,9 @@ const getStyles = (theme: GrafanaTheme2) => ({
  */
 export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, onIndexChange, onClose }: Props) => {
   const styles = useStyles2(getStyles);
+  // A pinned edge line shows its totals or its items, one at a time, each with the tooltip's whole
+  // height. It opens on the items, which a click is for; the choice stays while the tooltip does.
+  const [view, setView] = useState<PairView>('items');
   const feature = features[index];
   if (!feature) {
     return null;
@@ -164,17 +156,14 @@ export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, o
               />
             </div>
           )}
+          {feature.list && (
+            <RadioButtonGroup className={styles.views} size="sm" options={PAIR_VIEWS} value={view} onChange={setView} />
+          )}
           {pinned && <IconButton name="times" size="sm" aria-label="Close" onClick={onClose} />}
         </div>
-        <div className={cx(styles.body, feature.list && styles.bodyWithList)}>
-          {feature.list ? (
-            <>
-              {/* The totals stay above the rows (decision 1), scrolling on their own when short. */}
-              <div className={styles.totals} style={{ maxHeight: totalsMaxHeight(maxHeight) }}>
-                <VizTooltipContent items={feature.details.items} isPinned={pinned} />
-              </div>
-              <EdgeList key={`${feature.layerId}:${feature.featureId}`} {...feature.list} />
-            </>
+        <div className={cx(styles.body, feature.list && view === 'items' && styles.bodyWithList)}>
+          {feature.list && view === 'items' ? (
+            <EdgeList key={`${feature.layerId}:${feature.featureId}`} {...feature.list} />
           ) : (
             // A direct child of the body, so the list shrinks and scrolls in a short tooltip.
             <VizTooltipContent items={feature.details.items} isPinned={pinned} scrollable>

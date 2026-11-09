@@ -1303,6 +1303,21 @@ describe('MapPanel', () => {
       expect(tooltipText()).toContain('Items2');
     });
 
+    it('switches a pinned pair between its items, first, and its totals', async () => {
+      await renderPanel({ data: { series: [sites, trunks] }, options: network });
+      fire('click', 0);
+      const element = engine.openTooltip.mock.lastCall![1] as HTMLElement;
+      expect(within(element).getByTestId('geoflow-edge-list')).toBeInTheDocument();
+      expect(within(element).queryByText('Between')).not.toBeInTheDocument();
+
+      fireEvent.click(within(element).getByRole('radio', { name: 'Totals' }));
+      expect(within(element).queryByTestId('geoflow-edge-list')).not.toBeInTheDocument();
+      expect(tooltipText()).toContain('Between1 and 2');
+
+      fireEvent.click(within(element).getByRole('radio', { name: 'Items' }));
+      expect(within(element).getByTestId('geoflow-edge-list')).toBeInTheDocument();
+    });
+
     it("lists a pinned pair's rows, wider than other tooltips, but not on hover", async () => {
       await renderPanel({ data: { series: [sites, trunks] }, options: network });
       engine.tooltipSpace.mockReturnValue({ width: 1000, height: 600 });
@@ -1342,7 +1357,9 @@ describe('MapPanel', () => {
     it('keeps a pinned pair through new data, by its nodes, and closes it when the pair is gone', async () => {
       const { rerender } = await renderPanel({ data: { series: [sites, trunks] }, options: network });
       fire('click', 0);
-      expect(tooltipText()).toContain('Items2');
+      const count = () =>
+        within(engine.openTooltip.mock.lastCall![1] as HTMLElement).getByTestId('geoflow-edge-list-count').textContent;
+      expect(count()).toBe('2 items');
 
       const more = toDataFrame({
         refId: 'B',
@@ -1352,7 +1369,7 @@ describe('MapPanel', () => {
         ],
       });
       rerender(<MapPanel {...props({ data: { series: [sites, more] }, options: network })} />);
-      expect(tooltipText()).toContain('Items3');
+      expect(count()).toBe('3 items');
 
       const none = toDataFrame({
         refId: 'B',

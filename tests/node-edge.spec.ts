@@ -143,6 +143,7 @@ test('keeps a pinned edge through a refresh', async ({ readProvisionedDashboard,
   await expect(tooltip.getByRole('button', { name: 'Close' })).toBeVisible();
   await dashboardPage.refreshDashboard();
   await page.mouse.move(0, 0);
+  await tooltip.getByRole('radio', { name: 'Totals' }).click({ force: true });
   await expect(tooltip).toContainText('Between1 and 6');
   await expect(tooltip.getByRole('button', { name: 'Close' })).toBeVisible();
 });
@@ -185,6 +186,13 @@ test('lists the edges of a clicked line, to search, sort and follow', async ({
       const i = headers.indexOf(header);
       return els.map((row) => row.querySelectorAll('td')[i].textContent);
     }, name);
+
+  // Pinning opens on the items; the totals are a click away, and back.
+  const tooltip = panel.getByTestId('geoflow-tooltip');
+  await tooltip.getByRole('radio', { name: 'Totals' }).click({ force: true });
+  await expect(tooltip).toContainText('capacity_gbpssum 211 Gb/s · avg 52.8 Gb/s');
+  await expect(list).toHaveCount(0);
+  await tooltip.getByRole('radio', { name: 'Items' }).click({ force: true });
 
   // The four trunks between CARY-CORE (1) and RALEIGH-CORE (6), each with its own direction.
   await expect(rows).toHaveCount(4);

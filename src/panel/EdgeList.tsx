@@ -13,14 +13,15 @@ export const ROW_HEIGHT = 24;
 
 const getStyles = (theme: GrafanaTheme2) => ({
   // Shrinks with the tooltip, never past it: a minimum height here would push the last rows out of
-  // a short tooltip, where no scrolling reaches them. The totals above make room for it instead.
+  // a short tooltip, where no scrolling reaches them.
   list: css({
     display: 'flex',
     flexDirection: 'column',
     flex: '0 1 auto',
     gap: theme.spacing(0.5),
     minHeight: 0,
-    paddingTop: theme.spacing(1),
+    // Room for the search box's focus ring, which the scrolling tooltip body would clip.
+    padding: theme.spacing(0.5),
   }),
   // The search box and the count on one line, saving the count's own line for rows.
   searchRow: css({
