@@ -57,4 +57,28 @@ test('shows whole rows above a horizontal scrollbar, and scrolls to the last one
     scroller.scrollTop = scroller.scrollHeight;
   });
   expect((await measure()).lastRowFull).toBe(true);
+
+  // Scrolled sideways to the end, the row numbers stay at the left edge, and still read 1 to 4.
+  const numbers = await list.evaluate((el) => {
+    const scroller = el.querySelector('table')!.parentElement!;
+    scroller.scrollLeft = scroller.scrollWidth;
+    const left = scroller.getBoundingClientRect().left + scroller.clientLeft;
+    const cells = [...el.querySelectorAll('tr')].map((row) => row.querySelector('th, td')!);
+    return {
+      scrolled: scroller.scrollLeft > 0,
+      atLeftEdge: cells.every((cell) => Math.abs(cell.getBoundingClientRect().left - left) < 1),
+      text: cells.map((cell) => cell.textContent),
+    };
+  });
+  expect(numbers).toEqual({ scrolled: true, atLeftEdge: true, text: ['#', '1', '2', '3', '4'] });
+
+  // Scrolled down a row too, row 1's number goes under the header's #, not over it.
+  const top = await list.evaluate((el) => {
+    const scroller = el.querySelector('table')!.parentElement!;
+    scroller.scrollTop = 24;
+    const corner = scroller.querySelector('th')!.getBoundingClientRect();
+    const hit = document.elementFromPoint(corner.left + corner.width / 2, corner.top + corner.height / 2);
+    return hit?.closest('th, td')?.textContent;
+  });
+  expect(top).toBe('#');
 });

@@ -64,11 +64,12 @@ const getStyles = (theme: GrafanaTheme2) => ({
     // On a cell, not the row: table rows aren't snap targets.
     'tbody td:first-of-type': { scrollSnapAlign: 'start', scrollSnapStop: 'always' },
   }),
+  // Above the sticky row numbers (zIndex 1), which scroll under it.
   head: css({
     position: 'sticky',
     top: 0,
     background: theme.colors.background.elevated,
-    zIndex: 1,
+    zIndex: 3,
   }),
   sortButton: css({
     display: 'inline-flex',
@@ -84,10 +85,24 @@ const getStyles = (theme: GrafanaTheme2) => ({
     '&:hover': { color: theme.colors.text.primary },
   }),
   // The row's place in the list as shown, to keep track of where you are while scrolling.
+  // Sticky on the left too, so the row number stays in view while the table scrolls sideways.
+  // Opaque, with a line on its right, so the cells scrolling under it don't show through. The
+  // header row is above it, so numbers scroll under the header's #.
   number: css({
+    position: 'sticky',
+    left: 0,
+    zIndex: 1,
     color: theme.colors.text.secondary,
     textAlign: 'right !important' as 'right',
     fontVariantNumeric: 'tabular-nums',
+    background: theme.colors.background.elevated,
+    'td&': {
+      boxShadow: `inset 0 1px 0 ${theme.colors.border.weak}, inset -1px 0 0 ${theme.colors.border.weak}`,
+    },
+    'th&': {
+      zIndex: 2,
+      boxShadow: `inset -1px 0 0 ${theme.colors.border.weak}`,
+    },
   }),
   link: css({
     display: 'inline-flex',
