@@ -1,6 +1,6 @@
 # Node-edge Phase 3: Hover
 
-Status: **Plan accepted** (2026-11-08). Decisions 1–7 accepted as proposed.
+Status: **Implemented** (2026-11-08). Decisions 1–7 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §6.1 (hover), §7 (field options), §9.3 (Phase 3 row); decisions 3, 5, 9, 10.
 
 ## Goal
@@ -168,3 +168,44 @@ Design §5. No new seed data, so no database reset.
 | 5 | Pinned pairs until Phase 4 | **The hover content, pinned,** with the pager and close button. | Not pinnable until the click list exists. |
 | 6 | CI evidence for flaky tests | **Upload the Playwright report when a test fails or is retried,** kept for a few days. The repository is public, so the report is too: it holds screenshots of the dev dashboards and their fictional data, nothing else. | Uploading only on failure, which loses flakes; no upload, as now. |
 | 7 | Plugin version | **Unchanged.** No `plugin.json` change, so no Grafana restart. | |
+
+---
+
+## Outcome
+
+Implemented on branch `node-edge-phase-3` in five commits, steps 3.2 to 3.6. Step 3.1 was checks only, recorded below.
+- 630 unit and component tests pass (13 new), and 74 e2e tests (3 new, plus the login setup). No seed data changed, so the stack wasn't reset.
+- CI: to be filled in from the pull request.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Edges are interactive | Met. Hover highlights and shows the pair, click pins; the Tooltips switch is back for edge layers and turns it off (e2e). |
+| 2 | Hover content | Met. The Hover panel's CARY-CORE to RALEIGH-CORE line reads: Trunks; Between 1 and 6; Links 4; capacity_gbps sum 211 Gb/s · avg 52.8 Gb/s; utilization_gbps sum 143 Gb/s; utilization 68%. |
+| 3 | Aggregates option | Met. A multi-select in the Edges category, saved in the tooltip's order. |
+| 4 | Ratio option | Met. Ratio numerator and denominator; the denominator shows once a numerator is set. 68% is the ratio of sums, not the trunks' average of 66%. |
+| 5 | Pinned pairs | Met. Found again by key after new data (component test) and through a dashboard refresh (e2e); closed when the pair is gone. |
+| 6 | Flaky check fixed | Partly: the flake didn't reproduce locally (below), so its cause isn't confirmed. The checks now wait in two stages, failed attempts keep a screenshot, and CI keeps the report of a failed or retried run, so a recurrence can be inspected. |
+| 7 | Tests | Met. |
+| 8 | Docs | Met. The README's Edge totals section, with a ratio example. |
+
+### Checks on Grafana 13.2 (step 3.1)
+
+- **`MultiCombobox` in a field option:** saves and shows its values as chips (Sum, Max), checked in the panel's defaults. Overrides render the same editor; the Hover panel sets aggregates through overrides, and the e2e hover test reads them.
+- **Collapsed categories:** a plugin can't choose whether a field option category starts collapsed (`@grafana/data` has no setting for it); the Edges category opens expanded, like the others. Its descriptions start with "Edge layers:".
+- **Units:** Gbit/s is `Gbits`, formatting 211 as "211 Gb/s"; Percent (0.0–1.0) with 0 decimals formats 0.676 as "68%".
+
+### The flaky checks (step 3.4)
+
+- **Not reproduced:** 150 runs of `adapter.spec.ts` with 4 workers, and 3 runs of the full suite with 4 workers (210 tests), all passed.
+- **So the fix removes the likeliest race and keeps evidence:** the checks scroll the panel into view and wait for it to load, then for its summary, each with its own message ("the panel loads", "the queries return"); Playwright keeps a screenshot of a failed attempt; CI uploads the Playwright report when it has attachments, which a failed or retried test leaves (checked: a failing test leaves three files in `playwright-report/data/`, a clean run none).
+
+### Differences from the plan
+
+- **The Aggregates editor's unit tests** cover its saving rule (`savedAggregates`) rather than picking from the list: `MultiCombobox` virtualizes its list, which renders no options in jsdom, as the project's other Combobox tests note. Picking is covered by the step 3.1 check.
+- **Hover e2e tests wait for edges to draw** rather than for exact feature counts: the Hover panel's fixed view shows part of the network, and how much depends on the panel's size.
+
+### Findings for later phases
+
+- **Pair names are node ids** ("1 and 6"); with integer ids they say little. Node names in pair titles (architecture §12) would help the click list's header too.

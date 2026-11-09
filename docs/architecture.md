@@ -1,6 +1,6 @@
 # Architecture: GeoFlow, a Grafana PostGIS Map Panel
 
-Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later. Node-edge maps, a network of nodes and the edges between them, have their own design and phases in [node-edge/architecture.md](node-edge/architecture.md); its Phases 1 and 2 (edges drawn, set up in the Layers list) are implemented.
+Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later. Node-edge maps, a network of nodes and the edges between them, have their own design and phases in [node-edge/architecture.md](node-edge/architecture.md); its Phases 1 to 3 (edges drawn, set up in the Layers list, hover totals) are implemented.
 
 ### Project baseline
 

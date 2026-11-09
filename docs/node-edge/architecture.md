@@ -1,6 +1,6 @@
 # Node-Edge Maps: Architecture
 
-Status: **Design accepted (2026-11-08).** Phases 1–2 implemented: edges drawn ([phase_1.md](phase_1.md)), set up in the Layers list ([phase_2.md](phase_2.md)). Implementation follows in phases (§9.3), each with its own `docs/node-edge/phase_N.md`.
+Status: **Design accepted (2026-11-08).** Phases 1–3 implemented: edges drawn ([phase_1.md](phase_1.md)), set up in the Layers list ([phase_2.md](phase_2.md)), hover totals ([phase_3.md](phase_3.md)). Implementation follows in phases (§9.3), each with its own `docs/node-edge/phase_N.md`.
 
 This feature extends GeoFlow as built through Phase 12 ([../architecture.md](../architecture.md)). It keeps that document's rules unless a decision here says otherwise.
 
