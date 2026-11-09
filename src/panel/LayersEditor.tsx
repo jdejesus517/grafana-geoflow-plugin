@@ -339,6 +339,15 @@ function LayerSettings({ layer, frame, defaultName, onChange, onRoleChange }: Se
             onChange={() => onChange({ tooltips: !layer.tooltips })}
           />
         </Field>
+        {edges && (
+          <Field label="Show direction" description="The list of a clicked edge line starts with each row's direction.">
+            <Switch
+              id={`${id}-direction`}
+              value={layer.showDirection}
+              onChange={() => onChange({ showDirection: !layer.showDirection })}
+            />
+          </Field>
+        )}
       </Stack>
     </div>
   );

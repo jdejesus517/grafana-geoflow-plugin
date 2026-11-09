@@ -2,6 +2,7 @@ import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DataFrame } from '@grafana/data';
 import {
+  BoundLayer,
   ConversionResult,
   FeatureKey,
   featureByKey,
@@ -9,6 +10,7 @@ import {
   featureIndex,
   featureKey,
   pairDetails,
+  pairRows,
 } from '../adapter';
 import { BasemapSpec, FeatureRef, LayerSpec, MapEngine, PointerHit } from '../engine';
 import { FeatureTooltip, TooltipFeature } from './FeatureTooltip';
@@ -21,6 +23,8 @@ interface Options {
   results: ConversionResult[];
   frames: DataFrame[];
   layers: LayerSpec[];
+  /** The Layers list's layers, for settings the engine's layers don't carry (Show direction). */
+  bound: BoundLayer[];
   basemap: BasemapSpec;
 }
 
@@ -29,6 +33,8 @@ type Space = { width: number; height: number };
 
 /** Wider tooltips get hard to read; Grafana's own tooltips stop around here too. */
 const MAX_WIDTH = 400;
+/** A pinned edge line's list is a table, which needs more room (docs/node-edge/phase_4.md, Design §4). */
+const MAX_LIST_WIDTH = 800;
 
 /** A pinned feature, with what's needed to find it again in newer data. */
 interface PinnedRef extends FeatureRef {
@@ -59,7 +65,7 @@ interface Hover {
  * a compact tooltip; clicking pins a full one with a pager and data links. Returns the tooltip's
  * React content, which renders into an element the engine anchors on the map.
  */
-export function useFeatureTooltip({ engine, mode, results, frames, layers, basemap }: Options): ReactNode {
+export function useFeatureTooltip({ engine, mode, results, frames, layers, bound, basemap }: Options): ReactNode {
   // The panel owns the tooltip's DOM element; the engine only places it.
   const [element] = useState(() => document.createElement('div'));
   const [pinned, setPinned] = useState<Pinned>();
@@ -183,18 +189,19 @@ export function useFeatureTooltip({ engine, mode, results, frames, layers, basem
 
   const shownRefs = pinnedShown?.refs ?? showHover?.refs;
   const features = useMemo(
-    () => (shownRefs ? tooltipFeatures(shownRefs, results, frames, layers) : []),
-    [shownRefs, results, frames, layers]
+    () => (shownRefs ? tooltipFeatures(shownRefs, results, frames, layers, bound, !!pinnedShown) : []),
+    [shownRefs, results, frames, layers, bound, pinnedShown]
   );
   if (!engine || !space || features.length === 0) {
     return null;
   }
+  const index = Math.min(pinnedShown?.index ?? 0, features.length - 1);
   return createPortal(
     <FeatureTooltip
       features={features}
-      index={Math.min(pinnedShown?.index ?? 0, features.length - 1)}
+      index={index}
       pinned={!!pinnedShown}
-      maxWidth={Math.min(MAX_WIDTH, space.width)}
+      maxWidth={Math.min(features[index].list ? MAX_LIST_WIDTH : MAX_WIDTH, space.width)}
       maxHeight={space.height}
       onIndexChange={(index) => pinnedShown && setPinned({ ...pinnedShown, engine: engine!, basemap, index })}
       onClose={() => setPinned(undefined)}
@@ -246,11 +253,14 @@ function resolvePinned(
   return refs.length > 0 ? { lngLat: pinned.lngLat, space: pinned.space, refs, index } : undefined;
 }
 
+/** What a tooltip shows for each feature; a pinned edge line's entry also has its list. */
 function tooltipFeatures(
   refs: FeatureRef[],
   results: ConversionResult[],
   frames: DataFrame[],
-  layers: LayerSpec[]
+  layers: LayerSpec[],
+  bound: BoundLayer[],
+  pinned: boolean
 ): TooltipFeature[] {
   return refs.flatMap((ref) => {
     const i = results.findIndex(({ layerId }) => layerId === ref.layerId);
@@ -268,6 +278,9 @@ function tooltipFeatures(
     const layer = layers.find(({ id }) => id === ref.layerId);
     const index = layer?.featureStyles?.colors && featureIndex(results[i], ref.featureId);
     const color = (index !== undefined && layer?.featureStyles?.colors?.[index]) || layer?.style.color || 'transparent';
+    const showDirection = bound.find(({ id }) => id === ref.layerId)?.showDirection !== false;
+    const table =
+      pinned && results[i].pairs ? pairRows(frames[i], results[i], ref.featureId, { showDirection }) : undefined;
     return [
       {
         layerId: ref.layerId,
@@ -275,6 +288,7 @@ function tooltipFeatures(
         title: layer?.name ?? ref.layerId,
         color,
         details,
+        ...(table && { list: { table, frame: frames[i] } }),
       },
     ];
   });

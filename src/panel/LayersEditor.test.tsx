@@ -262,6 +262,19 @@ describe('LayersEditor roles', () => {
     expect(settings().getByLabelText(/^Tooltips/)).toBeInTheDocument();
   });
 
+  it("turns an edge layer's Show direction off, and shows it only for edges", () => {
+    const { onChange } = setup([{ id: 'B', role: 'edges' }], [trunks()]);
+
+    fireEvent.click(settings().getByLabelText(/^Show direction/));
+    expect(lastSaved(onChange)).toEqual([{ id: 'B', role: 'edges', showDirection: false }]);
+  });
+
+  it('shows no Show direction setting for other layers', () => {
+    setup([{ id: 'A', role: 'nodes' }], [sites()]);
+
+    expect(settings().queryByLabelText(/^Show direction/)).not.toBeInTheDocument();
+  });
+
   it('saves a chosen column, and detects the other from the same pair', () => {
     const data = [
       toDataFrame({

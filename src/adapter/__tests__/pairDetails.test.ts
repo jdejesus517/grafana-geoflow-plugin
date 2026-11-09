@@ -56,7 +56,7 @@ describe('pairDetails', () => {
   it('names the two nodes and counts the links, with nothing else by default', () => {
     expect(
       lines(trunks(FOUR_TRUNKS, [{ name: 'capacity', type: FieldType.number, values: [100, 100, 10, 1] }]))
-    ).toEqual(['Between: 1 and 6', 'Links: 4']);
+    ).toEqual(['Between: 1 and 6', 'Items: 4']);
   });
 
   it("shows a column's chosen aggregates on one line, in a fixed order, formatted with its unit", () => {
@@ -69,7 +69,7 @@ describe('pairDetails', () => {
 
     expect(lines(trunks(FOUR_TRUNKS, [capacity]))).toEqual([
       'Between: 1 and 6',
-      'Links: 4',
+      'Items: 4',
       'capacity_gbps: sum 211 Gb/s · avg 52.8 Gb/s · max 100 Gb/s',
     ]);
   });
@@ -162,7 +162,7 @@ describe('pairDetails', () => {
       config: { custom: { edgeAggregates: ['sum'], hideInTooltip: true } },
     };
 
-    expect(lines(trunks(FOUR_TRUNKS, [hidden]))).toEqual(['Between: 1 and 6', 'Links: 4']);
+    expect(lines(trunks(FOUR_TRUNKS, [hidden]))).toEqual(['Between: 1 and 6', 'Items: 4']);
   });
 
   it('has no links, and nothing for a feature that is not a pair', () => {
