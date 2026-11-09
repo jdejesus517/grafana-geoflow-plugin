@@ -84,6 +84,8 @@ export interface FeatureStyles {
   colors?: Array<string | undefined>;
   /** Point radii, px. */
   radii?: Array<number | undefined>;
+  /** Line widths, px: edge lines sized by a column (docs/node-edge/phase_5.md, Design §3). Polygon outlines stay 1 px. */
+  widths?: Array<number | undefined>;
 }
 
 /** One set of features drawn together: the panel makes one per layer in its Layers list. */

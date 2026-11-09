@@ -741,11 +741,33 @@ describe('MapLibreEngine', () => {
       expect(map.removeFeatureState).not.toHaveBeenCalled();
     });
 
+    it('repaints the lines to read their widths from feature-state when a layer gets them', async () => {
+      const { engine, map } = await mounted({ ...options, layers: [colored(['red', 'red', 'red'])] });
+      map.setPaintProperty.mockClear();
+      map.setFeatureState.mockClear();
+      engine.setLayers([
+        colored(['red', 'red', 'red'], { featureStyles: { colors: ['red', 'red', 'red'], widths: [2, 4, 6] } }),
+      ]);
+      const withWidths = paintFor(style, { color: true, radius: false, width: true });
+
+      expect(map.setPaintProperty).toHaveBeenCalledWith(
+        'geoflow-layer:A:line',
+        'line-width',
+        withWidths.line['line-width']
+      );
+      // Only the widths are new: the colors are already set.
+      expect(map.setFeatureState.mock.calls).toEqual([
+        [{ source: 'geoflow-layer:A', id: 7 }, { width: 2 }],
+        [{ source: 'geoflow-layer:A', id: 8 }, { width: 4 }],
+        [{ source: 'geoflow-layer:A', id: 9 }, { width: 6 }],
+      ]);
+    });
+
     it('repaints a layer to read feature-state when it gets per-feature styles, and back', async () => {
       const plain = layer('A', { data });
       const { engine, map } = await mounted({ ...options, layers: [plain] });
       engine.setLayers([colored(['red', 'red', 'red'])]);
-      const perFeature = paintFor(style, { color: true, radius: false });
+      const perFeature = paintFor(style, { color: true, radius: false, width: false });
 
       expect(map.setPaintProperty).toHaveBeenCalledWith(
         'geoflow-layer:A:circle',

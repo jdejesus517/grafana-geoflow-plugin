@@ -29,11 +29,14 @@ export const SELECTED_STATE = 'selected';
 /** Feature-state keys the engine sets for per-feature styles (docs/phase_6.md, Design §3). */
 export const COLOR_STATE = 'color';
 export const RADIUS_STATE = 'radius';
+/** Feature-state key for per-feature line widths (docs/node-edge/phase_5.md, Design §3). */
+export const WIDTH_STATE = 'width';
 
 /** Which of a layer's paint values come from per-feature styles. */
 export interface PerFeature {
   color: boolean;
   radius: boolean;
+  width: boolean;
 }
 
 /**
@@ -41,10 +44,10 @@ export interface PerFeature {
  * keep Phase 5's layers as they were, and a style change on them stays a cheap uniform update.
  */
 export function perFeature({ featureStyles }: Pick<LayerSpec, 'featureStyles'>): PerFeature {
-  return { color: !!featureStyles?.colors, radius: !!featureStyles?.radii };
+  return { color: !!featureStyles?.colors, radius: !!featureStyles?.radii, width: !!featureStyles?.widths };
 }
 
-const NOT_PER_FEATURE: PerFeature = { color: false, radius: false };
+const NOT_PER_FEATURE: PerFeature = { color: false, radius: false, width: false };
 
 const highlighted: ExpressionSpecification = [
   'any',
@@ -121,16 +124,23 @@ function dashArray(lineStyle: LineStyle, lineWidth: number): number[] | undefine
 /**
  * Paint properties per style layer kind. Kept separate so the engine can diff them on a style
  * change; a property left out (a solid line's dash array) goes back to MapLibre's default.
- * Per-feature colors and radii come from feature-state, with the layer's style where a feature
- * has none.
+ * Per-feature colors, radii and line widths come from feature-state, with the layer's style where
+ * a feature has none. Dashes are in line widths, so MapLibre scales them with each line's own
+ * width (docs/node-edge/phase_5.md, step 5.1).
  */
-export function paintFor(style: LayerStyle, { color: colorPerFeature, radius: radiusPerFeature } = NOT_PER_FEATURE) {
+export function paintFor(
+  style: LayerStyle,
+  { color: colorPerFeature, radius: radiusPerFeature, width: widthPerFeature } = NOT_PER_FEATURE
+) {
   const { opacity } = style;
   const dashes = dashArray(style.lineStyle, style.lineWidth);
   const color: Value = colorPerFeature ? ['coalesce', ['feature-state', COLOR_STATE], style.color] : style.color;
   const radius: number | ExpressionSpecification = radiusPerFeature
     ? ['coalesce', ['feature-state', RADIUS_STATE], style.pointRadius]
     : style.pointRadius;
+  const width: number | ExpressionSpecification = widthPerFeature
+    ? ['coalesce', ['feature-state', WIDTH_STATE], style.lineWidth]
+    : style.lineWidth;
   const paint: Record<StyleLayerKind, Properties> = {
     fill: {
       'fill-color': color,
@@ -147,7 +157,10 @@ export function paintFor(style: LayerStyle, { color: colorPerFeature, radius: ra
     line: {
       'line-color': color,
       'line-opacity': opacity,
-      'line-width': whenHighlighted(style.lineWidth + HIGHLIGHT.width, style.lineWidth),
+      'line-width': whenHighlighted(
+        typeof width === 'number' ? width + HIGHLIGHT.width : ['+', width, HIGHLIGHT.width],
+        width
+      ),
       ...(dashes && { 'line-dasharray': dashes }),
     },
     circle: {

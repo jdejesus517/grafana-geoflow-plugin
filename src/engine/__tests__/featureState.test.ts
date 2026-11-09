@@ -32,6 +32,21 @@ describe('featureStateChanges', () => {
     ]);
   });
 
+  it('sets, changes and removes line widths as it does colors', () => {
+    const before = styled(data, { widths: [2, 4, 6] });
+    const after = styled(data, { widths: [2, 8, undefined] });
+
+    expect(featureStateChanges(undefined, before)).toEqual([
+      { id: 10, set: { width: 2 } },
+      { id: 11, set: { width: 4 } },
+      { id: 12, set: { width: 6 } },
+    ]);
+    expect(featureStateChanges(before, after)).toEqual([
+      { id: 11, set: { width: 8 } },
+      { id: 12, remove: ['width'] },
+    ]);
+  });
+
   it('has nothing to do without per-feature styles', () => {
     expect(featureStateChanges(undefined, styled(data))).toEqual([]);
     expect(featureStateChanges(styled(data), styled(data, {}))).toEqual([]);

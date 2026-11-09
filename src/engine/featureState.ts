@@ -1,7 +1,7 @@
 // Pure: the feature-state calls that bring a layer's per-feature styles up to date
 // (docs/phase_6.md, Design §3). No map needed, so the diff is unit-tested without WebGL.
 import type { FeatureCollection, SupportedGeometry } from '../model';
-import { COLOR_STATE, RADIUS_STATE } from './layerStyle';
+import { COLOR_STATE, RADIUS_STATE, WIDTH_STATE } from './layerStyle';
 import { FeatureStyles } from './types';
 
 /** A layer's features and their per-feature styles, as applied or as asked for. */
@@ -17,18 +17,18 @@ export interface FeatureStateChange {
   remove?: string[];
 }
 
-type Values = [color: string | undefined, radius: number | undefined];
+type Values = [color: string | undefined, radius: number | undefined, width: number | undefined];
 
-const KEYS = [COLOR_STATE, RADIUS_STATE] as const;
-const NONE: Values = [undefined, undefined];
+const KEYS = [COLOR_STATE, RADIUS_STATE, WIDTH_STATE] as const;
+const NONE: Values = [undefined, undefined, undefined];
 
 function valuesAt({ featureStyles }: StyledFeatures, i: number): Values {
-  return [featureStyles?.colors?.[i], featureStyles?.radii?.[i]];
+  return [featureStyles?.colors?.[i], featureStyles?.radii?.[i], featureStyles?.widths?.[i]];
 }
 
 /**
  * The changes from the states set for `before` (undefined: none are set) to those `after` asks
- * for. Only features whose color or radius differs get a change. Features are matched by id, so
+ * for. Only features whose color, radius or width differs get a change. Features are matched by id, so
  * new data keeps the states of features that stay, and features that are gone lose theirs.
  * MapLibre keeps feature-state by id across setData, so those would otherwise linger.
  */
