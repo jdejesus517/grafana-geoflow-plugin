@@ -230,7 +230,7 @@ Each phase ends with something usable and its own tests, as in the main plan. Ph
 | 3 | **Hover:** the Edges field options for aggregates and ratios; the pair tooltip with row count, aggregates and ratios; pinned pairs following refreshes (showing the hover content until Phase 4) | Unit tests on aggregates and ratios; e2e hover |
 | 4 | **Click list:** `EdgeList` with search, sort, scrolling and the cap; the direction column and its Show direction switch; row data links; the pager mixing node and pair entries | Component tests; e2e click, search, sort and a row's link |
 | 5 | **Styling by pair values:** Pair value; Color by and Size by on edges; per-feature widths in the engine; legend; the hover shows the styled pair values (§6.1) | Unit tests on pair values and ranges; e2e styling |
-| 6 | **Hardening and docs:** the large network benchmark and any optimization; README walkthrough; architecture updates | Benchmark against budgets; docs reviewed |
+| 6 | **Hardening and docs:** the large network benchmark and any optimization; README walkthrough; architecture updates; the 1.0.0 release materials, with networks: the README's status line, the CHANGELOG entry and the catalog README (`src/README.md`) | Benchmark against budgets; docs reviewed |
 
 ## 10. Decisions
 
