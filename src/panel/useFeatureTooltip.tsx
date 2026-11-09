@@ -1,7 +1,15 @@
 import React, { ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { DataFrame } from '@grafana/data';
-import { ConversionResult, FeatureKey, featureByKey, featureDetails, featureIndex, featureKey } from '../adapter';
+import {
+  ConversionResult,
+  FeatureKey,
+  featureByKey,
+  featureDetails,
+  featureIndex,
+  featureKey,
+  pairDetails,
+} from '../adapter';
 import { BasemapSpec, FeatureRef, LayerSpec, MapEngine, PointerHit } from '../engine';
 import { FeatureTooltip, TooltipFeature } from './FeatureTooltip';
 import { TooltipMode } from './options';
@@ -246,7 +254,13 @@ function tooltipFeatures(
 ): TooltipFeature[] {
   return refs.flatMap((ref) => {
     const i = results.findIndex(({ layerId }) => layerId === ref.layerId);
-    const details = i >= 0 ? featureDetails(frames[i], results[i], ref.featureId) : undefined;
+    // An edge line stands for a pair of nodes and every row between them (docs/node-edge/phase_3.md).
+    const details =
+      i < 0
+        ? undefined
+        : results[i].pairs
+          ? pairDetails(frames[i], results[i], ref.featureId)
+          : featureDetails(frames[i], results[i], ref.featureId);
     if (!details) {
       return [];
     }

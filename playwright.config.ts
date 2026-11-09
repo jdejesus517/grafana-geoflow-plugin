@@ -17,5 +17,7 @@ export default defineConfig<PluginOptions>(baseConfig, {
   use: {
     // Provisioning lives with the Grafana deployment files (docker/grafana/), not the scaffold default.
     provisioningRootDir: join(__dirname, 'docker/grafana/provisioning'),
+    // A failed attempt's screenshot, for flaky tests that pass on retry (docs/node-edge/phase_3.md, Design §4).
+    screenshot: 'only-on-failure',
   },
 });

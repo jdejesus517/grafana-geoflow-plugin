@@ -1,5 +1,6 @@
 import path from 'node:path';
-import { DRAWN, editedPanel, expect, renderedFeatures, test } from './fixtures';
+import type { Locator, Page } from '@playwright/test';
+import { DRAWN, PanelView, editedPanel, expect, mapPoint, renderedFeatures, test } from './fixtures';
 
 // Panels of docker/grafana/provisioning/dashboards/14-node-edge.json (docs/node-edge/phase_1.md).
 // Sites and trunks come from docker/postgres/init/06_seed_network.sql: 8 sites, and 14 trunks
@@ -91,4 +92,78 @@ test('makes a network of two layers in the Layers list, and keeps it when a laye
   await expect(editor.getByTestId('geoflow-layer-row-B')).toContainText('Trunks');
   await expect(editor.getByTestId('geoflow-layer-row-A')).toContainText('Nodes');
   await expect.poll(() => renderedFeatures(panel), DRAWN).toEqual({ A: 8, B: 6 });
+});
+
+// The Hover panel's fixed view, and a point a quarter of the way along the CARY-CORE (1) to
+// RALEIGH-CORE (6) line, away from other lines and the sites.
+const HOVER_VIEW: PanelView = { lat: 35.785, lon: -78.72, zoom: 11 };
+const ON_CORE_LINE: [number, number] = [-78.7454, 35.7885];
+
+/** Waits for the Hover panel's edges to draw. Its fixed view shows only part of the network. */
+async function edgesDrawn(panel: Locator) {
+  await expect.poll(async () => (await renderedFeatures(panel)).B ?? 0, DRAWN).toBeGreaterThan(0);
+}
+
+async function pointAtCoreLine(page: Page, panel: Locator, action: 'move' | 'click') {
+  const { x, y } = await mapPoint(panel, ON_CORE_LINE, HOVER_VIEW);
+  await page.mouse.move(x, y);
+  if (action === 'click') {
+    await page.mouse.click(x, y);
+  }
+}
+
+test("shows a hovered edge's totals: links, aggregates and the ratio of sums", async ({
+  readProvisionedDashboard,
+  gotoDashboardPage,
+  page,
+}) => {
+  const dashboard = await readProvisionedDashboard(FILE);
+  const panel = (await gotoDashboardPage(dashboard)).getPanelByTitle('Hover').locator;
+  await edgesDrawn(panel);
+
+  await pointAtCoreLine(page, panel, 'move');
+  const tooltip = panel.getByTestId('geoflow-tooltip');
+  await expect(tooltip).toContainText('Trunks');
+  await expect(tooltip).toContainText('Between1 and 6');
+  await expect(tooltip).toContainText('Links4');
+  await expect(tooltip).toContainText('capacity_gbpssum 211 Gb/s · avg 52.8 Gb/s');
+  await expect(tooltip).toContainText('utilization_gbpssum 143 Gb/s');
+  // 142.6 of 211 Gb/s, not the trunks' average utilization of 66%.
+  await expect(tooltip).toContainText('utilization68%');
+});
+
+test('keeps a pinned edge through a refresh', async ({ readProvisionedDashboard, gotoDashboardPage, page }) => {
+  const dashboard = await readProvisionedDashboard(FILE);
+  const dashboardPage = await gotoDashboardPage(dashboard);
+  const panel = dashboardPage.getPanelByTitle('Hover').locator;
+  await edgesDrawn(panel);
+
+  await pointAtCoreLine(page, panel, 'click');
+  const tooltip = panel.getByTestId('geoflow-tooltip');
+  await expect(tooltip.getByRole('button', { name: 'Close' })).toBeVisible();
+  await dashboardPage.refreshDashboard();
+  await page.mouse.move(0, 0);
+  await expect(tooltip).toContainText('Between1 and 6');
+  await expect(tooltip.getByRole('button', { name: 'Close' })).toBeVisible();
+});
+
+test("shows nothing on an edge whose layer's tooltips are off", async ({
+  readProvisionedDashboard,
+  gotoPanelEditPage,
+  page,
+}) => {
+  const dashboard = await readProvisionedDashboard(FILE);
+  const panel = await editedPanel(await gotoPanelEditPage({ dashboard, id: '5' }));
+  await edgesDrawn(panel);
+  // First, the point is on the line: the tooltip shows.
+  await pointAtCoreLine(page, panel, 'move');
+  await expect(panel.getByTestId('geoflow-tooltip')).toContainText('Between1 and 6');
+
+  const editor = page.getByTestId('geoflow-layers-editor');
+  await editor.getByRole('button', { name: 'Trunks', exact: true }).click();
+  await editor.getByTestId('geoflow-layer-settings').locator('#geoflow-layer-B-tooltips').click({ force: true });
+  await page.mouse.move(0, 0);
+  await pointAtCoreLine(page, panel, 'move');
+  await page.waitForTimeout(500);
+  await expect(panel.getByTestId('geoflow-tooltip')).toHaveCount(0);
 });

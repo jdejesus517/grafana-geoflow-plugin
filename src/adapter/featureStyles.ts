@@ -218,7 +218,8 @@ function cached<T>(
   return values;
 }
 
-function findField(frame: DataFrame, name: string): Field | undefined {
+/** A column named by a field option: by name, or by display name, as the options' field picker saves. */
+export function findField(frame: DataFrame, name: string): Field | undefined {
   return (
     frame.fields.find((field) => field.name === name) ??
     frame.fields.find((field) => getFieldDisplayName(field, frame) === name)

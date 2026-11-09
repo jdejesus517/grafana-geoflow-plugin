@@ -1270,7 +1270,7 @@ describe('MapPanel', () => {
       ],
     };
 
-    it('draws the edges between the nodes, below them, without tooltips', async () => {
+    it('draws the edges between the nodes, below them, as an interactive layer', async () => {
       await renderPanel({ data: { series: [sites, trunks] }, options: network });
 
       const [nodes, edges] = engine.setLayers.mock.calls.at(-1)![0] as LayerSpec[];
@@ -1284,7 +1284,49 @@ describe('MapPanel', () => {
           ],
         },
       ]);
-      expect(edges.interactive).toBe(false);
+      expect(edges.interactive).toBe(true);
+    });
+
+    const fire = (event: 'click' | 'hover', featureId: number) =>
+      act(() =>
+        engine.pointerListeners[event].forEach((listener) =>
+          listener({ lngLat: [2, 2], features: [{ layerId: 'B', featureId }] })
+        )
+      );
+    const tooltipText = () => (engine.openTooltip.mock.lastCall![1] as HTMLElement).textContent;
+
+    it("shows a hovered edge's pair: its nodes and links", async () => {
+      await renderPanel({ data: { series: [sites, trunks] }, options: network });
+      fire('hover', 0);
+
+      expect(tooltipText()).toContain('Between1 and 2');
+      expect(tooltipText()).toContain('Links2');
+    });
+
+    it('keeps a pinned pair through new data, by its nodes, and closes it when the pair is gone', async () => {
+      const { rerender } = await renderPanel({ data: { series: [sites, trunks] }, options: network });
+      fire('click', 0);
+      expect(tooltipText()).toContain('Links2');
+
+      const more = toDataFrame({
+        refId: 'B',
+        fields: [
+          { name: 'a_site', type: FieldType.string, values: ['2', '1', '2'] },
+          { name: 'z_site', type: FieldType.string, values: ['1', '2', '1'] },
+        ],
+      });
+      rerender(<MapPanel {...props({ data: { series: [sites, more] }, options: network })} />);
+      expect(tooltipText()).toContain('Links3');
+
+      const none = toDataFrame({
+        refId: 'B',
+        fields: [
+          { name: 'a_site', type: FieldType.string, values: ['1'] },
+          { name: 'z_site', type: FieldType.string, values: ['9'] },
+        ],
+      });
+      rerender(<MapPanel {...props({ data: { series: [sites, none] }, options: network })} />);
+      expect(engine.closeTooltip).toHaveBeenCalled();
     });
 
     it('warns about edges it cannot draw, and summarizes them as pairs', async () => {

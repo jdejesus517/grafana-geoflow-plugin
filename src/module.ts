@@ -1,5 +1,6 @@
 import { FieldColorModeId, FieldConfigProperty, FieldType, PanelPlugin, StandardEditorProps } from '@grafana/data';
 import { DASH_PATTERN_EXAMPLE, LineStyleOption, MAP_STYLE_RANGES, dashPatternProblem } from './adapter';
+import { AggregatesEditor } from './panel/AggregatesEditor';
 import { CheckedTextEditor, CheckedTextEditorSettings } from './panel/CheckedTextEditor';
 import { PROVIDERS, ProviderId, apiKeyProblem, isProviderId } from './panel/basemapPresets';
 import { LayersEditor } from './panel/LayersEditor';
@@ -26,6 +27,7 @@ const BASEMAP = ['Basemap'];
 const VIEW = ['View'];
 const TOOLTIP = ['Tooltip'];
 const MAP_STYLE = ['Map style'];
+const EDGES = ['Edges'];
 
 const BASEMAP_OPTIONS: Array<{ value: BasemapKind; label: string; description?: string }> = [
   { value: 'osm', label: 'OpenStreetMap' },
@@ -165,6 +167,36 @@ export const plugin = new PanelPlugin<GeoFlowOptions, GeoFlowFieldConfig>(MapPan
           description: "Leaves this field out of the map's tooltips. Its data links still show.",
           category: TOOLTIP,
           defaultValue: false,
+        })
+        // Edge layers' hover totals (docs/node-edge/phase_3.md, Design §3). Grafana shows field
+        // options for every column, so the descriptions say they're for edge layers.
+        .addGenericEditor(
+          {
+            path: 'edgeAggregates',
+            name: 'Aggregates',
+            description:
+              'Edge layers: totals shown when an edge line is hovered, over the links between its two nodes. ' +
+              'Sum and Average apply to numbers, Min and Max to numbers and times, Count to any column.',
+            category: EDGES,
+          },
+          AggregatesEditor as unknown as (props: StandardEditorProps<unknown>) => ReturnType<typeof AggregatesEditor>
+        )
+        .addFieldNamePicker({
+          path: 'ratioNumerator',
+          name: 'Ratio numerator',
+          description:
+            'Edge layers: with a denominator, makes this column a ratio. A hovered edge shows the sum of the ' +
+            "numerator over the sum of the denominator, in this column's unit.",
+          category: EDGES,
+          settings: { placeholderText: 'None', isClearable: true, filter: (field) => field.type === FieldType.number },
+        })
+        .addFieldNamePicker({
+          path: 'ratioDenominator',
+          name: 'Ratio denominator',
+          description: 'Edge layers: the column the numerator is divided by.',
+          category: EDGES,
+          settings: { placeholderText: 'None', isClearable: true, filter: (field) => field.type === FieldType.number },
+          showIf: (config) => !!config.ratioNumerator,
         }),
   })
   .setPanelOptions((builder) =>
