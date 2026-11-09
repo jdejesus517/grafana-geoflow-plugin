@@ -375,7 +375,7 @@
       "id": 5,
       "type": "jdejesusio-geoflow-panel",
       "title": "Hover",
-      "description": "Hover totals: capacity summed and averaged, utilization summed, and utilization as a ratio of sums, in a fixed view so tests can point at the CARY-CORE to RALEIGH-CORE line.",
+      "description": "Hover totals: capacity summed and averaged, utilization summed, and utilization as a ratio of sums, in a fixed view so tests can point at the CARY-CORE to RALEIGH-CORE line, and a data link on each trunk, for the click list.",
       "fieldConfig": {
         "defaults": {
           "custom": {
@@ -437,6 +437,23 @@
               {
                 "id": "custom.ratioDenominator",
                 "value": "capacity_gbps"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "trunk_id"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Trunk details",
+                    "url": "/d/geoflow-14-node-edge?var-trunk=${__data.fields.trunk_id}"
+                  }
+                ]
               }
             ]
           }

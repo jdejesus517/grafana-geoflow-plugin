@@ -112,7 +112,7 @@ async function pointAtCoreLine(page: Page, panel: Locator, action: 'move' | 'cli
   }
 }
 
-test("shows a hovered edge's totals: links, aggregates and the ratio of sums", async ({
+test("shows a hovered edge's summary: its items, aggregates and the ratio of sums", async ({
   readProvisionedDashboard,
   gotoDashboardPage,
   page,
@@ -125,7 +125,7 @@ test("shows a hovered edge's totals: links, aggregates and the ratio of sums", a
   const tooltip = panel.getByTestId('geoflow-tooltip');
   await expect(tooltip).toContainText('Trunks');
   await expect(tooltip).toContainText('Between1 and 6');
-  await expect(tooltip).toContainText('Links4');
+  await expect(tooltip).toContainText('Items4');
   await expect(tooltip).toContainText('capacity_gbpssum 211 Gb/s · avg 52.8 Gb/s');
   await expect(tooltip).toContainText('utilization_gbpssum 143 Gb/s');
   // 142.6 of 211 Gb/s, not the trunks' average utilization of 66%.
@@ -143,6 +143,7 @@ test('keeps a pinned edge through a refresh', async ({ readProvisionedDashboard,
   await expect(tooltip.getByRole('button', { name: 'Close' })).toBeVisible();
   await dashboardPage.refreshDashboard();
   await page.mouse.move(0, 0);
+  await tooltip.getByRole('radio', { name: 'Summary' }).click({ force: true });
   await expect(tooltip).toContainText('Between1 and 6');
   await expect(tooltip.getByRole('button', { name: 'Close' })).toBeVisible();
 });
@@ -166,4 +167,112 @@ test("shows nothing on an edge whose layer's tooltips are off", async ({
   await pointAtCoreLine(page, panel, 'move');
   await page.waitForTimeout(500);
   await expect(panel.getByTestId('geoflow-tooltip')).toHaveCount(0);
+});
+
+test('lists the edges of a clicked line, to search, sort and follow', async ({
+  readProvisionedDashboard,
+  gotoDashboardPage,
+  page,
+}) => {
+  const dashboard = await readProvisionedDashboard(FILE);
+  const panel = (await gotoDashboardPage(dashboard)).getPanelByTitle('Hover').locator;
+  await edgesDrawn(panel);
+  await pointAtCoreLine(page, panel, 'click');
+  const list = panel.getByTestId('geoflow-edge-list');
+  const rows = list.getByTestId('geoflow-edge-list-row');
+  const column = (name: string) =>
+    rows.evaluateAll((els, header) => {
+      const headers = [...els[0].closest('table')!.querySelectorAll('th')].map((th) => th.textContent);
+      const i = headers.indexOf(header);
+      return els.map((row) => row.querySelectorAll('td')[i].textContent);
+    }, name);
+
+  // Pinning opens on the items; the summary is a click away, and back.
+  const tooltip = panel.getByTestId('geoflow-tooltip');
+  await tooltip.getByRole('radio', { name: 'Summary' }).click({ force: true });
+  await expect(tooltip).toContainText('capacity_gbpssum 211 Gb/s · avg 52.8 Gb/s');
+  await expect(list).toHaveCount(0);
+  await tooltip.getByRole('radio', { name: 'Items' }).click({ force: true });
+
+  // The four trunks between CARY-CORE (1) and RALEIGH-CORE (6), each with its own direction.
+  await expect(rows).toHaveCount(4);
+  // Scrolled to the end, the last row is inside the tooltip: a short tooltip once clipped it.
+  const lastRowShown = await list.evaluate((el) => {
+    const scroller = el.querySelector('table')!.parentElement!;
+    scroller.scrollTop = scroller.scrollHeight;
+    const tooltip = el.closest('[data-testid="geoflow-tooltip"]')!.getBoundingClientRect();
+    const last = [...el.querySelectorAll('[data-testid="geoflow-edge-list-row"]')].at(-1)!.getBoundingClientRect();
+    return (
+      last.height > 0 &&
+      last.bottom <= tooltip.bottom + 0.5 &&
+      last.bottom <= scroller.getBoundingClientRect().bottom + 0.5
+    );
+  });
+  expect(lastRowShown).toBe(true);
+
+  // The scrolling area shows the header and whole rows, and a wheel notch moves one row.
+  const scroller = list.locator('table').locator('..');
+  const area = await scroller.evaluate((el) => {
+    el.scrollTop = 0;
+    return el.clientHeight;
+  });
+  expect(area % 24).toBe(0);
+  expect(area).toBeGreaterThanOrEqual(48);
+  if (area < 24 * 5) {
+    const scrollerBox = (await scroller.boundingBox())!;
+    await page.mouse.move(scrollerBox.x + 40, scrollerBox.y + scrollerBox.height / 2);
+    await page.mouse.wheel(0, 100);
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(24);
+  }
+  await expect(list.getByTestId('geoflow-edge-list-count')).toHaveText('4 items');
+  expect(await column('Direction')).toEqual(['1 → 6', '6 → 1', '1 → 6', '6 → 1']);
+
+  // Each row's link carries its trunk.
+  await expect(rows.nth(1).getByRole('link', { name: 'Trunk details' })).toHaveAttribute('href', /var-trunk=TRK-002/);
+
+  // Largest first.
+  await list.getByRole('button', { name: 'capacity_gbps' }).click();
+  await list.getByRole('button', { name: 'capacity_gbps' }).click();
+  expect(await column('capacity_gbps')).toEqual(['100 Gb/s', '100 Gb/s', '10 Gb/s', '1 Gb/s']);
+
+  // Typing in the search box filters the list, and doesn't zoom the map ("+" and "-" are its keys).
+  // A strip of map the tooltip doesn't cover: above it, or below it when it's near the top.
+  const canvas = (await panel.locator('canvas.maplibregl-canvas').boundingBox())!;
+  const tip = (await panel.getByTestId('geoflow-tooltip').boundingBox())!;
+  const above = tip.y - canvas.y > 40;
+  const clip = {
+    x: canvas.x + 10,
+    y: above ? canvas.y + 5 : tip.y + tip.height + 5,
+    width: canvas.width - 20,
+    height: 30,
+  };
+  await list.getByPlaceholder('Search items').click();
+  await page.waitForTimeout(300);
+  const before = await page.screenshot({ clip });
+  await page.keyboard.type('+-microwave');
+  await expect(list.getByTestId('geoflow-edge-list-count')).toHaveText('0 of 4 items');
+  await page.keyboard.press('Escape');
+  await page.keyboard.type('microwave');
+  await expect(list.getByTestId('geoflow-edge-list-count')).toHaveText('1 of 4 items');
+  expect(await column('trunk_id')).toEqual(['TRK-004']);
+  expect(Buffer.compare(before, await page.screenshot({ clip }))).toBe(0);
+});
+
+test("leaves the direction out of a line's list when Show direction is off", async ({
+  readProvisionedDashboard,
+  gotoPanelEditPage,
+  page,
+}) => {
+  const dashboard = await readProvisionedDashboard(FILE);
+  const panel = await editedPanel(await gotoPanelEditPage({ dashboard, id: '5' }));
+  await edgesDrawn(panel);
+  const editor = page.getByTestId('geoflow-layers-editor');
+  await editor.getByRole('button', { name: 'Trunks', exact: true }).click();
+  await editor.getByTestId('geoflow-layer-settings').locator('#geoflow-layer-B-direction').click({ force: true });
+
+  await pointAtCoreLine(page, panel, 'click');
+  const list = panel.getByTestId('geoflow-edge-list');
+  await expect(list.getByTestId('geoflow-edge-list-row')).toHaveCount(4);
+  await expect(list.getByRole('columnheader', { name: 'Direction' })).toHaveCount(0);
+  await expect(list.getByRole('columnheader', { name: 'trunk_id' })).toBeVisible();
 });

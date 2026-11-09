@@ -1,6 +1,6 @@
 # Architecture: GeoFlow, a Grafana PostGIS Map Panel
 
-Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later. Node-edge maps, a network of nodes and the edges between them, have their own design and phases in [node-edge/architecture.md](node-edge/architecture.md); its Phases 1 to 3 (edges drawn, set up in the Layers list, hover totals) are implemented.
+Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later. Node-edge maps, a network of nodes and the edges between them, have their own design and phases in [node-edge/architecture.md](node-edge/architecture.md); its Phases 1 to 4 (edges drawn, set up in the Layers list, hover totals, the click list) are implemented.
 
 ### Project baseline
 
@@ -136,6 +136,8 @@ src/
     useFeatureTooltip.tsx      # hover and click → tooltip state and engine highlights
     useOnScreen.ts             # drops the map while the panel is off screen
     FeatureTooltip.tsx         # tooltip content, with Grafana's tooltip components
+    EdgeList.tsx  edgeList.ts  # a pinned edge line's list: search, sort, rows (node-edge)
+    AggregatesEditor.tsx       # the Edges field options' Aggregates (node-edge)
     MapLegend.tsx  MapWarnings.tsx  DataSummary.tsx
     LayersEditor.tsx           # option editor for the layer list (Phase 7)
     ViewEditor.tsx             # Use current view (Phase 8)
@@ -147,6 +149,8 @@ src/
     bindLayers.ts              # frames + Layers settings → BoundLayer[] (§3.4), roles, networkLayers
     detectEdgeFields.ts        # an edge layer's from and to columns (node-edge)
     joinEdges.ts               # edges + node points → one line per pair of nodes (node-edge)
+    pairDetails.ts             # a pair's summary: nodes, items, aggregates, ratios (node-edge)
+    pairRows.ts                # a pair's rows, for the click list (node-edge)
     detectGeometryField.ts
     parseGeometry.ts           # GeoJSON text or object → geometry, with warnings
     frameToFeatureCollection.ts
@@ -168,6 +172,7 @@ src/
   model/                       # shared plain types (GeoJSON, bounds)
 tests/                         # Playwright e2e (@grafana/plugin-e2e), one spec per dashboard
   fixtures/                    # shared fixtures, including stubbed basemap hosts
+  node-edge-scrollbars.spec.ts # the click list with real scrollbars, which Playwright hides by default
 scripts/                       # bench-map.mjs, capture-frames.mjs, check-dist.mjs
 webpack/                       # third-party notices plugin and license check (§5.4)
 webpack.config.ts              # extends .config/webpack

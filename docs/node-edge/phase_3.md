@@ -175,7 +175,7 @@ Design §5. No new seed data, so no database reset.
 
 Implemented on branch `node-edge-phase-3` in five commits, steps 3.2 to 3.6. Step 3.1 was checks only, recorded below.
 - 630 unit and component tests pass (13 new), and 74 e2e tests (3 new, plus the login setup). No seed data changed, so the stack wasn't reset.
-- CI: to be filled in from the pull request.
+- CI on PR #39 passes build, lint, 630 unit tests, the 8 build tool tests, `check:dist`, and the e2e tests on Grafana 13.2.5, 13.3.0 and nightly, 74 e2e tests each (plus the login setup), on the first run, with no retries; so no Playwright report was uploaded. The API compatibility check reports only the known `useFieldConfig` false positive (Phase 4).
 
 ### Exit criteria
 

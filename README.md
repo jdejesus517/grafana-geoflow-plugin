@@ -81,7 +81,7 @@ SELECT site_id AS id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM sites ORDER B
 SELECT trunk_id, a_site, z_site, capacity_gbps FROM trunks ORDER BY trunk_id;
 ```
 
-Hovering a line shows its totals over every edge between its two nodes. A click list of each line's edges and styling lines by their totals are planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)).
+Hovering a line shows a summary of every edge between its two nodes, and clicking it lists them. Styling lines by their summary values is planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)).
 
 To set it up, in the panel editor's **Layers** list:
 
@@ -96,9 +96,9 @@ To set it up, in the panel editor's **Layers** list:
 - **Warnings** count edges that can't be drawn: an id with no node, an edge from a node to itself, an empty end, a duplicate node id, or a node that isn't a single point.
 - **Not with Partition by values:** a node or edge query split into several frames warns instead of drawing.
 
-### Edge totals
+### Edge summary
 
-Hovering an edge line shows its two nodes and how many edges (links) run between them, in either direction. Click to pin it; a pinned line stays through refreshes. Choose what else it shows per column, in the field options' **Edges** category, usually in an override on the column's name:
+Hovering an edge line shows its two nodes and how many edges run between them, in either direction, as **Items**: viewers see lines between locations, so what they read avoids graph terms. Click a line to pin it and list its edges (below); a pinned line stays through refreshes. Choose what else the hover shows per column, in the field options' **Edges** category, usually in an override on the column's name:
 
 - **Aggregates:** any of **Sum**, **Average**, **Min**, **Max** and **Count**, on one line: `capacity_gbps: sum 211 Gb/s · max 100 Gb/s`. A sum shows the line's total, and min and max its outliers, such as one saturated trunk among idle ones. Sum and Average apply to numbers, Min and Max to numbers and times, Count to any column. Values use the column's unit and decimals; empty values are skipped.
 - **Ratio numerator** and **Ratio denominator:** make a column a ratio, such as utilization over capacity. Add the column in SQL, give it a unit such as **Percent (0.0-1.0)**, and point it at its numerator and denominator:
@@ -112,6 +112,17 @@ Hovering an edge line shows its two nodes and how many edges (links) run between
   A hovered line shows the sum of the numerator over the sum of the denominator: trunks of 100 and 10 Gb/s carrying 10 and 9 Gb/s are 17% used, not the 50% their own percentages average to. Edges missing either value are left out.
 
 Columns with **Hide in tooltip** are left out, and a line's **Tooltips** setting in the Layers list turns its tooltip off. Lines are named by their nodes' ids, so text ids such as site names read best.
+
+### The list of a line's edges
+
+A clicked line lists every edge between its two nodes, one row each. A **Summary | Items** switch in the pinned tooltip's header swaps the list for the line's summary, what its hover shows, and back; it opens on the items, and keeps your choice while the tooltip is pinned.
+
+- **Columns:** a row number, counting the rows as listed, which stays in view while you scroll either way; each row's own direction (`1 → 6` or `6 → 1`), then the edge query's columns, formatted as in tooltips. **Hide in tooltip** leaves a column out; the edge layer's **Show direction** setting in the Layers list leaves out the direction.
+- **Search** filters the rows by what they show, ignoring case: "1 of 4 items". Escape clears it.
+- **Sort** by clicking a column's header: ascending, descending, then back to the query's order. Numbers and times sort by value; text sorts with its numbers in order, so `TRK-2` comes before `TRK-10`.
+- **Data links** on the edge query's columns show on each row, filled in with that row's values: a link icon when there's one link, a menu when there are several.
+- **Size:** the list draws up to 500 rows of what matches, and says so when there are more. It's as wide as the map allows, up to 800 px, and shows whole rows, at least one.
+- **Scrolling** moves one row per wheel notch, and dragging the scrollbar stops on a row.
 
 ## Tooltips
 
@@ -374,7 +385,7 @@ node scripts/capture-frames.mjs
 - [Project overview](docs/project_overview.md)
 - [Architecture](docs/architecture.md)
 - Phase plans: [0](docs/phase_0.md), [1](docs/phase_1.md), [2](docs/phase_2.md), [3](docs/phase_3.md), [4](docs/phase_4.md), [5](docs/phase_5.md), [6](docs/phase_6.md), [7](docs/phase_7.md), [8](docs/phase_8.md), [9](docs/phase_9.md), [10](docs/phase_10.md), [11](docs/phase_11.md), [12](docs/phase_12.md)
-- Node-edge maps: [architecture](docs/node-edge/architecture.md), phase plans [1](docs/node-edge/phase_1.md), [2](docs/node-edge/phase_2.md), [3](docs/node-edge/phase_3.md)
+- Node-edge maps: [architecture](docs/node-edge/architecture.md), phase plans [1](docs/node-edge/phase_1.md), [2](docs/node-edge/phase_2.md), [3](docs/node-edge/phase_3.md), [4](docs/node-edge/phase_4.md)
 
 ## License
 

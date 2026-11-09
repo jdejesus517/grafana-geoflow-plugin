@@ -14,6 +14,8 @@ export { dataStyleFields, featureStyles } from './featureStyles';
 export type { DataStyleFields } from './featureStyles';
 export { EMPTY_VALUE, featureDetails } from './featureDetails';
 export { EDGE_AGGREGATES, pairDetails } from './pairDetails';
+export { DIRECTION_KEY, pairRows } from './pairRows';
+export type { PairColumn, PairRow, PairTable } from './pairRows';
 export type { EdgeAggregate, EdgeFieldConfig } from './pairDetails';
 export type { FeatureDetailItem, FeatureDetails } from './featureDetails';
 export { featureByKey, featureIndex, featureKey } from './featureLookup';

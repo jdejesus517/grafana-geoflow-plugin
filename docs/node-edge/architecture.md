@@ -1,6 +1,6 @@
 # Node-Edge Maps: Architecture
 
-Status: **Design accepted (2026-11-08).** Phases 1–3 implemented: edges drawn ([phase_1.md](phase_1.md)), set up in the Layers list ([phase_2.md](phase_2.md)), hover totals ([phase_3.md](phase_3.md)). Implementation follows in phases (§9.3), each with its own `docs/node-edge/phase_N.md`.
+Status: **Design accepted (2026-11-08).** Phases 1–4 implemented: edges drawn ([phase_1.md](phase_1.md)), set up in the Layers list ([phase_2.md](phase_2.md)), hover totals ([phase_3.md](phase_3.md)), the click list ([phase_4.md](phase_4.md)). Implementation follows in phases (§9.3), each with its own `docs/node-edge/phase_N.md`.
 
 This feature extends GeoFlow as built through Phase 12 ([../architecture.md](../architecture.md)). It keeps that document's rules unless a decision here says otherwise.
 
@@ -142,15 +142,18 @@ interface ConversionResult {
 
 ### 6.1 Hover
 
-The tooltip's header names the pair by its node ids ("SITE-04 – SITE-11") and its row count ("3 links"). Then one line per chosen aggregate, per column, in query order: "capacity_gbps: sum 120 Gb/s, avg 40 Gb/s". Ratio columns show their pair value: "utilization: 31%". Aggregates are computed for the hovered pair only, and kept per pair until the data changes, so moving along a line costs nothing.
+The tooltip names the pair by its node ids ("Between SITE-04 and SITE-11") and counts its rows ("Items 3": viewers needn't know graph terms; node-edge Phase 4, decision 8). Then one line per chosen aggregate, per column, in query order: "capacity_gbps: sum 120 Gb/s, avg 40 Gb/s". Ratio columns show their pair value: "utilization: 31%". Aggregates are computed for the hovered pair only, and kept per pair until the data changes, so moving along a line costs nothing.
+
+**From Phase 5 (agreed in Phase 4's review):** with Phase 4's Summary | Items switch, the pinned tooltip's Summary shows all of this, so the hover becomes a glance: Between, Items, and the pair values behind the edge layer's Color by and Size by, which say why the line looks as it does. A hover can't scroll, so a long summary there gets cut off. With no Color by or Size by, the hover keeps the full summary, so panels without styling lose nothing.
 
 ### 6.2 Click list
 
-A pinned tooltip on a pair shows the pair's header and aggregates, then the list:
+A pinned tooltip on a pair shows its header and a **Summary | Items** switch (node-edge Phase 4): Summary is the hover's content, Items the list, each with the tooltip's whole height. It opens on Items. The list:
 - **Columns:** direction (unless Show direction is off), then the edge query's columns in query order, less those hidden from tooltips (decision 9). Values are formatted with each column's display processor, as in feature tooltips.
-- **Search, sort, size:** decision 7. Formatted values are computed once per pair when the list opens, for searching and display; sorting uses the raw values.
+- **Search, sort, size:** decision 7, refined in Phase 4: a third header click returns to query order, and counts read "items", not links, since viewers needn't know graph terms (node-edge Phase 4, decisions 2 and 8). Formatted values are computed once per pair when the list opens, for searching and display; sorting uses the raw values.
 - **Width:** a table needs more room than a tooltip's 400 px, so the list may use the map's full width (`tooltipSpace`), up to 800 px.
-- **Data links:** per row (decision 15). A final column, shown when any column of the edge query has data links: a link icon for a row with one link, or an icon button opening a menu (Grafana's `Dropdown` and `Menu`) when it has several. A row's links are those of every column for that row, deduplicated, hidden columns included, as `featureDetails` gathers a feature's ([featureDetails.ts](../../src/adapter/featureDetails.ts)); variables such as `${__data.fields.trunk_id}` take that row's values. They're built when the row's button is used, not for every drawn row. The hover has no links: it covers the whole pair, not one row.
+- **Rows:** numbered as listed, in a first column that stays in view scrolling either way. Every row is 24 px; the list shows the header and whole rows, at least one, above any horizontal scrollbar, and moves one row per wheel notch.
+- **Data links:** per row (decision 15). A final column, shown when any column of the edge query has data links: a link icon on each row when the query has one link setting, or an icon button opening a menu (Grafana's `Dropdown` and `Menu`) when it has several (node-edge Phase 4, decision 4). A row's links are those of every column for that row, deduplicated, hidden columns included, as `featureDetails` gathers a feature's ([featureDetails.ts](../../src/adapter/featureDetails.ts)); variables such as `${__data.fields.trunk_id}` take that row's values. They're built when the row's button is used, not for every drawn row. The hover has no links: it covers the whole pair, not one row.
 
 ### 6.3 Styling
 
@@ -226,8 +229,8 @@ Each phase ends with something usable and its own tests, as in the main plan. Ph
 | 2 | **Layers editor:** the Role select; From and To column pickers showing the detected columns; geometry and ID column pickers hidden for edge layers; a layer whose role becomes Edges moves below the node layer (decision 14) | Component tests on the editor; e2e: making a network from two geometry layers in the editor |
 | 3 | **Hover:** the Edges field options for aggregates and ratios; the pair tooltip with row count, aggregates and ratios; pinned pairs following refreshes (showing the hover content until Phase 4) | Unit tests on aggregates and ratios; e2e hover |
 | 4 | **Click list:** `EdgeList` with search, sort, scrolling and the cap; the direction column and its Show direction switch; row data links; the pager mixing node and pair entries | Component tests; e2e click, search, sort and a row's link |
-| 5 | **Styling by pair values:** Pair value; Color by and Size by on edges; per-feature widths in the engine; legend | Unit tests on pair values and ranges; e2e styling |
-| 6 | **Hardening and docs:** the large network benchmark and any optimization; README walkthrough; architecture updates | Benchmark against budgets; docs reviewed |
+| 5 | **Styling by pair values:** Pair value; Color by and Size by on edges; per-feature widths in the engine; legend; the hover shows the styled pair values (§6.1) | Unit tests on pair values and ranges; e2e styling |
+| 6 | **Hardening and docs:** the large network benchmark and any optimization; README walkthrough; architecture updates; the 1.0.0 release materials, with networks: the README's status line, the CHANGELOG entry and the catalog README (`src/README.md`) | Benchmark against budgets; docs reviewed |
 
 ## 10. Decisions
 
@@ -275,3 +278,4 @@ Considered, and left out of the first version.
 | Highlight a node's edges | Hovering a node also highlights every edge that ends at it, showing what it connects to. | Not needed to read pairs; adds a lookup from node to pairs and a second highlight state. |
 | Choosing the click list's columns | A setting for which columns the click list shows and in what order, separately from the hover. | Hide in tooltip already drops columns; add this if real use shows the list is cluttered or needs a different order. |
 | Node names in pair titles | Pair titles use a node name column ("Raleigh – Durham") rather than ids. | Needs a name column setting on the node layer; ids identify pairs unambiguously meanwhile. |
+| Naming what's counted | A setting on the edge layer for the word viewers see in counts, such as "trunks" or "flights" (with singular and plural), replacing the default "items" ("4 trunks", "Search trunks"). | Needs singular and plural forms, and the default reads fine meanwhile (node-edge Phase 4, decision 8). |

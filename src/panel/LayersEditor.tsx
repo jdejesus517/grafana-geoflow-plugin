@@ -339,6 +339,15 @@ function LayerSettings({ layer, frame, defaultName, onChange, onRoleChange }: Se
             onChange={() => onChange({ tooltips: !layer.tooltips })}
           />
         </Field>
+        {edges && (
+          <Field label="Show direction" description="The list of a clicked edge line starts with each row's direction.">
+            <Switch
+              id={`${id}-direction`}
+              value={layer.showDirection}
+              onChange={() => onChange({ showDirection: !layer.showDirection })}
+            />
+          </Field>
+        )}
       </Stack>
     </div>
   );
@@ -428,13 +437,14 @@ function columnOptions(frame: DataFrame, include: (type: FieldType) => boolean):
 }
 
 /** Settings whose value is the default, and so isn't saved. Unset and empty values aren't either. */
-const DEFAULTS: Partial<LayerConfig> = { visible: true, tooltips: true, role: 'geometry' };
+const DEFAULTS: Partial<LayerConfig> = { visible: true, tooltips: true, role: 'geometry', showDirection: true };
 
 /**
  * The config with only what differs from the defaults, so saved dashboards stay small. Every
  * other setting is kept, including ones added after this was written: a list of settings to keep
- * dropped the network roles and columns (docs/node-edge/phase_2.md, decision 4). From and to
- * columns are dropped off layers that aren't edges, where they no longer apply.
+ * dropped the network roles and columns (docs/node-edge/phase_2.md, decision 4). Edge settings
+ * (from and to columns, Show direction) are dropped off layers that aren't edges, where they no
+ * longer apply.
  */
 export function withoutDefaults(config: LayerConfig): LayerConfig {
   const saved: Record<string, unknown> = {};
@@ -446,6 +456,7 @@ export function withoutDefaults(config: LayerConfig): LayerConfig {
   if (saved.role !== 'edges') {
     delete saved.fromField;
     delete saved.toField;
+    delete saved.showDirection;
   }
   return saved as unknown as LayerConfig;
 }

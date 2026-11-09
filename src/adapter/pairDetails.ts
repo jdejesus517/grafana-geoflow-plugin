@@ -27,7 +27,7 @@ export interface EdgeFieldConfig {
 
 /**
  * A pair's tooltip content (docs/node-edge/phase_3.md, Design §1), in the shape of a feature's:
- * the two nodes, the number of links, then in column order each column's chosen aggregates and
+ * the two nodes, the number of rows, then in column order each column's chosen aggregates and
  * each ratio column's ratio of sums. Values are formatted as the column shows them. Columns hidden
  * from tooltips are left out, and a pair has no links: no single row holds a link's values.
  * Undefined when the feature isn't one of the result's pairs.
@@ -40,7 +40,8 @@ export function pairDetails(frame: DataFrame, result: ConversionResult, featureI
   }
   const items: FeatureDetailItem[] = [
     { label: 'Between', value: `${pair.nodes[0]} and ${pair.nodes[1]}` },
-    { label: 'Links', value: String(pair.rows.length) },
+    // "Items": viewers see lines between locations, and needn't know they're edges (docs/node-edge/phase_4.md, decision 8).
+    { label: 'Items', value: String(pair.rows.length) },
   ];
   for (const field of frame.fields) {
     const custom: EdgeFieldConfig & { hideInTooltip?: boolean } = field.config.custom ?? {};

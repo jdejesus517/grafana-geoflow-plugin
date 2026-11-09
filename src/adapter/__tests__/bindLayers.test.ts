@@ -66,6 +66,7 @@ describe('bindPerFrame', () => {
       visible: true,
       tooltips: true,
       role: 'geometry',
+      showDirection: true,
       config: { id: 'A' },
       frameIndex: 0,
       refId: 'A',

@@ -313,6 +313,7 @@ export const MapPanel = ({ data, options, width, height, eventBus }: Props) => {
     results,
     frames: series,
     layers,
+    bound,
     basemap,
   });
 

@@ -30,6 +30,8 @@ export interface LayerConfig {
   /** Edges only: the columns holding the ids of the nodes an edge joins; default detected. */
   fromField?: string;
   toField?: string;
+  /** Edges only: the list of a clicked edge line starts with each row's direction; default true. */
+  showDirection?: boolean;
 }
 
 /**
@@ -54,6 +56,7 @@ export interface BoundLayer {
   role: LayerRole;
   fromField?: string;
   toField?: string;
+  showDirection: boolean;
   /** The saved settings; undefined for a layer that has none yet. */
   config?: LayerConfig;
   /** Index into the frames; undefined for saved settings whose frame is gone. */
@@ -125,6 +128,7 @@ function bound(
     role: config?.role === 'nodes' || config?.role === 'edges' ? config.role : 'geometry',
     ...(nonEmpty(config?.fromField) && { fromField: config!.fromField }),
     ...(nonEmpty(config?.toField) && { toField: config!.toField }),
+    showDirection: config?.showDirection !== false,
     ...(config && { config }),
     ...(from.frameIndex !== undefined && { frameIndex: from.frameIndex, refId: from.refId }),
   };

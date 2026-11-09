@@ -176,6 +176,7 @@ describe('withoutDefaults', () => {
       role: 'edges',
       fromField: 'a_site',
       toField: 'z_site',
+      showDirection: false,
     };
 
     expect(withoutDefaults(full)).toEqual(full);
@@ -187,12 +188,16 @@ describe('withoutDefaults', () => {
     ).toEqual({ id: 'A' });
   });
 
-  it('drops from and to columns off layers that are not edges', () => {
-    expect(withoutDefaults({ id: 'A', role: 'nodes', fromField: 'a', toField: 'z' })).toEqual({
+  it('drops edge settings off layers that are not edges', () => {
+    expect(withoutDefaults({ id: 'A', role: 'nodes', fromField: 'a', toField: 'z', showDirection: false })).toEqual({
       id: 'A',
       role: 'nodes',
     });
     expect(withoutDefaults({ id: 'A', fromField: 'a' })).toEqual({ id: 'A' });
+  });
+
+  it('leaves out Show direction when on, its default', () => {
+    expect(withoutDefaults({ id: 'B', role: 'edges', showDirection: true })).toEqual({ id: 'B', role: 'edges' });
   });
 });
 
@@ -255,6 +260,19 @@ describe('LayersEditor roles', () => {
     expect(settings().queryByLabelText(/^Geometry column/)).not.toBeInTheDocument();
     expect(settings().queryByLabelText(/^ID column/)).not.toBeInTheDocument();
     expect(settings().getByLabelText(/^Tooltips/)).toBeInTheDocument();
+  });
+
+  it("turns an edge layer's Show direction off, and shows it only for edges", () => {
+    const { onChange } = setup([{ id: 'B', role: 'edges' }], [trunks()]);
+
+    fireEvent.click(settings().getByLabelText(/^Show direction/));
+    expect(lastSaved(onChange)).toEqual([{ id: 'B', role: 'edges', showDirection: false }]);
+  });
+
+  it('shows no Show direction setting for other layers', () => {
+    setup([{ id: 'A', role: 'nodes' }], [sites()]);
+
+    expect(settings().queryByLabelText(/^Show direction/)).not.toBeInTheDocument();
   });
 
   it('saves a chosen column, and detects the other from the same pair', () => {
