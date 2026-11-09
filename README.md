@@ -81,7 +81,7 @@ SELECT site_id AS id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM sites ORDER B
 SELECT trunk_id, a_site, z_site, capacity_gbps FROM trunks ORDER BY trunk_id;
 ```
 
-Hovering a line shows its totals over every edge between its two nodes. A click list of each line's edges and styling lines by their totals are planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)).
+Hovering a line shows a summary of every edge between its two nodes, and clicking it lists them. Styling lines by their summary values is planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)).
 
 To set it up, in the panel editor's **Layers** list:
 
@@ -96,7 +96,7 @@ To set it up, in the panel editor's **Layers** list:
 - **Warnings** count edges that can't be drawn: an id with no node, an edge from a node to itself, an empty end, a duplicate node id, or a node that isn't a single point.
 - **Not with Partition by values:** a node or edge query split into several frames warns instead of drawing.
 
-### Edge totals
+### Edge summary
 
 Hovering an edge line shows its two nodes and how many edges run between them, in either direction, as **Items**: viewers see lines between locations, so what they read avoids graph terms. Click a line to pin it and list its edges (below); a pinned line stays through refreshes. Choose what else the hover shows per column, in the field options' **Edges** category, usually in an override on the column's name:
 
@@ -115,7 +115,7 @@ Columns with **Hide in tooltip** are left out, and a line's **Tooltips** setting
 
 ### The list of a line's edges
 
-A clicked line lists every edge between its two nodes, one row each. A **Totals | Items** switch in the pinned tooltip's header swaps the list for the line's totals and back; it opens on the items, and keeps your choice while the tooltip is pinned.
+A clicked line lists every edge between its two nodes, one row each. A **Summary | Items** switch in the pinned tooltip's header swaps the list for the line's summary, what its hover shows, and back; it opens on the items, and keeps your choice while the tooltip is pinned.
 
 - **Columns:** each row's own direction (`1 → 6` or `6 → 1`), then the edge query's columns, formatted as in tooltips. **Hide in tooltip** leaves a column out; the edge layer's **Show direction** setting in the Layers list leaves out the direction.
 - **Search** filters the rows by what they show, ignoring case: "1 of 4 items". Escape clears it.

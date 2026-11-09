@@ -45,9 +45,10 @@ const MIN_WIDTH = 180;
 /** A list's table needs a few columns' room. */
 const MIN_LIST_WIDTH = 360;
 
-type PairView = 'totals' | 'items';
+type PairView = 'summary' | 'items';
 const PAIR_VIEWS: Array<{ label: string; value: PairView }> = [
-  { label: 'Totals', value: 'totals' },
+  // "Summary", not "Totals": the aggregates are minimums, averages and counts as well as sums.
+  { label: 'Summary', value: 'summary' },
   { label: 'Items', value: 'items' },
 ];
 
@@ -110,7 +111,7 @@ const getStyles = (theme: GrafanaTheme2) => ({
  */
 export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, onIndexChange, onClose }: Props) => {
   const styles = useStyles2(getStyles);
-  // A pinned edge line shows its totals or its items, one at a time, each with the tooltip's whole
+  // A pinned edge line shows its summary or its items, one at a time, each with the tooltip's whole
   // height. It opens on the items, which a click is for; the choice stays while the tooltip does.
   const [view, setView] = useState<PairView>('items');
   const feature = features[index];

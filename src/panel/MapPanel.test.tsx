@@ -1303,14 +1303,14 @@ describe('MapPanel', () => {
       expect(tooltipText()).toContain('Items2');
     });
 
-    it('switches a pinned pair between its items, first, and its totals', async () => {
+    it('switches a pinned pair between its items, first, and its summary', async () => {
       await renderPanel({ data: { series: [sites, trunks] }, options: network });
       fire('click', 0);
       const element = engine.openTooltip.mock.lastCall![1] as HTMLElement;
       expect(within(element).getByTestId('geoflow-edge-list')).toBeInTheDocument();
       expect(within(element).queryByText('Between')).not.toBeInTheDocument();
 
-      fireEvent.click(within(element).getByRole('radio', { name: 'Totals' }));
+      fireEvent.click(within(element).getByRole('radio', { name: 'Summary' }));
       expect(within(element).queryByTestId('geoflow-edge-list')).not.toBeInTheDocument();
       expect(tooltipText()).toContain('Between1 and 2');
 
