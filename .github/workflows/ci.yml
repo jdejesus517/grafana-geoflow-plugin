@@ -204,6 +204,17 @@ jobs:
         id: run-tests
         run: npm run e2e
 
+      # A failed or retried test leaves attachments (screenshots, traces) in the report, which a
+      # flaky test's passing run would otherwise lose (docs/node-edge/phase_3.md, decision 6). The
+      # repository is public, so the report is too: dev dashboards and their fictional data.
+      - name: Upload Playwright report
+        if: ${{ always() && hashFiles('playwright-report/data/**') != '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report-${{ matrix.GRAFANA_IMAGE.NAME }}-${{ matrix.GRAFANA_IMAGE.VERSION }}-${{ github.run_id }}
+          path: playwright-report/
+          retention-days: 5
+
       - name: Docker logs
         if: ${{ always() && steps.run-tests.outcome == 'failure' }}
         run: |

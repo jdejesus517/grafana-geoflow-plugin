@@ -23,9 +23,16 @@ for (const { title, summaries } of PANELS) {
     const dashboardPage = await gotoDashboardPage(dashboard);
     const panel = dashboardPage.getPanelByTitle(title);
 
+    // Two stages, so a failure says which one stalled (docs/node-edge/phase_3.md, Design §4): the
+    // panel loading (Grafana loads panels as they come on screen), then its queries returning,
+    // which takes longer while other tests run.
+    await panel.locator.scrollIntoViewIfNeeded();
+    await expect(panel.locator.getByTestId('geoflow-panel'), 'the panel loads').toBeVisible(DRAWN);
     for (const [refId, summary] of Object.entries(summaries)) {
-      // The summary shows once the queries return, which takes longer while other tests run.
-      await expect(panel.locator.getByTestId(`geoflow-summary-${refId}`)).toHaveText(summary, DRAWN);
+      await expect(panel.locator.getByTestId(`geoflow-summary-${refId}`), 'the queries return').toHaveText(
+        summary,
+        DRAWN
+      );
     }
   });
 }
