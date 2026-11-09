@@ -2,7 +2,7 @@ import React from 'react';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import { DataFrame, Field, FieldType, LinkModel, toDataFrame } from '@grafana/data';
 import { PairTable } from '../adapter';
-import { EdgeList } from './EdgeList';
+import { EdgeList, ROW_HEIGHT, wheelRows, wholeRowsHeight } from './EdgeList';
 import { totalsMaxHeight } from './FeatureTooltip';
 
 const TABLE: PairTable = {
@@ -120,6 +120,41 @@ describe('EdgeList', () => {
 describe('totalsMaxHeight', () => {
   it('leaves a list its room, keeping a line of totals in a short tooltip', () => {
     expect(totalsMaxHeight(600)).toBe(450);
-    expect(totalsMaxHeight(164)).toBe(22);
+    expect(totalsMaxHeight(180)).toBe(30);
+    expect(totalsMaxHeight(164)).toBe(0);
+  });
+});
+
+describe('wholeRowsHeight', () => {
+  it('fits the header and whole rows in the room, at least one row', () => {
+    expect(ROW_HEIGHT).toBe(24);
+    expect(wholeRowsHeight(62)).toBe(48);
+    expect(wholeRowsHeight(72)).toBe(72);
+    expect(wholeRowsHeight(95)).toBe(72);
+    expect(wholeRowsHeight(30)).toBe(48);
+  });
+});
+
+describe('wheelRows', () => {
+  it('moves one row per notch, whichever its size or mode', () => {
+    expect(wheelRows({ deltaY: 100, deltaMode: 0 }, 0)).toEqual({ rows: 1, pending: 0 });
+    expect(wheelRows({ deltaY: -53, deltaMode: 0 }, 0)).toEqual({ rows: -1, pending: 0 });
+    expect(wheelRows({ deltaY: 3, deltaMode: 1 }, 0)).toEqual({ rows: 1, pending: 0 });
+  });
+
+  it("adds up a trackpad's small steps, one row per row's height", () => {
+    let pending = 0;
+    const rows: number[] = [];
+    for (const deltaY of [10, 10, 10, 10, 10]) {
+      const step = wheelRows({ deltaY, deltaMode: 0 }, pending);
+      pending = step.pending;
+      rows.push(step.rows);
+    }
+    expect(rows).toEqual([0, 0, 1, 0, 1]);
+    expect(pending).toBe(2);
+  });
+
+  it('drops what was carried when the direction changes', () => {
+    expect(wheelRows({ deltaY: -10, deltaMode: 0 }, 20)).toEqual({ rows: 0, pending: -10 });
   });
 });

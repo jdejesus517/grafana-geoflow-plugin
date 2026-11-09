@@ -1,5 +1,5 @@
 import React from 'react';
-import { css } from '@emotion/css';
+import { css, cx } from '@emotion/css';
 import { DataFrame, GrafanaTheme2 } from '@grafana/data';
 import {
   IconButton,
@@ -45,12 +45,17 @@ const MIN_WIDTH = 180;
 const MIN_LIST_WIDTH = 360;
 /** What a list needs to be usable: its search box and count, table header and a couple of rows. */
 const LIST_ROOM = 150;
-/** The totals always keep a line. */
-const TOTALS_MIN = 22;
+/** A line of totals; less than that isn't worth showing. */
+const TOTALS_LINE = 22;
 
-/** The totals' height in a tooltip of `maxHeight` with a list: what's left after the list's room. */
+/**
+ * The totals' height in a tooltip of `maxHeight` with a list: what's left after the list's room,
+ * in which the list shows at least one whole row. Below a line's height, none: in a very short
+ * tooltip the row matters more.
+ */
 export function totalsMaxHeight(maxHeight: number): number {
-  return Math.max(TOTALS_MIN, maxHeight - LIST_ROOM);
+  const room = maxHeight - LIST_ROOM;
+  return room >= TOTALS_LINE ? room : 0;
 }
 
 // The look of Grafana's own tooltip container (getTooltipContainerStyles in @grafana/ui), which
@@ -90,6 +95,11 @@ const getStyles = (theme: GrafanaTheme2) => ({
     gap: theme.spacing(0.25),
     color: theme.colors.text.secondary,
     whiteSpace: 'nowrap',
+  }),
+  // A list's minimum (its header and one row) can outgrow a very short tooltip; then the content
+  // scrolls as a whole rather than hiding the list's rows where no scrolling reaches them.
+  bodyWithList: css({
+    overflowY: 'auto',
   }),
   // With a list, the totals come first, and scroll in their own area when the tooltip is short,
   // so the list keeps room for its rows (docs/node-edge/phase_4.md, decision 1). Their height is
@@ -156,7 +166,7 @@ export const FeatureTooltip = ({ features, index, pinned, maxWidth, maxHeight, o
           )}
           {pinned && <IconButton name="times" size="sm" aria-label="Close" onClick={onClose} />}
         </div>
-        <div className={styles.body}>
+        <div className={cx(styles.body, feature.list && styles.bodyWithList)}>
           {feature.list ? (
             <>
               {/* The totals stay above the rows (decision 1), scrolling on their own when short. */}

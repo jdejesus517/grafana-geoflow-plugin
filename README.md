@@ -121,7 +121,8 @@ A clicked line lists every edge between its two nodes under its totals, one row 
 - **Search** filters the rows by what they show, ignoring case: "1 of 4 items". Escape clears it.
 - **Sort** by clicking a column's header: ascending, descending, then back to the query's order. Numbers and times sort by value; text sorts with its numbers in order, so `TRK-2` comes before `TRK-10`.
 - **Data links** on the edge query's columns show on each row, filled in with that row's values: a link icon when there's one link, a menu when there are several.
-- **Size:** the list draws up to 500 rows of what matches, and says so when there are more. It's as wide as the map allows, up to 800 px; in a short panel, the totals give up their room first.
+- **Size:** the list draws up to 500 rows of what matches, and says so when there are more. It's as wide as the map allows, up to 800 px, and shows whole rows, at least one; in a short panel, the totals give up their room first.
+- **Scrolling** moves one row per wheel notch, and dragging the scrollbar stops on a row.
 
 ## Tooltips
 

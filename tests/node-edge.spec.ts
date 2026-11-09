@@ -201,6 +201,21 @@ test('lists the edges of a clicked line, to search, sort and follow', async ({
     );
   });
   expect(lastRowShown).toBe(true);
+
+  // The scrolling area shows the header and whole rows, and a wheel notch moves one row.
+  const scroller = list.locator('table').locator('..');
+  const area = await scroller.evaluate((el) => {
+    el.scrollTop = 0;
+    return el.clientHeight;
+  });
+  expect(area % 24).toBe(0);
+  expect(area).toBeGreaterThanOrEqual(48);
+  if (area < 24 * 5) {
+    const scrollerBox = (await scroller.boundingBox())!;
+    await page.mouse.move(scrollerBox.x + 40, scrollerBox.y + scrollerBox.height / 2);
+    await page.mouse.wheel(0, 100);
+    await expect.poll(() => scroller.evaluate((el) => el.scrollTop)).toBe(24);
+  }
   await expect(list.getByTestId('geoflow-edge-list-count')).toHaveText('4 items');
   expect(await column('Direction')).toEqual(['1 → 6', '6 → 1', '1 → 6', '6 → 1']);
 

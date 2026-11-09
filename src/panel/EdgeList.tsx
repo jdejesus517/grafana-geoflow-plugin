@@ -1,9 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { css } from '@emotion/css';
 import { DataFrame, Field, GrafanaTheme2, LinkModel } from '@grafana/data';
 import { Dropdown, FilterInput, Icon, IconButton, Menu, useStyles2 } from '@grafana/ui';
 import { PairTable } from '../adapter';
 import { ListSort, countText, listRows, nextSort, searchPlaceholder } from './edgeList';
+
+/**
+ * Every row, and the header, is this tall, so the list can show whole rows and scroll one row at a
+ * time (docs/node-edge/phase_4.md, Outcome). Cells don't wrap, so nothing makes a row taller.
+ */
+export const ROW_HEIGHT = 24;
 
 const getStyles = (theme: GrafanaTheme2) => ({
   // Shrinks with the tooltip, never past it: a minimum height here would push the last rows out of
@@ -29,24 +35,33 @@ const getStyles = (theme: GrafanaTheme2) => ({
     fontSize: theme.typography.bodySmall.fontSize,
     whiteSpace: 'nowrap',
   }),
-  // Its rows' own height, shrinking to scroll when the tooltip is shorter.
+  // Its rows' own height, shrinking to scroll when the tooltip is shorter, but never below the
+  // header and one whole row. Rows snap under the sticky header, so dragging the scrollbar ends on
+  // a row; the wheel moves one row a notch (wheelRows).
   scroll: css({
     flex: '0 1 auto',
-    minHeight: 0,
+    minHeight: ROW_HEIGHT * 2,
     overflow: 'auto',
+    scrollSnapType: 'y mandatory',
+    scrollPaddingTop: ROW_HEIGHT,
   }),
   table: css({
     borderCollapse: 'collapse',
     fontSize: theme.typography.bodySmall.fontSize,
     'th, td': {
-      padding: theme.spacing(0.25, 1),
+      height: ROW_HEIGHT,
+      padding: theme.spacing(0, 1),
+      lineHeight: `${ROW_HEIGHT}px`,
       maxWidth: 240,
       overflow: 'hidden',
       textAlign: 'left',
       textOverflow: 'ellipsis',
       whiteSpace: 'nowrap',
     },
-    td: { borderTop: `1px solid ${theme.colors.border.weak}` },
+    // A line that takes no height, so every row is ROW_HEIGHT.
+    td: { boxShadow: `inset 0 1px 0 ${theme.colors.border.weak}` },
+    // On a cell, not the row: table rows aren't snap targets.
+    'tbody td:first-of-type': { scrollSnapAlign: 'start', scrollSnapStop: 'always' },
   }),
   head: css({
     position: 'sticky',
@@ -92,6 +107,42 @@ export const EdgeList = ({ table, frame }: Props) => {
   const shown = useMemo(() => listRows(table, { query, sort }), [table, query, sort]);
   const linkFields = frame.fields.filter((field) => (field.config.links?.length ?? 0) > 0);
   const linkSettings = linkFields.reduce((count, field) => count + field.config.links!.length, 0);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Once the list has its room, the scrolling area shows the header and whole rows only. The room
+  // is known when the tooltip is on the map, after this renders, so it's watched rather than read.
+  useLayoutEffect(() => {
+    const element = scroller.current;
+    if (!element || typeof ResizeObserver === 'undefined') {
+      return;
+    }
+    const observer = new ResizeObserver(() => {
+      if (element.scrollHeight > element.clientHeight && element.clientHeight > 0) {
+        const height = `${wholeRowsHeight(element.clientHeight)}px`;
+        if (element.style.maxHeight !== height) {
+          element.style.maxHeight = height;
+        }
+      }
+    });
+    observer.observe(element);
+    // One row per wheel notch (Chrome doesn't stop at each row for the wheel, whatever the snap
+    // settings). Not passive, to replace the browser's scroll.
+    let pending = 0;
+    const onWheel = (event: WheelEvent) => {
+      const step = wheelRows(event, pending);
+      pending = step.pending;
+      const top = Math.round(element.scrollTop / ROW_HEIGHT) * ROW_HEIGHT + step.rows * ROW_HEIGHT;
+      const max = element.scrollHeight - element.clientHeight;
+      if ((event.deltaY < 0 && element.scrollTop > 0) || (event.deltaY > 0 && element.scrollTop < max)) {
+        event.preventDefault();
+        element.scrollTop = Math.min(max, Math.max(0, top));
+      }
+    };
+    element.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      observer.disconnect();
+      element.removeEventListener('wheel', onWheel);
+    };
+  }, []);
 
   return (
     <div className={styles.list} data-testid="geoflow-edge-list">
@@ -113,7 +164,7 @@ export const EdgeList = ({ table, frame }: Props) => {
           {countText(shown, table.rows.length, query.trim() !== '')}
         </div>
       </div>
-      <div className={styles.scroll}>
+      <div className={styles.scroll} ref={scroller}>
         <table className={styles.table}>
           <thead className={styles.head}>
             <tr>
@@ -217,4 +268,35 @@ export function rowLinks(fields: Field[], row: number): Array<LinkModel<Field>> 
       return seen.has(key) ? false : (seen.add(key), true);
     })
   );
+}
+
+/** The tallest height up to `room` that shows the header and whole rows: at least one row. */
+export function wholeRowsHeight(room: number): number {
+  return ROW_HEIGHT * (1 + Math.max(1, Math.floor((room - ROW_HEIGHT) / ROW_HEIGHT)));
+}
+
+/** A wheel notch's size in pixels, from about 50 (macOS) to 100 (Windows, Linux) in Chrome. */
+const NOTCH = 50;
+
+/**
+ * How many rows a wheel event moves the list: one per notch, or for a trackpad's small pixel
+ * steps, one per row's height of them, carrying the rest to the next event in `pending`.
+ */
+export function wheelRows(
+  { deltaY, deltaMode }: Pick<WheelEvent, 'deltaY' | 'deltaMode'>,
+  pending: number
+): { rows: number; pending: number } {
+  if (deltaY === 0) {
+    return { rows: 0, pending };
+  }
+  // Lines or pages, or a pixel delta of a notch or more: one row.
+  if (deltaMode !== 0 || Math.abs(deltaY) >= NOTCH) {
+    return { rows: Math.sign(deltaY), pending: 0 };
+  }
+  // A change of direction drops what was carried the other way.
+  const carried = Math.sign(pending) === Math.sign(deltaY) ? pending : 0;
+  const total = carried + deltaY;
+  // `|| 0`: Math.trunc gives -0 for a small upward total.
+  const rows = Math.trunc(total / ROW_HEIGHT) || 0;
+  return { rows, pending: total - rows * ROW_HEIGHT };
 }
