@@ -2,7 +2,7 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** The panel draws each query as a named layer on an interactive basemap, styled per query and by value, with tooltips that show each feature's attributes. It fits the view to the data, keeps the view and tooltips through refreshes, and warns about problems on the map. Its limits are measured: see [Sizing](#sizing). Phase 9 is complete; the license review comes in Phase 10. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: 1.0.0.** The panel draws each query as a named layer on an interactive basemap, and networks of sites and the links between them, styled per query and by value, with tooltips that show each feature's attributes and each link. It fits the view to the data, keeps the view and tooltips through refreshes, and warns about problems on the map. Its limits are measured: see [Sizing](#sizing). See [CHANGELOG.md](CHANGELOG.md) for what's in each release, and [docs/architecture.md](docs/architecture.md) for the design.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
