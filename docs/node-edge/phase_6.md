@@ -209,4 +209,4 @@ Implemented on branch `node-edge-phase-6`, branched from `node-edge-phase-5`, in
 - Typecheck, lint, 686 unit tests and 79 e2e tests (after restarting Grafana for `plugin.json`), locally.
 - `check:dist`: 21 files, all expected (the new screenshot).
 - No seed data changed.
-- CI: to be filled in from the pull request.
+- CI: passed on [#50](https://github.com/jdejesus517/grafana-geoflow-plugin/pull/50): build, lint and unit tests, the compatibility check, the bundle size comparison, and e2e on Grafana 13.2.5, 13.3.0 and nightly.
