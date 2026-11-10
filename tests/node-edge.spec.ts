@@ -112,7 +112,7 @@ async function pointAtCoreLine(page: Page, panel: Locator, action: 'move' | 'cli
   }
 }
 
-test("shows a hovered edge's summary: its items, aggregates and the ratio of sums", async ({
+test('hovers an edge line with its nodes and items, and keeps its totals for the Summary', async ({
   readProvisionedDashboard,
   gotoDashboardPage,
   page,
@@ -121,11 +121,19 @@ test("shows a hovered edge's summary: its items, aggregates and the ratio of sum
   const panel = (await gotoDashboardPage(dashboard)).getPanelByTitle('Hover').locator;
   await edgesDrawn(panel);
 
+  // The Hover panel isn't styled, so its hover is the nodes and the count, and nothing else
+  // (docs/node-edge/phase_5.md, decision 6).
   await pointAtCoreLine(page, panel, 'move');
   const tooltip = panel.getByTestId('geoflow-tooltip');
   await expect(tooltip).toContainText('Trunks');
   await expect(tooltip).toContainText('Between1 and 6');
   await expect(tooltip).toContainText('Items4');
+  await expect(tooltip).not.toContainText('capacity_gbps');
+  await expect(tooltip).not.toContainText('utilization');
+
+  await pointAtCoreLine(page, panel, 'click');
+  await page.mouse.move(0, 0);
+  await tooltip.getByRole('radio', { name: 'Summary' }).click({ force: true });
   await expect(tooltip).toContainText('capacity_gbpssum 211 Gb/s · avg 52.8 Gb/s');
   await expect(tooltip).toContainText('utilization_gbpssum 143 Gb/s');
   // 142.6 of 211 Gb/s, not the trunks' average utilization of 66%.
@@ -275,4 +283,77 @@ test("leaves the direction out of a line's list when Show direction is off", asy
   await expect(list.getByTestId('geoflow-edge-list-row')).toHaveCount(4);
   await expect(list.getByRole('columnheader', { name: 'Direction' })).toHaveCount(0);
   await expect(list.getByRole('columnheader', { name: 'trunk_id' })).toBeVisible();
+});
+
+// The Styled and By count panels share the Hover panel's queries and view
+// (docs/node-edge/phase_5.md, Design §7).
+async function styledPanel(
+  { readProvisionedDashboard, gotoDashboardPage }: Pick<Fixtures, 'readProvisionedDashboard' | 'gotoDashboardPage'>,
+  title: string
+) {
+  const dashboard = await readProvisionedDashboard(FILE);
+  const panel = (await gotoDashboardPage(dashboard)).getPanelByTitle(title).locator;
+  await edgesDrawn(panel);
+  await expect(panel.getByTestId('geoflow-warnings')).toHaveCount(0);
+  return panel;
+}
+type Fixtures = Parameters<Parameters<typeof test>[2]>[0];
+
+async function expectEdgeMap(page: Page, panel: Locator, name: string) {
+  await page.mouse.move(0, 0);
+  await expect(panel.locator('canvas.maplibregl-canvas')).toHaveScreenshot(name, {
+    stylePath: path.join(__dirname, 'fixtures', 'hide-legend.css'),
+    maxDiffPixelRatio: 0.01,
+  });
+}
+
+test("colors and sizes edge lines by their pairs' values, and says why on hover", async ({
+  readProvisionedDashboard,
+  gotoDashboardPage,
+  page,
+}) => {
+  const panel = await styledPanel({ readProvisionedDashboard, gotoDashboardPage }, 'Styled');
+
+  // Utilization is a ratio, so it's named alone.
+  const legend = panel.getByTestId('geoflow-legend-B');
+  await expect(legend).toContainText('Trunks · utilization');
+  for (const label of ['< 50%', '50%+', '65%+']) {
+    await expect(legend).toContainText(label);
+  }
+  await expectEdgeMap(page, panel, 'styled.png');
+
+  // The hover gives the values behind the line's color and width, not the other columns'.
+  await pointAtCoreLine(page, panel, 'move');
+  const tooltip = panel.getByTestId('geoflow-tooltip');
+  await expect(tooltip).toContainText('Items4');
+  await expect(tooltip).toContainText('capacity_gbpssum 211 Gb/s');
+  await expect(tooltip).toContainText('utilization68%');
+  await expect(tooltip).not.toContainText('utilization_gbps');
+
+  // The pinned Summary has them too.
+  await pointAtCoreLine(page, panel, 'click');
+  await page.mouse.move(0, 0);
+  await tooltip.getByRole('radio', { name: 'Summary' }).click({ force: true });
+  await expect(tooltip).toContainText('capacity_gbpssum 211 Gb/s');
+  await expect(tooltip).toContainText('utilization68%');
+});
+
+test("colors edge lines by their trunks' shared medium, and sizes them by their number", async ({
+  readProvisionedDashboard,
+  gotoDashboardPage,
+  page,
+}) => {
+  const panel = await styledPanel({ readProvisionedDashboard, gotoDashboardPage }, 'By count');
+
+  const legend = panel.getByTestId('geoflow-legend-B');
+  await expect(legend).toContainText('Trunks · medium');
+  await expect(legend).toContainText('Fiber');
+  await expect(legend).toContainText('Microwave');
+  await expectEdgeMap(page, panel, 'by-count.png');
+
+  // Fiber and microwave trunks: mixed, so the line keeps the layer's color.
+  await pointAtCoreLine(page, panel, 'move');
+  const tooltip = panel.getByTestId('geoflow-tooltip');
+  await expect(tooltip).toContainText('capacity_gbpscount 4');
+  await expect(tooltip).toContainText('mediummixed');
 });

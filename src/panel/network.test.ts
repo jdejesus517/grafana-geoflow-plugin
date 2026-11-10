@@ -1,4 +1,4 @@
-import { DataFrame, FieldType, createTheme, toDataFrame } from '@grafana/data';
+import { DataFrame, FieldType, ThresholdsMode, createTheme, toDataFrame } from '@grafana/data';
 import { LayerConfig, bindPerFrame, buildLayerSpecs } from '../adapter';
 import { conversionSummary, firstWarning } from './conversionSummary';
 import { ConversionHistory, convertFrames } from './convertFrames';
@@ -173,16 +173,40 @@ describe('buildLayerSpecs with a network', () => {
     expect(specs[0].interactive).toBe(true);
   });
 
-  it('ignores Color by and Size by on edges, and says so', () => {
+  it("colors edge lines by their pairs' values", () => {
     const frames = [sites(), trunks()];
+    // Map style is read from the from column; trunk_id's count is the number of trunks per pair.
     frames[1].fields[1].config = { custom: { colorBy: 'trunk_id' } };
+    frames[1].fields[0].config = {
+      custom: { edgeValue: 'count' },
+      thresholds: {
+        mode: ThresholdsMode.Absolute,
+        steps: [
+          { value: -Infinity, color: 'green' },
+          { value: 2, color: 'red' },
+        ],
+      },
+    };
+    const { layers, results } = convert(frames);
+    const theme = createTheme();
+
+    // 1–2 has two trunks, 2–3 one.
+    expect(buildLayerSpecs(layers, results, frames, theme)[1].featureStyles).toEqual({
+      colors: [theme.visualization.getColorByName('red'), theme.visualization.getColorByName('green')],
+    });
+  });
+});
+
+describe('edge styling warnings', () => {
+  it('says why Color by or Size by on edges has no effect, as for other layers', () => {
+    const frames = [sites(), trunks()];
+    frames[1].fields[1].config = { custom: { colorBy: 'utilization', sizeBy: 'trunk_id' } };
     const { layers, results } = convert(frames);
 
-    expect(buildLayerSpecs(layers, results, frames, createTheme())[1].featureStyles).toBeUndefined();
-    expect(panelProblems(results, layers, frames)).toContainEqual({
-      layerName: 'Query B',
-      text: 'Color by and Size by on edges come in a later version',
-    });
+    expect(panelProblems(results, layers, frames).map(({ text }) => text)).toEqual([
+      'Color by: no column named utilization',
+      "Size by: trunk_id isn't a number column",
+    ]);
   });
 });
 

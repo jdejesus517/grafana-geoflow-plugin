@@ -81,7 +81,7 @@ SELECT site_id AS id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM sites ORDER B
 SELECT trunk_id, a_site, z_site, capacity_gbps FROM trunks ORDER BY trunk_id;
 ```
 
-Hovering a line shows a summary of every edge between its two nodes, and clicking it lists them. Styling lines by their summary values is planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)).
+Hovering a line shows how many edges run between its two nodes, clicking it lists them and sums them up, and lines can be colored and sized by their edges' values.
 
 To set it up, in the panel editor's **Layers** list:
 
@@ -98,7 +98,9 @@ To set it up, in the panel editor's **Layers** list:
 
 ### Edge summary
 
-Hovering an edge line shows its two nodes and how many edges run between them, in either direction, as **Items**: viewers see lines between locations, so what they read avoids graph terms. Click a line to pin it and list its edges (below); a pinned line stays through refreshes. Choose what else the hover shows per column, in the field options' **Edges** category, usually in an override on the column's name:
+Hovering an edge line shows its two nodes and how many edges run between them, in either direction, as **Items**: viewers see lines between locations, so what they read avoids graph terms. On a styled edge layer, it also shows the values behind the line's color and width ([Styling edges](#styling-edges)), and nothing more, so a hover never needs scrolling.
+
+Click a line to pin it: its **Summary** has the totals, and its **Items** list its edges (below). A pinned line stays through refreshes. Choose what the Summary shows per column, in the field options' **Edges** category, usually in an override on the column's name:
 
 - **Aggregates:** any of **Sum**, **Average**, **Min**, **Max** and **Count**, on one line: `capacity_gbps: sum 211 Gb/s · max 100 Gb/s`. A sum shows the line's total, and min and max its outliers, such as one saturated trunk among idle ones. Sum and Average apply to numbers, Min and Max to numbers and times, Count to any column. Values use the column's unit and decimals; empty values are skipped.
 - **Ratio numerator** and **Ratio denominator:** make a column a ratio, such as utilization over capacity. Add the column in SQL, give it a unit such as **Percent (0.0-1.0)**, and point it at its numerator and denominator:
@@ -109,13 +111,13 @@ Hovering an edge line shows its two nodes and how many edges run between them, i
   FROM trunks ORDER BY trunk_id;
   ```
 
-  A hovered line shows the sum of the numerator over the sum of the denominator: trunks of 100 and 10 Gb/s carrying 10 and 9 Gb/s are 17% used, not the 50% their own percentages average to. Edges missing either value are left out.
+  A line's Summary shows the sum of the numerator over the sum of the denominator: trunks of 100 and 10 Gb/s carrying 10 and 9 Gb/s are 17% used, not the 50% their own percentages average to. Edges missing either value are left out.
 
 Columns with **Hide in tooltip** are left out, and a line's **Tooltips** setting in the Layers list turns its tooltip off. Lines are named by their nodes' ids, so text ids such as site names read best.
 
 ### The list of a line's edges
 
-A clicked line lists every edge between its two nodes, one row each. A **Summary | Items** switch in the pinned tooltip's header swaps the list for the line's summary, what its hover shows, and back; it opens on the items, and keeps your choice while the tooltip is pinned.
+A clicked line lists every edge between its two nodes, one row each. A **Summary | Items** switch in the pinned tooltip's header swaps the list for the line's summary, its totals and ratios, and back; it opens on the items, and keeps your choice while the tooltip is pinned.
 
 - **Columns:** a row number, counting the rows as listed, which stays in view while you scroll either way; each row's own direction (`1 → 6` or `6 → 1`), then the edge query's columns, formatted as in tooltips. **Hide in tooltip** leaves a column out; the edge layer's **Show direction** setting in the Layers list leaves out the direction.
 - **Search** filters the rows by what they show, ignoring case: "1 of 4 items". Escape clears it.
@@ -123,6 +125,17 @@ A clicked line lists every edge between its two nodes, one row each. A **Summary
 - **Data links** on the edge query's columns show on each row, filled in with that row's values: a link icon when there's one link, a menu when there are several.
 - **Size:** the list draws up to 500 rows of what matches, and says so when there are more. It's as wide as the map allows, up to 800 px, and shows whole rows, at least one.
 - **Scrolling** moves one row per wheel notch, and dragging the scrollbar stops on a row.
+
+### Styling edges
+
+Edge lines are colored and sized like any layer, with **Color by** and **Size by** under **Map style** in a **Fields returned by query** override on the edge query ([Coloring by value](#coloring-by-value)). Each line takes one value from the column over all of its edges, its **Edge value**, set on the column in the **Edges** category:
+
+- **Number columns:** **Sum** by default, or **Average**, **Min**, **Max** or **Count**. Sum for capacity; Max for worst cases, such as the busiest trunk; Count for how many edges a line holds, so a line of eight trunks stands out from a single one.
+- **Ratio columns** take their ratio of sums, whatever the Edge value: color lines by utilization through its thresholds, and a line of trunks at 90% and 10% is as busy as its total says.
+- **Time columns:** Min or Max. Sum and Average don't apply, and say so in the warnings.
+- **Text columns:** the value all of a line's edges share, such as `fiber`, colored through the column's value mappings. A line whose edges differ keeps the layer's own color, and its hover says `mixed`. With Count, the line takes the number of edges with a value instead.
+
+**Size by** sets a line's width, from **Min size** to **Max size**. Gradients and sizes span the lines' values, not the rows': a line's total capacity exceeds every trunk's, so the range is the totals', unless the column's **Min** and **Max** are set. The legend shows the lines' range, and names the column with its Edge value: `capacity_gbps (sum)`. Hovering a line shows the values behind its color and width: `utilization: 68%`, `capacity_gbps: sum 211 Gb/s`.
 
 ## Tooltips
 
@@ -175,7 +188,7 @@ Color or size each feature by a column of its query: a patch panel red when it's
   - **Thresholds,** with **Color scheme** set to **From thresholds**
   - a by-value **Color scheme,** such as Green-Yellow-Red, across the column's **Min** and **Max**
   - **Value mappings** with a color, which win over both. Text columns are colored this way.
-- **Size by** picks a number column. Point diameters scale with its value, from **Min point size** at the column's Min to **Max point size** at its Max. Values outside the range get the nearest size.
+- **Size by** picks a number column. Point diameters scale with its value, from **Min size** at the column's Min to **Max size** at its Max. Values outside the range get the nearest size. On an edge layer, it sets line widths ([Styling edges](#styling-edges)).
 
 Like the rest of Map style, both go on the geometry column, so the usual setup is a **Fields returned by query** override with **Color by** or **Size by**. A feature with no value keeps the layer's own color and size; a **Null** value mapping with a color still colors it.
 
