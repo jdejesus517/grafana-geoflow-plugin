@@ -1,6 +1,6 @@
 # Node-Edge Maps: Architecture
 
-Status: **Design accepted (2026-11-08).** Phases 1–5 implemented: edges drawn ([phase_1.md](phase_1.md)), set up in the Layers list ([phase_2.md](phase_2.md)), hover totals ([phase_3.md](phase_3.md)), the click list ([phase_4.md](phase_4.md)), styling by edge values ([phase_5.md](phase_5.md)). Implementation follows in phases (§9.3), each with its own `docs/node-edge/phase_N.md`.
+Status: **Implemented** (2026-11-09); design accepted 2026-11-08. All six phases are done: edges drawn ([phase_1.md](phase_1.md)), set up in the Layers list ([phase_2.md](phase_2.md)), hover totals ([phase_3.md](phase_3.md)), the click list ([phase_4.md](phase_4.md)), styling by edge values ([phase_5.md](phase_5.md)), and hardening with the 1.0.0 release materials ([phase_6.md](phase_6.md)). Each phase (§9.3) has its own `docs/node-edge/phase_N.md`.
 
 This feature extends GeoFlow as built through Phase 12 ([../architecture.md](../architecture.md)). It keeps that document's rules unless a decision here says otherwise.
 
@@ -195,7 +195,7 @@ Field options can't be shown only for edge layers' columns: Grafana decides what
 | An edge frame has no geometry, which today means a "no geometry column" notice and conversion warnings | Edge layers skip conversion and those notices (§5.1) |
 | Edges colored by a column's row range rather than the pairs' (for example total capacity past the row maximum) | Ranges from pair values (§6.3) |
 | The Edges field options clutter every column's options | Their own category, collapsed, with descriptions (§7) |
-| Large networks: 20,000 edges in 5,000 pairs | Grouping is one pass over the rows; aggregates are computed per hovered pair; pair values only for the Color by and Size by columns. To measure in the delivery's benchmark, with the Phase 9 budgets |
+| Large networks: 20,000 edges in 5,000 pairs | Grouping is one pass over the rows; aggregates are computed per hovered pair; edge values only for the Color by and Size by columns. Measured in Phase 6 at up to 100,000 edge rows (about 25,000 pairs), within the Phase 9 budgets with no optimization: 164 ms to load (195 ms styled), 62 ms for an unchanged refresh, under 100 ms to open, search or sort a line's list of 2,000 rows ([phase_6.md](phase_6.md#outcome)) |
 | Pairs with thousands of rows | The click list's 500-row cap (decision 7); formatted values computed once per open list |
 | Nodes refreshing moves edges | Edges are rebuilt from the node result whenever it changes; a refresh with the same node data keeps the same result, so edges aren't rebuilt |
 | A pinned pair whose rows change on refresh | Found again by its pair key, with the new rows; closed if the pair is gone |
@@ -207,8 +207,8 @@ Grafana compatibility is unchanged: the feature uses the same APIs as Phases 4�
 
 ### 9.1 Test data and dashboard
 
-- **Seed data:** `geoflow.sites` (points, integer ids) and `geoflow.trunks` (text `a_site`/`z_site`, capacity and utilization), in a new init file. It covers: several trunks per pair in both directions, a single-trunk pair, a self-loop, an unknown site, an empty end, a duplicate site id, a site with no geometry, and a generated large network for the benchmark.
-- **Dashboard:** `14-node-edge.json`, one panel per behavior: a basic network, aggregates and a ratio, styling by ratio and by count, problems, and the large network. Every panel doubles as an e2e fixture, as before.
+- **Seed data:** `geoflow.sites` (points, integer ids) and `geoflow.trunks` (text `a_site`/`z_site`, capacity and utilization), in a new init file. It covers: several trunks per pair in both directions, a single-trunk pair, a self-loop, an unknown site, an empty end, a duplicate site id, a site with no geometry. Dashboards add the problem rows in their own SQL. The large network for the benchmark is generated in the 11 Performance dashboard's SQL from its Rows variable: a grid of nodes and one line of up to 2,000 rows (Phase 6, decision 2).
+- **Dashboard:** `14-node-edge.json`, one panel per behavior: a basic network, aggregates and a ratio, styling by ratio and by count, and problems; the large network is on 11 Performance. Every panel doubles as an e2e fixture, as before.
 
 ### 9.2 Tests
 
@@ -218,7 +218,7 @@ Grafana compatibility is unchanged: the feature uses the same APIs as Phases 4�
 | Unit (engine) | Per-feature widths through feature-state |
 | Component | Layers editor role and edge settings; `EdgeList` search, sort, cap, direction column and row links (one link, a menu of several, none); the panel running the join and its warnings |
 | End-to-end | Edges drawn between the right nodes; hover aggregates; the click list's search and sort; a row's data link carrying that row's values; a pinned pair through a refresh; styling by ratio; the warnings |
-| Benchmark | The large network in `bench-map.mjs`: join time, drawing, hover and refresh |
+| Benchmark | The large network in `bench-map.mjs`: drawing, load, pan, hover, refresh, editor changes, and pinning, searching and sorting a line's list |
 
 ### 9.3 Phases
 
@@ -231,7 +231,7 @@ Each phase ends with something usable and its own tests, as in the main plan. Ph
 | 3 | **Hover:** the Edges field options for aggregates and ratios; the pair tooltip with row count, aggregates and ratios; pinned pairs following refreshes (showing the hover content until Phase 4) | Unit tests on aggregates and ratios; e2e hover |
 | 4 | **Click list:** `EdgeList` with search, sort, scrolling and the cap; the direction column and its Show direction switch; row data links; the pager mixing node and pair entries | Component tests; e2e click, search, sort and a row's link |
 | 5 | **Styling by pair values:** Edge value (planned as Pair value); Color by and Size by on edges; per-feature widths in the engine; legend; the hover shows the styled pair values (§6.1) | Unit tests on pair values and ranges; e2e styling |
-| 6 | **Hardening and docs:** the large network benchmark and any optimization; README walkthrough; architecture updates; the 1.0.0 release materials, with networks: the README's status line, the CHANGELOG entry and the catalog README (`src/README.md`) | Benchmark against budgets; docs reviewed |
+| 6 | **Hardening and docs:** the large network benchmark and any optimization; README walkthrough; architecture updates; the 1.0.0 release materials, with networks: the README's status line, the CHANGELOG entry, the catalog README (`src/README.md`) and a catalog screenshot. The release itself (version, tag, signing, submission) follows on release day | Benchmark against budgets; docs reviewed; plugin validator |
 
 ## 10. Decisions
 

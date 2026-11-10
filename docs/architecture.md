@@ -1,6 +1,6 @@
 # Architecture: GeoFlow, a Grafana PostGIS Map Panel
 
-Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later. Node-edge maps, a network of nodes and the edges between them, have their own design and phases in [node-edge/architecture.md](node-edge/architecture.md); its Phases 1 to 4 (edges drawn, set up in the Layers list, hover totals, the click list) are implemented.
+Status: **Implemented through Phase 12.** This document began as the proposal that the phases were built from, and now describes the plugin as built. Each phase's design, decisions and outcome are in `docs/phase_N.md`; §5.3 lists the phases, and §7 the features considered for later. Node-edge maps, a network of nodes and the edges between them, have their own design and phases in [node-edge/architecture.md](node-edge/architecture.md); all six of its phases are implemented, and networks ship in 1.0.0.
 
 ### Project baseline
 
@@ -467,6 +467,7 @@ Splitting one query into a layer per value is left to Grafana's **Partition by v
 | **Re-renders from React.** | Hold the engine in a `useRef`. Effects depend on narrow inputs (`data.series`, `options.layers`, `width`, `height`), never on the whole props object. |
 | **Bundle size.** MapLibre 6 is about 1.1 MiB minified, plus a 0.5 MiB worker. | The engine loads MapLibre lazily, so the plugin's initial `module.js` is about 21 KiB gzipped. The Bundle Stats workflow reports size changes on every PR. |
 | **Many layers.** Each layer is a GeoJSON source with four style layers, so cost grows with the number of layers as well as features. Partition by values on a column with many values makes a layer per value. | Measured by `npm run bench:map -- --kinds layers` in Phase 11, one point per layer, with the GPU: 50 layers draw in 0.4 s with no task over about 50 ms; 200 in 0.8 s with tasks up to about 110 ms; 1,000 in 4.6 s, with tasks of 400 to 500 ms while panning, hovering, hiding a layer or changing the basemap. The panel warns over 50 layers and still draws them all. |
+| **Networks.** An edge query has no geometry; GeoFlow joins it to the node query and builds a line per pair of nodes. | Measured by `npm run bench:map` (node-edge Phase 6) at up to 100k edge rows, against Phase 9's budgets: 100k edge rows, about 25k lines between 12.5k nodes, load in 164 ms (195 ms styled by value) and draw in about 1.4 s; an unchanged refresh takes 62 ms, and a line's list of 2,000 rows opens in under 100 ms. No optimization was needed. |
 | **Beyond about 100k features.** | Out of scope for the MVP. The panel warns above 100k features and still draws them (Phase 9). The future path is vector tiles from PostGIS (`ST_AsMVT` via Martin or pg_tileserv). This would be a deliberate exception to "Grafana data source only" and needs separate approval. |
 
 ---

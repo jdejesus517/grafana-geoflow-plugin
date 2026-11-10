@@ -1,6 +1,6 @@
 # Node-edge Phase 6: Hardening and the 1.0.0 release materials
 
-Status: **Plan accepted** (2026-11-09). Decisions 1–7 accepted as proposed.
+Status: **Implemented** (2026-11-09). Decisions 1–7 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §8 (performance and risks), §9.1 (the large network), §9.3 (Phase 6 row); [../phase_9.md](../phase_9.md) (the benchmark and its budgets).
 
 ## Goal
@@ -161,4 +161,52 @@ Design §6, and this document's Outcome.
 
 ## Outcome
 
-To be written when the phase is implemented.
+Implemented on branch `node-edge-phase-6`, branched from `node-edge-phase-5`, in three commits: steps 6.1, 6.3 and 6.4, with step 6.2's results and step 6.5's docs in a fourth. Every budget was met, so step 6.2 changed no code.
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Benchmark | Met. `network` and `styled-network` kinds, with **pin**, **search** and **sort** columns for the line of 2,000 rows. |
+| 2 | Dashboard | Met. Network (panel 7) and Styled network (panel 8) on 11 Performance, generated from Rows, with a fixed view framing the grid and the line below it. |
+| 3 | Budgets | Met at 100,000 edge rows, with room to spare (below). No fixes were needed. |
+| 4 | Correct at scale | Met. Each run checks the drawn lines and points against the generated network: 12,502 nodes and 24,777 lines at 100,000 rows. |
+| 5 | README | Met. Networks without "(preview)", opening with a seven-step walkthrough; Sizing with network figures; the dev dashboards table. |
+| 6 | Release materials | Met. The status line, three CHANGELOG entries linked to #37–#40 and #49, the catalog README's Networks feature, section, sizing and limitations, and in `plugin.json` a fifth screenshot (`img/screenshot-network.png`), the `network` keyword and the description. |
+| 7 | Validator | Met. `@grafana/plugin-validator`: no analyzer failed; the only finding is the expected unsigned-plugin warning. |
+| 8 | Architecture docs | Met. node-edge architecture status, §8, §9.1, §9.2 and §9.3; ../architecture.md's status and a §4.2 row for networks. |
+| 9 | Tests | Met. 686 unit tests and 79 e2e tests pass, unchanged. |
+
+### Results
+
+`npm run bench:map -- --kinds network,styled-network,points --rows 1000,10000,100000 --runs 3`, with the GPU, on the same machine as Phase 9. Medians of three runs; tasks in ms, "<50" when no task went over 50 ms.
+
+| Kind | Rows | drawn | load | pan | hover | refresh | hide | show | basemap | pin | search | sort |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| network | 1,000 | 0.3 s | <50 | <50 | <50 | <50 | <50 | <50 | <50 | <50 | <50 | <50 |
+| network | 10,000 | 0.4 s | <50 | <50 | <50 | <50 | <50 | <50 | <50 | 94 | <50 | 62 |
+| network | 100,000 | 1.3 s | 164 | <50 | <50 | 62 | <50 | <50 | 55 | 96 | <50 | 69 |
+| styled-network | 1,000 | 0.3 s | <50 | <50 | <50 | <50 | 53 | <50 | 62 | <50 | <50 | <50 |
+| styled-network | 10,000 | 0.4 s | <50 | <50 | <50 | <50 | 54 | <50 | <50 | 92 | <50 | 62 |
+| styled-network | 100,000 | 1.4 s | 195 | <50 | <50 | 61 | 54 | <50 | 75 | 93 | <50 | 71 |
+| points | 1,000 | 0.3 s | 50 | <50 | <50 | <50 | <50 | <50 | <50 | – | – | – |
+| points | 10,000 | 0.5 s | 53 | <50 | <50 | <50 | <50 | <50 | <50 | – | – | – |
+| points | 100,000 | 2.2 s | 212 | <50 | <50 | <50 | <50 | <50 | 105 | – | – | – |
+
+- **Load** (new data, budget 500 ms): 164 ms, and 195 ms with edge values for two columns. A network of 100,000 edge rows draws faster than 100,000 points: its rows carry no geometry to parse, and it draws about 25,000 lines.
+- **Unchanged refresh** (200 ms): 62 ms. The edge result is reused, as designed in Phase 1.
+- **The list** (200 ms): pinning a line of 2,000 rows formats them all once, up to 96 ms; sorting takes up to 71 ms, and searching stays under 50 ms per keystroke. The 500-row drawing cap keeps these flat between 10,000 and 100,000 rows: the heavy line has 1,000 rows at 10,000 and 2,000 at 100,000.
+- Points match Phase 9's figures (212 ms against 215 ms to load), so the machine compares.
+
+### Differences from the plan
+
+- **The heavy line** has a tenth as many rows as the network, up to 2,000, not always 2,000: at 1,000 rows, 2,000 more would have tripled the network.
+- **No adapter benchmark:** `joinEdges.bench.ts` was to profile a missed budget, and none was missed.
+- **The search box** says "Search to narrow" above 500 rows, so the benchmark finds it by a placeholder starting with "Search".
+- **Phase 4's Outcome** had the same "to be filled in" CI line; it's filled in from #40's checks.
+- **The validator's zip** (`jdejesusio-geoflow-panel-<timestamp>.zip`) is left in the working tree, uncommitted.
+
+### Checks
+
+- Typecheck, lint, 686 unit tests and 79 e2e tests (after restarting Grafana for `plugin.json`), locally.
+- `check:dist`: 21 files, all expected (the new screenshot).
+- No seed data changed.
+- CI: to be filled in from the pull request.
