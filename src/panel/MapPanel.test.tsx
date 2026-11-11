@@ -122,18 +122,18 @@ function setOnScreen(onScreen: boolean) {
 }
 
 let engine: FakeEngine;
-const realIntersectionObserver = global.IntersectionObserver;
+const realIntersectionObserver = globalThis.IntersectionObserver;
 
 beforeEach(() => {
   engine = new FakeEngine();
   jest.mocked(createMapEngine).mockReset().mockResolvedValue(engine);
   FakeIntersectionObserver.instances = [];
   FakeIntersectionObserver.startOnScreen = true;
-  global.IntersectionObserver = FakeIntersectionObserver as unknown as typeof IntersectionObserver;
+  globalThis.IntersectionObserver = FakeIntersectionObserver as unknown as typeof IntersectionObserver;
 });
 
 afterEach(() => {
-  global.IntersectionObserver = realIntersectionObserver;
+  globalThis.IntersectionObserver = realIntersectionObserver;
 });
 
 interface PanelOverrides {
