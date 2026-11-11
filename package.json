@@ -1,6 +1,6 @@
 {
   "name": "geoflow",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "private": true,
   "description": "GeoFlow: a Grafana panel plugin that renders PostGIS geometries with MapLibre GL JS.",
   "author": "Jose DeJesus",

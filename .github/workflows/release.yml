@@ -13,6 +13,9 @@ jobs:
   release:
     permissions:
       contents: write
+      # For the build provenance attestation.
+      id-token: write
+      attestations: write
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -23,9 +26,8 @@ jobs:
         with:
           # Keep in sync with .nvmrc (this action takes a version, not a file; its default is 20).
           node-version: '26'
-          # Uncomment to enable plugin signing
-          # (For more info on how to generate the access policy token see https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token)
-          # Make sure to save the token in your repository secrets
-          #policy_token: $
-          # Usage of GRAFANA_API_KEY is deprecated, prefer `policy_token` option above
-          #grafana_token: $
+          # Signs the plugin. The token is a Grafana Cloud access policy token with the plugins:write scope
+          # (https://grafana.com/developers/plugin-tools/publish-a-plugin/sign-a-plugin#generate-an-access-policy-token).
+          policy_token: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
+          # Creates a signed build provenance attestation, so the catalog can verify where the zip was built.
+          attestation: true

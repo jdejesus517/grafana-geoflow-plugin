@@ -1,6 +1,6 @@
 # Changelog
 
-## [1.0.0](https://github.com/jdejesus517/grafana-geoflow-plugin/tree/v1.0.0) (Unreleased)
+## [1.0.0](https://github.com/jdejesus517/grafana-geoflow-plugin/tree/v1.0.0) (2026-11-10)
 
 Initial release. Requires Grafana 13.2 or later, and PostgreSQL with PostGIS through Grafana's PostgreSQL data source.
 
