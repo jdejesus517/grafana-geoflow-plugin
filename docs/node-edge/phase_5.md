@@ -1,6 +1,6 @@
 # Node-edge Phase 5: Styling by edge values
 
-Status: **Plan accepted** (2026-11-09). Decisions 1–8 accepted as proposed.
+Status: **Implemented** (2026-11-09). Decisions 1–8 accepted as proposed. See [Outcome](#outcome).
 Architecture reference: [architecture.md](architecture.md) §6.1 (hover, from Phase 5), §6.3 (styling), §7 (Edge value), §9.3 (Phase 5 row); decisions 3, 10, 11, 12.
 
 ## Goal
@@ -172,3 +172,43 @@ Design §7. No new seed data, so no database reset.
 | 6 | What an edge line's hover shows | **Between, Items and the styled edge values, if any, on every edge layer.** The hover stays short enough never to need scrolling, and the Summary, which scrolls, holds the aggregates and ratios. Replaces architecture §6.1's plan, agreed in Phase 4's review, of keeping the full summary on unstyled layers. | The full summary on unstyled layers (§6.1's plan): unchanged from Phase 3, but a long summary is cut off where a hover can't scroll. The full summary always, the same problem on every layer. |
 | 7 | Plugin version | **Unchanged.** No `plugin.json` change, so no Grafana restart. | |
 | 8 | The option's name | **Edge value** (`edgeValue`): the value an edge line takes from a column. Settings use network terms, as the Edges category does (node-edge Phase 4, decision 8). | Pair value, as planned in the architecture, which names an internal idea viewers and editors never see; Aggregate edge value, long beside the Aggregates option in the same category. |
+
+---
+
+## Outcome
+
+Implemented on branch `node-edge-phase-5` in five commits, steps 5.2 to 5.6. Step 5.1 was checks only, recorded below.
+- 686 unit and component tests pass (26 new), and the 79 e2e runs, login setup included (2 new tests; the Phase 3 hover test rewritten for decision 6). No seed data changed, so the stack wasn't reset.
+- CI: passed on [#49](https://github.com/jdejesus517/grafana-geoflow-plugin/pull/49): build, lint and unit tests, the compatibility check, the bundle size comparison, and e2e on Grafana 13.2.5, 13.3.0 and nightly.
+
+### Exit criteria
+
+| # | Criterion | Result |
+|---|---|---|
+| 1 | Edge value | Met. A select in the Edges category, Sum by default; a ratio column's edge value is its ratio of sums whatever the option says. |
+| 2 | Color by on edges | Met. Thresholds, by-value schemes and value mappings over edge values; a gradient over edge values matches a layer of those values (unit test). |
+| 3 | Size by on edges | Met. Line widths from Min size to Max size across the edge values, clamped (unit test, Styled screenshot). |
+| 4 | Text columns | Met. Shared values colored through mappings, mixed pairs left in the layer's color, Count as a number (unit tests, By count screenshot). |
+| 5 | Missing values | Met. Undefined entries keep the layer's color and Line width. |
+| 6 | Legend | Met. Gradient ends from the edge values' range; "capacity (sum)", "capacity (count)", a ratio column alone (unit tests); the Styled and By count legends (e2e). |
+| 7 | Hover | Met. Between, Items and the styled values; the Summary adds the styled aggregate to the chosen ones (unit, component and e2e tests). |
+| 8 | Highlights | Met. Hovered and selected lines widen from their own width (unit test on the paint). |
+| 9 | Responsive | Met. Edge values are cached per edge result, column and option; colors and widths as in Phase 6, so a threshold change recolors from cached values. The edge result isn't rebuilt. |
+| 10 | Engine | Met. `FeatureStyles.widths` through feature-state; layers without them paint plain values, and every stored screenshot matches. |
+| 11 | Warnings | Met. The later-version notice is gone; edge layers get the usual Color by and Size by problems, plus "sum doesn't apply to time column seen". |
+| 12 | Tests | Met. |
+| 13 | Docs | Met. The README's Styling edges section, the Edge summary section's hover and Summary, and Size by's labels. |
+
+### Checks on MapLibre and Grafana 13.2 (step 5.1)
+
+- **Dashes:** MapLibre 6.16 evaluates `line-floorwidth`, the width dashes are measured in, from `line-width` per feature, feature-state included, and passes it to the dashed-line shader as a per-vertex value. So dashes scale with each line's own width; a custom pattern's pixel lengths hold at Line width, as planned.
+- **Highlight:** `['case', highlighted, ['+', ['coalesce', ['feature-state', 'width'], n], 2], …]` passes the style spec's validator, as the radius expression does.
+- **Renamed sliders:** an override with `sizeMin` 6 and `sizeMax` 30 on the Phase 6 dashboard shows them as Min size and Max size, with the new descriptions (checked with a screenshot of the panel editor).
+
+### Differences from the plan
+
+- **"mixed" in the hover:** a text column whose rows differ shows "medium: mixed" rather than an empty value, so the hover says why the line keeps the layer's color.
+- **Where the shared code went:** the aggregate arithmetic, the ratio of sums and the Edges field option types moved from `pairDetails.ts` to `edgeValues.ts`, and `findField` from `featureStyles.ts` to `featureLookup.ts`, so `pairDetails` (which reads the styled columns) and `featureStyles` (which reads edge values) share them without importing each other.
+- **One value source for styles and the legend:** `styleSource` gives Color by, Size by and the legend each feature's value and range, from its row or, on an edge layer, from its pair's edge value. The legend's gradient ends for other layers come from it too, unchanged in value.
+- **Screenshots** of the Styled and By count panels show the part of the network in the Hover panel's fixed view, which keeps the core line under the same point for the hover checks: the core line, CARY-CORE–CARY-NORTH and the line toward APEX.
+

@@ -55,12 +55,9 @@ export function layerSettingProblems(
   result: ConversionResult
 ): string[] {
   const missingId = layer?.idField && !frame.fields.some(({ name }) => name === layer.idField);
+  // Edge layers have no ID column, and are styled by their pairs' values (docs/node-edge/phase_5.md).
   if (layer?.role === 'edges') {
-    const { colorBy, sizeBy } = (frame.fields.find(({ name }) => name === result.styleField)?.config.custom ?? {}) as {
-      colorBy?: string;
-      sizeBy?: string;
-    };
-    return colorBy || sizeBy ? ['Color by and Size by on edges come in a later version'] : [];
+    return dataStyleFields(frame, result).problems;
   }
   return [
     ...(missingId ? [`ID column: no column named ${layer.idField}`] : []),

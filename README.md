@@ -2,7 +2,7 @@
 
 GeoFlow is an open-source Grafana panel plugin that renders geographic features stored in PostgreSQL/PostGIS. It reads data through Grafana's built-in PostgreSQL data source and draws it with [MapLibre GL JS](https://maplibre.org/).
 
-> **Status: pre-MVP.** The panel draws each query as a named layer on an interactive basemap, styled per query and by value, with tooltips that show each feature's attributes. It fits the view to the data, keeps the view and tooltips through refreshes, and warns about problems on the map. Its limits are measured: see [Sizing](#sizing). Phase 9 is complete; the license review comes in Phase 10. See [docs/architecture.md](docs/architecture.md) for the target design and phase plan.
+> **Status: 1.0.0.** The panel draws each query as a named layer on an interactive basemap, and networks of sites and the links between them, styled per query and by value, with tooltips that show each feature's attributes and each link. It fits the view to the data, keeps the view and tooltips through refreshes, and warns about problems on the map. Its limits are measured: see [Sizing](#sizing). See [CHANGELOG.md](CHANGELOG.md) for what's in each release, and [docs/architecture.md](docs/architecture.md) for the design.
 
 - Plugin id: `jdejesusio-geoflow-panel`
 - Requires Grafana 13.2 or later
@@ -69,25 +69,34 @@ To draw each value of a column as its own layer, such as cables by placement, sp
 
 Layer settings, such as a value's visibility, are kept by layer id, so they stay with the value across refreshes.
 
-## Networks (preview)
+## Networks
 
-GeoFlow can draw a network from two queries: **nodes**, points with an id, and **edges**, rows naming the two nodes they join. Every edge between the same two nodes, in either direction, is drawn as one straight line between their points. For example, sites and the trunks between them:
+GeoFlow can draw a network from two queries: **nodes**, points with an id, and **edges**, rows naming the two nodes they join. Every edge between the same two nodes, in either direction, is drawn as one straight line between their points. Hovering a line shows how many edges run between its two nodes, clicking it lists them and sums them up, and lines can be colored and sized by their edges' values.
 
-```sql
--- Nodes (query A): point geometry and an id column.
-SELECT site_id AS id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM sites ORDER BY site_id;
+### Setting up a network
 
--- Edges (query B): no geometry, only the ids of the nodes each row joins.
-SELECT trunk_id, a_site, z_site, capacity_gbps FROM trunks ORDER BY trunk_id;
-```
+For example, sites and the trunks between them, with each line colored by how busy its trunks are and sized by their capacity:
 
-Hovering a line shows a summary of every edge between its two nodes, and clicking it lists them. Styling lines by their summary values is planned ([docs/node-edge/architecture.md](docs/node-edge/architecture.md)).
+1. Add two queries to a GeoFlow panel:
 
-To set it up, in the panel editor's **Layers** list:
+   ```sql
+   -- Nodes (query A): point geometry and an id column.
+   SELECT site_id AS id, name, ST_AsGeoJSON(geom, 6) AS geometry FROM sites ORDER BY site_id;
 
-1. Select the node query's layer, and set its **Role** to **Nodes**.
-2. Select the edge query's layer, and set its **Role** to **Edges**. If it was above the nodes, it moves just below them, so nodes stay on top.
-3. Check the edge layer's **From column** and **To column**: unset, they show the columns GeoFlow found. Pick others if those are wrong.
+   -- Edges (query B): no geometry, only the ids of the nodes each row joins, and its values.
+   SELECT trunk_id, a_site, z_site, capacity_gbps, utilization_gbps,
+     utilization_gbps / capacity_gbps AS utilization
+   FROM trunks ORDER BY trunk_id;
+   ```
+
+2. In the panel editor's **Layers** list, select the node query's layer, and set its **Role** to **Nodes**.
+3. Select the edge query's layer, and set its **Role** to **Edges**. If it was above the nodes, it moves just below them, so nodes stay on top. Lines now join the sites.
+4. Check the edge layer's **From column** and **To column**: unset, they show the columns GeoFlow found. Pick others if those are wrong.
+5. Add a **Fields returned by query** override on query B, with **Map style > Color by** set to `utilization` and **Size by** to `capacity_gbps`.
+6. Add a **Fields with name** override on `utilization`: a unit of **Percent (0.0-1.0)**, thresholds (say yellow from 0.5 and red from 0.65) with **Color scheme** set to **From thresholds**, and, under **Edges**, `utilization_gbps` as its **Ratio numerator** and `capacity_gbps` as its **Ratio denominator**. Each line is now colored by its trunks' total use over their total capacity, and is as wide as their total capacity ([Styling edges](#styling-edges)).
+7. Hover a line to see its two sites, its number of trunks, and the values behind its color and width. Click it to pin its list of trunks, to search and sort, or switch to its **Summary** for totals ([Edge summary](#edge-summary)).
+
+The rules GeoFlow follows:
 
 - **From and to columns** are found by name: `source` and `target`, `from` and `to`, `src` and `dst`, `start` and `end`, `a_end` and `z_end`, or pairs like `a_site` and `z_site`, `site_a` and `site_z`, or `from_site` and `to_site`. Choosing one finds the other from the same pair.
 - **Node ids** come from the node layer's **ID column**: a column named `id`, unless another is chosen. They're matched as text, so an integer site id joins a text trunk end. Keep them unique.
@@ -98,7 +107,9 @@ To set it up, in the panel editor's **Layers** list:
 
 ### Edge summary
 
-Hovering an edge line shows its two nodes and how many edges run between them, in either direction, as **Items**: viewers see lines between locations, so what they read avoids graph terms. Click a line to pin it and list its edges (below); a pinned line stays through refreshes. Choose what else the hover shows per column, in the field options' **Edges** category, usually in an override on the column's name:
+Hovering an edge line shows its two nodes and how many edges run between them, in either direction, as **Items**: viewers see lines between locations, so what they read avoids graph terms. On a styled edge layer, it also shows the values behind the line's color and width ([Styling edges](#styling-edges)), and nothing more, so a hover never needs scrolling.
+
+Click a line to pin it: its **Summary** has the totals, and its **Items** list its edges (below). A pinned line stays through refreshes. Choose what the Summary shows per column, in the field options' **Edges** category, usually in an override on the column's name:
 
 - **Aggregates:** any of **Sum**, **Average**, **Min**, **Max** and **Count**, on one line: `capacity_gbps: sum 211 Gb/s · max 100 Gb/s`. A sum shows the line's total, and min and max its outliers, such as one saturated trunk among idle ones. Sum and Average apply to numbers, Min and Max to numbers and times, Count to any column. Values use the column's unit and decimals; empty values are skipped.
 - **Ratio numerator** and **Ratio denominator:** make a column a ratio, such as utilization over capacity. Add the column in SQL, give it a unit such as **Percent (0.0-1.0)**, and point it at its numerator and denominator:
@@ -109,13 +120,13 @@ Hovering an edge line shows its two nodes and how many edges run between them, i
   FROM trunks ORDER BY trunk_id;
   ```
 
-  A hovered line shows the sum of the numerator over the sum of the denominator: trunks of 100 and 10 Gb/s carrying 10 and 9 Gb/s are 17% used, not the 50% their own percentages average to. Edges missing either value are left out.
+  A line's Summary shows the sum of the numerator over the sum of the denominator: trunks of 100 and 10 Gb/s carrying 10 and 9 Gb/s are 17% used, not the 50% their own percentages average to. Edges missing either value are left out.
 
 Columns with **Hide in tooltip** are left out, and a line's **Tooltips** setting in the Layers list turns its tooltip off. Lines are named by their nodes' ids, so text ids such as site names read best.
 
 ### The list of a line's edges
 
-A clicked line lists every edge between its two nodes, one row each. A **Summary | Items** switch in the pinned tooltip's header swaps the list for the line's summary, what its hover shows, and back; it opens on the items, and keeps your choice while the tooltip is pinned.
+A clicked line lists every edge between its two nodes, one row each. A **Summary | Items** switch in the pinned tooltip's header swaps the list for the line's summary, its totals and ratios, and back; it opens on the items, and keeps your choice while the tooltip is pinned.
 
 - **Columns:** a row number, counting the rows as listed, which stays in view while you scroll either way; each row's own direction (`1 → 6` or `6 → 1`), then the edge query's columns, formatted as in tooltips. **Hide in tooltip** leaves a column out; the edge layer's **Show direction** setting in the Layers list leaves out the direction.
 - **Search** filters the rows by what they show, ignoring case: "1 of 4 items". Escape clears it.
@@ -123,6 +134,17 @@ A clicked line lists every edge between its two nodes, one row each. A **Summary
 - **Data links** on the edge query's columns show on each row, filled in with that row's values: a link icon when there's one link, a menu when there are several.
 - **Size:** the list draws up to 500 rows of what matches, and says so when there are more. It's as wide as the map allows, up to 800 px, and shows whole rows, at least one.
 - **Scrolling** moves one row per wheel notch, and dragging the scrollbar stops on a row.
+
+### Styling edges
+
+Edge lines are colored and sized like any layer, with **Color by** and **Size by** under **Map style** in a **Fields returned by query** override on the edge query ([Coloring by value](#coloring-by-value)). Each line takes one value from the column over all of its edges, its **Edge value**, set on the column in the **Edges** category:
+
+- **Number columns:** **Sum** by default, or **Average**, **Min**, **Max** or **Count**. Sum for capacity; Max for worst cases, such as the busiest trunk; Count for how many edges a line holds, so a line of eight trunks stands out from a single one.
+- **Ratio columns** take their ratio of sums, whatever the Edge value: color lines by utilization through its thresholds, and a line of trunks at 90% and 10% is as busy as its total says.
+- **Time columns:** Min or Max. Sum and Average don't apply, and say so in the warnings.
+- **Text columns:** the value all of a line's edges share, such as `fiber`, colored through the column's value mappings. A line whose edges differ keeps the layer's own color, and its hover says `mixed`. With Count, the line takes the number of edges with a value instead.
+
+**Size by** sets a line's width, from **Min size** to **Max size**. Gradients and sizes span the lines' values, not the rows': a line's total capacity exceeds every trunk's, so the range is the totals', unless the column's **Min** and **Max** are set. The legend shows the lines' range, and names the column with its Edge value: `capacity_gbps (sum)`. Hovering a line shows the values behind its color and width: `utilization: 68%`, `capacity_gbps: sum 211 Gb/s`.
 
 ## Tooltips
 
@@ -175,7 +197,7 @@ Color or size each feature by a column of its query: a patch panel red when it's
   - **Thresholds,** with **Color scheme** set to **From thresholds**
   - a by-value **Color scheme,** such as Green-Yellow-Red, across the column's **Min** and **Max**
   - **Value mappings** with a color, which win over both. Text columns are colored this way.
-- **Size by** picks a number column. Point diameters scale with its value, from **Min point size** at the column's Min to **Max point size** at its Max. Values outside the range get the nearest size.
+- **Size by** picks a number column. Point diameters scale with its value, from **Min size** at the column's Min to **Max size** at its Max. Values outside the range get the nearest size. On an edge layer, it sets line widths ([Styling edges](#styling-edges)).
 
 Like the rest of Map style, both go on the geometry column, so the usual setup is a **Fields returned by query** override with **Color by** or **Size by**. A feature with no value keeps the layer's own color and size; a **Null** value mapping with a color still colors it.
 
@@ -276,12 +298,14 @@ GeoFlow draws every row a query returns, in the browser. Measured with an integr
 
 At these sizes, panning, hovering and refreshes that bring the same data don't noticeably pause the map. Simple polygons were measured; detailed ones take longer.
 
-- **Up to 100,000 features per panel** works well with a GPU. Without one, panning large maps gets slow: **Show data summary** says when that's the case.
+**Networks** cost less than their row count suggests, since edge rows carry no geometry: 100,000 edge rows, about 25,000 lines between 12,500 nodes, draw in about 1.4 s, with a pause of about 0.2 s when new data arrives, and colors and widths by value add little. A line's list of 2,000 edges opens, searches and sorts in under 0.1 s.
+
+- **Up to 100,000 features per panel**, or 100,000 edge rows in a network, works well with a GPU. Without one, panning large maps gets slow: **Show data summary** says when that's the case.
 - **Beyond 100,000**, the panel still draws them, with a warning. Filter in the query, and simplify detailed polygons with `ST_SimplifyPreserveTopology`.
 - **Refreshing often?** Add an `ORDER BY`, so a refresh with the same data costs almost nothing.
 - **Grafana's row limit** (`row_limit` in its configuration) caps what a SQL query returns.
 
-To measure your own machine, run `npm run bench:map`. [docs/phase_9.md](docs/phase_9.md#outcome) has the full results.
+To measure your own machine, run `npm run bench:map`. [docs/phase_9.md](docs/phase_9.md#outcome) has the full results, and [docs/node-edge/phase_6.md](docs/node-edge/phase_6.md#outcome) those for networks.
 
 ## Development
 
@@ -300,23 +324,23 @@ npm run server     # start Grafana and PostGIS in Docker (terminal 2)
 
 Open http://localhost:3000. The **GeoFlow** folder holds the dev dashboards:
 
-| Dashboard          | Shows                                                                                                                                                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 00 Smoke           | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                                                                   |
-| 01 Adapter         | How each kind of query result converts to GeoJSON.                                                                                                                                          |
-| 02 Basemap         | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                                                      |
-| 03 Many panels     | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                                                             |
-| 04 Geometry        | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.                                             |
-| 05 Tooltips        | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes.                                       |
-| 06 Style           | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                                                   |
-| 07 Data-driven     | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.                                              |
-| 08 Layers          | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values.                                  |
-| 09 Refresh         | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.                                    |
-| 10 Hardening       | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                                                       |
-| 11 Performance     | Points, lines, polygons and colored points at up to 100k rows, and up to 1,000 layers, picked with a variable. `npm run bench:map` measures these.                                          |
-| 12 Partition       | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.                                   |
-| 13 Basemap presets | A panel per preset provider, and MapTiler without a key. Its keys are made up: enter your own in the panel editor to see the real services.                                                 |
-| 14 Node-edge       | Sites and trunks as a network, the same with problem rows and a second Edges layer, edge columns set in the layer settings, a panel to set up in the editor, and hover totals with a ratio. |
+| Dashboard          | Shows                                                                                                                                                                                                                                                          |
+| ------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 00 Smoke           | Data from the fixture database, through the provisioned **GeoFlow PostGIS** data source, with the data summary turned on.                                                                                                                                      |
+| 01 Adapter         | How each kind of query result converts to GeoJSON.                                                                                                                                                                                                             |
+| 02 Basemap         | The OpenStreetMap and None basemaps. Add `?theme=dark` to the URL to check dark theme.                                                                                                                                                                         |
+| 03 Many panels     | 20 maps on one dashboard, for checking the WebGL context limit.                                                                                                                                                                                                |
+| 04 Geometry        | Each geometry type drawn on its own, mixed types, two queries as two layers, rows that are hard to draw, and a query without a geometry column.                                                                                                                |
+| 05 Tooltips        | Hover and click tooltips with field options and a data link, overlapping features, a tooltip followed through a refresh, and the Click and Off modes.                                                                                                          |
+| 06 Style           | Each query styled with an override, every line style, and a panel whose default style the e2e tests change in the editor.                                                                                                                                      |
+| 07 Data-driven     | Cables colored by a value mapping, patch panels by utilization thresholds and by a gradient, splice cases sized by splices used, with legends.                                                                                                                 |
+| 08 Layers          | Named layers in a saved order with building tooltips off, the same queries without settings for the editor tests, and cables split by Partition by values.                                                                                                     |
+| 09 Refresh         | Fit to data with and without Fit on refresh, a hover tooltip kept through a refresh, and custom tiles with a dark theme URL on the e2e tests' stub host.                                                                                                       |
+| 10 Hardening       | A panel with problems for the warning, rows with empty geometry, and panels for the failed query and no-WebGL2 tests.                                                                                                                                          |
+| 11 Performance     | Points, lines, polygons and colored points at up to 100k rows, up to 1,000 layers, and networks of up to 100k edge rows, plain and styled, picked with a variable. `npm run bench:map` measures these.                                                         |
+| 12 Partition       | Cables split by placement with Partition by values: one value styled with an override, null and empty values in both namings, and a panel with 60 layers.                                                                                                      |
+| 13 Basemap presets | A panel per preset provider, and MapTiler without a key. Its keys are made up: enter your own in the panel editor to see the real services.                                                                                                                    |
+| 14 Node-edge       | Sites and trunks as a network, the same with problem rows and a second Edges layer, edge columns set in the layer settings, a panel to set up in the editor, hover totals with a ratio, and lines styled by utilization and capacity, and by medium and count. |
 
 ### Docker environment
 

@@ -7,12 +7,13 @@ import {
   MappingType,
   SpecialValueMatch,
   ValueMapping,
-  getFieldDisplayName,
   getFieldColorModeForField,
   getMinMaxAndDelta,
   getScaleCalculator,
 } from '@grafana/data';
 import { FeatureStyles } from '../engine';
+import { EdgeValueKind, edgeValueProblem, edgeValues } from './edgeValues';
+import { findField } from './featureLookup';
 import { ConversionResult, styleFieldOf } from './frameToFeatureCollection';
 import { MapStyleConfig, mapStyleNumber } from './layerStyle';
 
@@ -41,6 +42,13 @@ export function dataStyleFields(frame: DataFrame, result: ConversionResult): Dat
       fields.problems.push(`Color by: no column named ${custom.colorBy}`);
     }
   }
+  const edgeProblem = (option: string, field: Field | undefined) => {
+    const problem = result.pairs && field && edgeValueProblem(frame, field);
+    if (problem) {
+      fields.problems.push(`${option}: ${problem}`);
+    }
+  };
+  edgeProblem('Color by', fields.colorField);
   if (custom.sizeBy) {
     const field = findField(frame, custom.sizeBy);
     if (!field) {
@@ -51,13 +59,15 @@ export function dataStyleFields(frame: DataFrame, result: ConversionResult): Dat
       fields.sizeField = field;
     }
   }
+  edgeProblem('Size by', fields.sizeField);
   return fields;
 }
 
 /**
  * Per-feature colors and point radii from the layer's Color by and Size by columns, or undefined
  * when neither is in use (docs/phase_6.md, Design §2). Features without a usable value get
- * undefined entries, which keep the layer's style.
+ * undefined entries, which keep the layer's style. An edge layer's lines are colored and sized by
+ * their pairs' edge values, and Size by sets their widths (docs/node-edge/phase_5.md, Design §2).
  */
 export function featureStyles(
   frame: DataFrame,
@@ -69,13 +79,43 @@ export function featureStyles(
     return undefined;
   }
   const custom: MapStyleConfig = styleFieldOf(frame, result)?.config.custom ?? {};
+  const sizes =
+    sizeField && featureSizes(styleSource(frame, result, sizeField), result, sizeRange(custom), !result.pairs);
   return {
-    ...(colorField && { colors: featureColors(colorField, result, theme) }),
-    ...(sizeField && { radii: featureRadii(sizeField, result, sizeRange(custom)) }),
+    ...(colorField && { colors: featureColors(styleSource(frame, result, colorField), result, theme) }),
+    ...(sizes && (result.pairs ? { widths: sizes } : { radii: sizes })),
   };
 }
 
-/** Min and Max point size, px, with their defaults and ranges. */
+/** What a column styles a layer's features from (docs/node-edge/phase_5.md, Design §2). */
+export interface StyleSource {
+  /** The column, as its values are colored: a count of a column's values is a plain number column. */
+  field: Field;
+  /** Each feature's value, by its position in the FeatureCollection. */
+  valueAt: (index: number) => unknown;
+  /** The range gradients and sizes span: the column's Min and Max, or its data's. */
+  range?: { min: number; max: number; delta: number };
+  /** For edge layers, how each pair's value was worked out. */
+  edgeKind?: EdgeValueKind;
+}
+
+/**
+ * Each feature's value from `field`: its row's for most layers, its pair's edge value for an edge
+ * layer, whose range spans the pairs' values rather than the rows' (docs/node-edge/architecture.md
+ * §6.3).
+ */
+export function styleSource(frame: DataFrame, result: ConversionResult, field: Field): StyleSource {
+  if (!result.pairs) {
+    return { field, valueAt: (i) => field.values[result.featureRows[i]], range: columnRange(field) };
+  }
+  const { kind, values, range } = edgeValues(frame, result, field);
+  // A count is a number whatever the column holds, and has no unit: "4", not "4 Gb/s".
+  const counted: Field =
+    kind === 'count' ? { ...field, type: FieldType.number, config: { ...field.config, unit: undefined } } : field;
+  return { field: counted, valueAt: (i) => values[i], range, edgeKind: kind };
+}
+
+/** Min size and Max size, px, with their defaults and ranges: point diameters or edge line widths. */
 function sizeRange(custom: MapStyleConfig): [number, number] {
   return [mapStyleNumber(custom, 'sizeMin'), mapStyleNumber(custom, 'sizeMax')];
 }
@@ -86,15 +126,18 @@ function sizeRange(custom: MapStyleConfig): [number, number] {
  * processor colors empty values too (the base threshold), so they keep the layer's color unless
  * a value mapping for them sets one (docs/phase_6.md, step 6.1).
  */
-function featureColors(field: Field, result: ConversionResult, theme: GrafanaTheme2): Array<string | undefined> {
-  const range = columnRange(field);
+function featureColors(
+  { field, valueAt, range, edgeKind }: StyleSource,
+  result: ConversionResult,
+  theme: GrafanaTheme2
+): Array<string | undefined> {
   // The display processor also reads the series index, for palette colors.
-  const inputs = JSON.stringify([field.config, range, field.state?.seriesIndex]);
+  const inputs = JSON.stringify([field.config, range, field.state?.seriesIndex, edgeKind]);
   return cached(colorCache, field, result, inputs, theme, () => {
     const color = colorOf(range ? { ...field, state: { ...field.state, range } } : field, theme);
     const mappings = field.config.mappings ?? [];
-    return result.featureRows.map((row) => {
-      const value = field.values[row];
+    return result.featureCollection.features.map((_, i) => {
+      const value = valueAt(i);
       if (isEmpty(value) && !mapsEmptyToColor(mappings, value)) {
         return undefined;
       }
@@ -147,20 +190,25 @@ function colorOf(field: Field, theme: GrafanaTheme2): (value: unknown) => string
 }
 
 /**
- * Each point's radius: the value's place in the column's range, clamped, mapped linearly onto
- * the point diameters and halved. Every value gets the middle size when the range is a single
- * value.
+ * Each feature's size: the value's place in the range, clamped, mapped linearly onto Min size to
+ * Max size, a point's diameter or an edge line's width. Points get radii: half the diameter.
+ * Every value gets the middle size when the range is a single value.
  */
-function featureRadii(field: Field, result: ConversionResult, [sizeMin, sizeMax]: [number, number]) {
-  const range = columnRange(field);
-  return cached(radiusCache, field, result, JSON.stringify(range), `${sizeMin},${sizeMax}`, () =>
-    result.featureRows.map((row) => {
-      const value = field.values[row];
+function featureSizes(
+  { field, valueAt, range, edgeKind }: StyleSource,
+  result: ConversionResult,
+  [sizeMin, sizeMax]: [number, number],
+  radii: boolean
+) {
+  const scale = radii ? 0.5 : 1;
+  return cached(sizeCache, field, result, JSON.stringify([range, edgeKind]), `${sizeMin},${sizeMax},${scale}`, () =>
+    result.featureCollection.features.map((_, i) => {
+      const value = valueAt(i);
       if (typeof value !== 'number' || !Number.isFinite(value) || !range) {
         return undefined;
       }
       const t = range.delta > 0 ? Math.min(1, Math.max(0, (value - range.min) / range.delta)) : 0.5;
-      return (sizeMin + t * (sizeMax - sizeMin)) / 2;
+      return (sizeMin + t * (sizeMax - sizeMin)) * scale;
     })
   );
 }
@@ -186,7 +234,7 @@ interface Cached<T> {
   values: T[];
 }
 const colorCache = new WeakMap<ConversionResult, Map<string, Cached<string | undefined>>>();
-const radiusCache = new WeakMap<ConversionResult, Map<string, Cached<number | undefined>>>();
+const sizeCache = new WeakMap<ConversionResult, Map<string, Cached<number | undefined>>>();
 
 /**
  * Per-feature values, worked out again only when the column's data, `inputs` or `extra` change.
@@ -216,14 +264,6 @@ function cached<T>(
   const values = compute();
   byField.set(field.name, { inputs, extra, values });
   return values;
-}
-
-/** A column named by a field option: by name, or by display name, as the options' field picker saves. */
-export function findField(frame: DataFrame, name: string): Field | undefined {
-  return (
-    frame.fields.find((field) => field.name === name) ??
-    frame.fields.find((field) => getFieldDisplayName(field, frame) === name)
-  );
 }
 
 /** Whether a Special value mapping gives this empty value a color. No other mapping matches one. */

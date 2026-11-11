@@ -264,12 +264,13 @@ function tooltipFeatures(
 ): TooltipFeature[] {
   return refs.flatMap((ref) => {
     const i = results.findIndex(({ layerId }) => layerId === ref.layerId);
-    // An edge line stands for a pair of nodes and every row between them (docs/node-edge/phase_3.md).
+    // An edge line stands for a pair of nodes and every row between them (docs/node-edge/phase_3.md):
+    // hovered, a glance; pinned, its whole Summary (docs/node-edge/phase_5.md, decision 6).
     const details =
       i < 0
         ? undefined
         : results[i].pairs
-          ? pairDetails(frames[i], results[i], ref.featureId)
+          ? pairDetails(frames[i], results[i], ref.featureId, { view: pinned ? 'summary' : 'hover' })
           : featureDetails(frames[i], results[i], ref.featureId);
     if (!details) {
       return [];

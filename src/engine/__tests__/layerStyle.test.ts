@@ -170,7 +170,7 @@ describe('paintFor', () => {
     const radius = ['coalesce', ['feature-state', 'radius'], 5];
 
     it("takes colors from feature-state, with the layer's color as the fallback", () => {
-      const paint = paintFor(style, { color: true, radius: false });
+      const paint = paintFor(style, { color: true, radius: false, width: false });
 
       expect(paint.fill['fill-color']).toEqual(color);
       expect(paint.outline['line-color']).toEqual(color);
@@ -180,23 +180,46 @@ describe('paintFor', () => {
     });
 
     it('takes point radii from feature-state, still growing highlighted points', () => {
-      const paint = paintFor(style, { color: false, radius: true });
+      const paint = paintFor(style, { color: false, radius: true, width: false });
 
       expect(paint.circle['circle-radius']).toEqual(highlighted(['+', radius, 2], radius));
       expect(paint.circle['circle-color']).toBe('#73bf69');
       expect(paint.line['line-width']).toEqual(paintFor(style).line['line-width']);
     });
 
+    it('takes line widths from feature-state, still widening highlighted lines', () => {
+      const width = ['coalesce', ['feature-state', 'width'], 2];
+      const paint = paintFor(style, { color: false, radius: false, width: true });
+
+      expect(paint.line['line-width']).toEqual(highlighted(['+', width, 2], width));
+      // Polygon outlines stay 1 px, and points keep their radius.
+      expect(paint.outline['line-width']).toEqual(paintFor(style).outline['line-width']);
+      expect(paint.circle['circle-radius']).toEqual(paintFor(style).circle['circle-radius']);
+    });
+
+    it('scales dashes with each line, keeping them in line widths', () => {
+      const dashed = { ...style, lineStyle: { kind: 'dash' as const } };
+
+      expect(paintFor(dashed, { color: false, radius: false, width: true }).line['line-dasharray']).toEqual(
+        paintFor(dashed).line['line-dasharray']
+      );
+    });
+
     it('reads feature-state only for what the per-feature styles set', () => {
-      expect(perFeature(spec)).toEqual({ color: false, radius: false });
-      expect(perFeature({ featureStyles: {} })).toEqual({ color: false, radius: false });
-      expect(perFeature({ featureStyles: { colors: [] } })).toEqual({ color: true, radius: false });
-      expect(perFeature({ featureStyles: { radii: [undefined] } })).toEqual({ color: false, radius: true });
+      expect(perFeature(spec)).toEqual({ color: false, radius: false, width: false });
+      expect(perFeature({ featureStyles: {} })).toEqual({ color: false, radius: false, width: false });
+      expect(perFeature({ featureStyles: { colors: [] } })).toEqual({ color: true, radius: false, width: false });
+      expect(perFeature({ featureStyles: { radii: [undefined] } })).toEqual({
+        color: false,
+        radius: true,
+        width: false,
+      });
+      expect(perFeature({ featureStyles: { widths: [4] } })).toEqual({ color: false, radius: false, width: true });
     });
 
     it('is what styleLayers paints for a layer with per-feature styles', () => {
-      const styled: LayerSpec = { ...spec, featureStyles: { colors: ['#f00'], radii: [3] } };
-      const paint = paintFor(style, { color: true, radius: true });
+      const styled: LayerSpec = { ...spec, featureStyles: { colors: ['#f00'], radii: [3], widths: [4] } };
+      const paint = paintFor(style, { color: true, radius: true, width: true });
 
       expect(styleLayers(styled).map((layer) => layer.paint)).toEqual([
         paint.fill,

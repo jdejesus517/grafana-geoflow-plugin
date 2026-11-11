@@ -480,7 +480,7 @@ export class MapLibreEngine implements MapEngine {
 
   /**
    * Sets the layer's per-feature styles as feature-state, calling MapLibre only for features
-   * whose color or radius changed (docs/phase_6.md, Design §3).
+   * whose color, radius or width changed (docs/phase_6.md, Design §3).
    */
   private syncFeatureStates(map: MapLibreMap, spec: LayerSpec): void {
     const sourceId = dataSourceId(spec.id);
@@ -667,7 +667,7 @@ function changed<V>(before: Record<string, V>, after: Record<string, V>): Array<
 
 function samePerFeature(a: LayerSpec, b: LayerSpec): boolean {
   const [x, y] = [perFeature(a), perFeature(b)];
-  return x.color === y.color && x.radius === y.radius;
+  return x.color === y.color && x.radius === y.radius && x.width === y.width;
 }
 
 function geoJsonSource(spec: LayerSpec): GeoJSONSourceSpecification {
