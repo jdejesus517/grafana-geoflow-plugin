@@ -4,8 +4,8 @@
   "name": "GeoFlow",
   "id": "jdejesusio-geoflow-panel",
   "info": {
-    "keywords": ["panel", "map", "geospatial", "postgis", "geojson", "maplibre"],
-    "description": "Render PostGIS geometries from the Grafana PostgreSQL data source on an interactive MapLibre map.",
+    "keywords": ["panel", "map", "geospatial", "postgis", "geojson", "maplibre", "network"],
+    "description": "Render PostGIS geometries and networks from the Grafana PostgreSQL data source on an interactive MapLibre map.",
     "author": {
       "name": "Jose DeJesus"
     },
@@ -29,6 +29,7 @@
     ],
     "screenshots": [
       { "name": "Coloring by value, with a legend", "path": "img/screenshot-data-driven.png" },
+      { "name": "A network styled by its links' values, with a list of links", "path": "img/screenshot-network.png" },
       { "name": "Pinned tooltip in the dark theme", "path": "img/screenshot-tooltip-dark.png" },
       { "name": "10,000 points colored by value", "path": "img/screenshot-large-data.png" },
       { "name": "SQL query and basemap options", "path": "img/screenshot-editor.png" }

@@ -164,7 +164,7 @@ Design §6. No new seed data, so no database reset.
 
 Implemented on branch `node-edge-phase-4` in five commits, steps 4.2 to 4.5, plus a fix to step 4.3 and the changes made in review (below). Step 4.1 was checks only, recorded below.
 - 660 unit and component tests pass (25 new), and 77 e2e tests (3 new, plus the login setup). No seed data changed, so the stack wasn't reset.
-- CI: to be filled in from the pull request.
+- CI: passed on [#40](https://github.com/jdejesus517/grafana-geoflow-plugin/pull/40): build, lint and unit tests, the compatibility check, the bundle size comparison, and e2e on Grafana 13.2.5, 13.3.0 and nightly.
 
 ### Exit criteria
 
