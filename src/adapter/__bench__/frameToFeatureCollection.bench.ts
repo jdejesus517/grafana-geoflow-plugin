@@ -1,3 +1,4 @@
+/// <reference types="node" />
 // Conversion timing sanity check (docs/phase_1.md, step 1.7). Not part of test:ci, because
 // timings on shared CI runners are noisy. Run with: npm run bench:adapter
 import { DataFrame, FieldType, toDataFrame } from '@grafana/data';
