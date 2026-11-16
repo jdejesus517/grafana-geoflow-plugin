@@ -85,11 +85,11 @@
   },
   "dependencies": {
     "@emotion/css": "11.13.5",
-    "@grafana/data": "13.2.5",
-    "@grafana/i18n": "13.2.5",
-    "@grafana/runtime": "13.2.5",
-    "@grafana/schema": "13.2.5",
-    "@grafana/ui": "13.2.5",
+    "@grafana/data": "13.2.6",
+    "@grafana/i18n": "13.2.6",
+    "@grafana/runtime": "13.2.6",
+    "@grafana/schema": "13.2.6",
+    "@grafana/ui": "13.2.6",
     "maplibre-gl": "^6.16.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
